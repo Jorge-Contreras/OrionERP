@@ -9,13 +9,13 @@
 @inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Restaurante · Promociones y Club Bruno</PageTitle>
+<PageTitle>Restaurante · Promociones y membresías</PageTitle>
 
 <main class="promo-admin">
   <header class="promo-admin__hero">
     <div>
       <span>Venta y fidelidad</span>
-      <h1>Promociones y Club Bruno</h1>
+      <h1>Promociones y membresías</h1>
       <p>Reglas autoritativas, códigos, condiciones públicas, métricas y ajustes auditados.</p>
     </div>
     <button type="button" class="btn btn-light" @onclick="LoadAsync" disabled="@isBusy">Actualizar</button>
@@ -318,17 +318,17 @@
   private string adjustmentReason = string.Empty;
   private DateTime from = DateTime.Today.AddDays(-30);
   private DateTime to = DateTime.Today;
-  private const string CurrentRfc = BrunoRestaurantConstants.Rfc;
+  private string CurrentRfc => RfcState.RequireRfc();
 
   protected override async Task OnInitializedAsync()
   {
     try
     {
-      RfcState.EnsureRfc(CurrentRfc);
+      _ = CurrentRfc;
     }
-    catch (InvalidOperationException)
+    catch (UnauthorizedAccessException)
     {
-      Show("Esta página requiere una sesión iniciada con Bruno's. Cierra sesión e ingresa con esa empresa.", true);
+      Show("Esta página requiere una sesión con una empresa activa. Vuelve a iniciar sesión y selecciona la empresa que deseas administrar.", true);
       return;
     }
     await LoadAsync();

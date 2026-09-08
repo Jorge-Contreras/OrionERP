@@ -1,8 +1,10 @@
 @page "/menu"
 @inject IBrunoPublicCatalogService CatalogService
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Menú · Bruno's Garden & Snacks</PageTitle>
-<HeadContent><meta name="description" content="Consulta el menú, precios y disponibilidad de Bruno's Garden & Snacks en Calpulalpan." /></HeadContent>
+<PageTitle>Menú · @Presentation.PublicName</PageTitle>
+<HeadContent><meta name="description" content="Consulta el menú, precios y disponibilidad de @Presentation.PublicName en @Presentation.LocationName." /></HeadContent>
 
 <section class="page-hero page-hero--menu"><span>Hecho para el antojo</span><h1>Nuestro menú</h1><p>Precios y disponibilidad se actualizan desde la operación del restaurante.</p></section>
 
@@ -23,14 +25,14 @@ else
     @foreach (var section in catalog.Menu.Sections)
     {
       <section id="@Slug(section.Name)" class="menu-section">
-        <header><span>Bruno's</span><h2>@section.Name</h2></header>
+        <header><span>@Presentation.ShortName</span><h2>@section.Name</h2></header>
         <div class="menu-grid">
           @foreach (var product in section.Products)
           {
             <article class="menu-card @(product.ProductKind == RestaurantProductKinds.Combo ? "is-combo" : null) @(product.IsSoldOut ? "is-sold-out" : null)">
               <div class="menu-card__image">
                 @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" /> }
-                else { <span>Bruno's</span> }
+                else { <span>@Presentation.ShortName</span> }
                 @if (product.IsSoldOut) { <b>Agotado por hoy</b> }
               </div>
               <div class="menu-card__copy">
@@ -61,7 +63,12 @@ else
   private bool isLoading = true;
   protected override async Task OnInitializedAsync()
   {
-    try { catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now); }
+    try
+    {
+      var binding = await Website.ResolveRequiredAsync();
+      var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
+      catalog = await CatalogService.GetCatalogAsync(binding.CompanyRfc, binding.SiteKey, localNow);
+    }
     finally { isLoading = false; }
   }
   private static string ComboSlotSummary(RestaurantComboSlotDto slot)

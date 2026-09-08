@@ -1,3 +1,4 @@
+using OrionERP.Application.Features.Bonhomia.PublicBooking;
 using OrionERP.Bonhomia.Web.Features.Bonhomia;
 
 namespace OrionERP.UnitTests.Bonhomia;
@@ -5,31 +6,31 @@ namespace OrionERP.UnitTests.Bonhomia;
 public class BonhomiaSuiteGalleryCatalogTests
 {
   [Theory]
-  [InlineData("Casa Berlin", "/Images/Bonhomia/suites/berlin/01.jpg", 7)]
-  [InlineData("Berlin", "/Images/Bonhomia/suites/berlin/01.jpg", 7)]
-  [InlineData("Suite Manhattan", "/Images/Bonhomia/suites/manhattan/01.jpg", 6)]
-  [InlineData("Seul", "/Images/Bonhomia/suites/seul/01.jpg", 6)]
-  [InlineData("Moscu", "/Images/Bonhomia/suites/moscu/01.jpg", 6)]
-  [InlineData("Paris", "/Images/Bonhomia/suites/paris/01.jpg", 6)]
-  [InlineData("Penthouse", "/Images/Bonhomia/suites/penthouse/01.jpg", 6)]
-  [InlineData("Grecia", "/Images/Bonhomia/suites/grecia/01.jpg", 6)]
-  [InlineData("London", "/Images/Bonhomia/suites/london/01.jpg", 6)]
-  public void FindSuite_MapsAliasesToOrderedGallery(string suiteName, string expectedPrimaryImage, int expectedImageCount)
+  [InlineData("Suite Uno")]
+  [InlineData("Uno")]
+  [InlineData("suite-uno")]
+  public void FindSuite_MapsAliasesToConfiguredOrderedGallery(string suiteName)
   {
-    var gallery = BonhomiaSuiteGalleryCatalog.FindSuite(suiteName);
+    var website = HospitalityWebsitePolicy.Create(
+      HospitalityPresentationTestData.CreateHospitalityOptions(),
+      HospitalityPresentationTestData.CreatePresentation());
+    var gallery = BonhomiaSuiteGalleryCatalog.FindSuite(website, suiteName);
 
     Assert.NotNull(gallery);
-    Assert.Equal(expectedPrimaryImage, gallery.PrimaryImage);
-    Assert.Equal(expectedImageCount, gallery.Images.Count);
-    Assert.Contains(gallery.Images, image => image.Source.EndsWith(".png", StringComparison.OrdinalIgnoreCase));
+    Assert.Equal("/assets/room.jpg", gallery.PrimaryImage);
+    Assert.Equal(["/assets/room.jpg", "/assets/room-two.jpg"], gallery.Images.Select(image => image.Source));
   }
 
   [Fact]
-  public void BuildingImages_UseBuildingStaticAssetFolder()
+  public void BuildingImages_UseConfiguredPresentationAssets()
   {
-    Assert.Equal(5, BonhomiaSuiteGalleryCatalog.BuildingImages.Count);
-    Assert.All(
-      BonhomiaSuiteGalleryCatalog.BuildingImages,
-      image => Assert.StartsWith("/Images/Bonhomia/building/", image.Source, StringComparison.Ordinal));
+    var website = HospitalityWebsitePolicy.Create(
+      HospitalityPresentationTestData.CreateHospitalityOptions(),
+      HospitalityPresentationTestData.CreatePresentation());
+    var images = BonhomiaSuiteGalleryCatalog.GetBuildingImages(website, "Marca de Prueba");
+
+    var image = Assert.Single(images);
+    Assert.Equal("/assets/building.jpg", image.Source);
+    Assert.Contains("Marca de Prueba", image.Alt, StringComparison.Ordinal);
   }
 }

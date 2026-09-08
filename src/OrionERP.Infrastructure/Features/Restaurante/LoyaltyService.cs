@@ -91,15 +91,17 @@ public sealed class LoyaltyService : ILoyaltyService
     string rfc,
     Guid memberId,
     CancellationToken ct = default)
-    => LoadProfileAsync(LogisticsRfc.Require(rfc), memberId, null, ct);
+    => LoadProfileAsync(LogisticsRfc.Require(rfc), null, memberId, null, ct);
 
   public Task<LoyaltyMemberProfileDto?> GetMemberProfileByIdentityAsync(
     string rfc,
+    long publicSiteId,
     string identityUserId,
     CancellationToken ct = default)
   {
+    if (publicSiteId <= 0) throw new ArgumentOutOfRangeException(nameof(publicSiteId));
     ArgumentException.ThrowIfNullOrWhiteSpace(identityUserId);
-    return LoadProfileAsync(LogisticsRfc.Require(rfc), null, identityUserId, ct);
+    return LoadProfileAsync(LogisticsRfc.Require(rfc), publicSiteId, null, identityUserId, ct);
   }
 
   public async Task<LoyaltyMemberProfileDto> CreateMemberAsync(
@@ -109,6 +111,8 @@ public sealed class LoyaltyService : ILoyaltyService
     ArgumentNullException.ThrowIfNull(request);
     if (!request.IsAdultConfirmed)
       throw new InvalidOperationException("La membresía requiere confirmar mayoría de edad.");
+    if (request.PublicSiteId <= 0)
+      throw new InvalidOperationException("La membresía requiere un sitio público verificado.");
     var rfc = LogisticsRfc.Require(request.Rfc);
     var normalizedEmail = NormalizeEmail(request.Email);
     var normalizedPhone = NormalizePhone(request.Phone)
@@ -120,11 +124,25 @@ public sealed class LoyaltyService : ILoyaltyService
     try
     {
       if (!await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-        "SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM brunos_auth.AspNetUsers WHERE Id=@Id) THEN 1 ELSE 0 END AS bit);",
-        new { Id = request.IdentityUserId },
+        """
+        SELECT CAST(CASE WHEN EXISTS
+        (
+          SELECT 1
+          FROM brunos_auth.AspNetUsers identityUser
+          JOIN orion.PublicSite publicSite
+            ON publicSite.PublicSiteId=identityUser.PublicSiteId
+          JOIN orion.Company company
+            ON company.CompanyId=publicSite.CompanyId
+          WHERE identityUser.Id=@Id
+            AND identityUser.PublicSiteId=@PublicSiteId
+            AND company.Rfc=@Rfc
+            AND publicSite.ModuleCode='RESTAURANT'
+        ) THEN 1 ELSE 0 END AS bit);
+        """,
+        new { Id = request.IdentityUserId, request.PublicSiteId, Rfc = rfc },
         tx,
         cancellationToken: ct)))
-        throw new InvalidOperationException("La cuenta de acceso no existe.");
+        throw new InvalidOperationException("La cuenta de acceso no pertenece a esta empresa y sede.");
       if (await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
         """
         SELECT CAST(CASE WHEN EXISTS
@@ -164,12 +182,12 @@ public sealed class LoyaltyService : ILoyaltyService
         """
         INSERT fidelidad.MemberAccount
         (
-          Id,Rfc,IdentityUserId,MembershipNumber,FirstName,LastName,
+          Id,Rfc,PublicSiteId,IdentityUserId,MembershipNumber,FirstName,LastName,
           NormalizedEmail,NormalizedPhone,[Status],IsAdultConfirmed
         )
         VALUES
         (
-          @Id,@Rfc,@IdentityUserId,@MembershipNumber,@FirstName,@LastName,
+          @Id,@Rfc,@PublicSiteId,@IdentityUserId,@MembershipNumber,@FirstName,@LastName,
           @Email,@Phone,'PendingVerification',1
         );
         """,
@@ -177,6 +195,7 @@ public sealed class LoyaltyService : ILoyaltyService
         {
           Id = memberId,
           Rfc = rfc,
+          request.PublicSiteId,
           request.IdentityUserId,
           MembershipNumber = membershipNumber,
           FirstName = request.FirstName.Trim(),
@@ -194,7 +213,7 @@ public sealed class LoyaltyService : ILoyaltyService
       await InsertConsentAsync(conn, tx, rfc, memberId, "WhatsAppMarketing", request.TermsVersion, request.WhatsAppMarketingConsent, ct);
 
       await tx.CommitAsync(ct);
-      return await GetMemberProfileAsync(rfc, memberId, ct)
+      return await LoadProfileAsync(rfc, request.PublicSiteId, memberId, request.IdentityUserId, ct)
         ?? throw new InvalidOperationException("No fue posible recuperar la membresía creada.");
     }
     catch (SqlException ex) when (ex.Number is 2601 or 2627)
@@ -214,6 +233,8 @@ public sealed class LoyaltyService : ILoyaltyService
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
+    if (request.PublicSiteId <= 0)
+      return RestaurantCommandResult.Fail("El sitio público no es válido.");
     var rfc = LogisticsRfc.Require(request.Rfc);
     using var conn = CreateConnection();
     var affected = await conn.ExecuteAsync(new CommandDefinition(
@@ -225,11 +246,13 @@ public sealed class LoyaltyService : ILoyaltyService
             WHEN (EmailVerified=1 OR @EmailVerified=1)
             THEN 'Active' ELSE [Status] END,
           UpdatedAt=SYSUTCDATETIME()
-      WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]<>'Closed';
+      WHERE Rfc=@Rfc AND PublicSiteId=@PublicSiteId
+        AND Id=@MemberId AND [Status]<>'Closed';
       """,
       new
       {
         Rfc = rfc,
+        request.PublicSiteId,
         request.MemberId,
         request.EmailVerified,
         request.PhoneVerified
@@ -242,9 +265,11 @@ public sealed class LoyaltyService : ILoyaltyService
 
   public async Task<LoyaltyQrTokenDto> CreateQrTokenAsync(
     string rfc,
+    long publicSiteId,
     Guid memberId,
     CancellationToken ct = default)
   {
+    if (publicSiteId <= 0) throw new ArgumentOutOfRangeException(nameof(publicSiteId));
     var normalizedRfc = LogisticsRfc.Require(rfc);
     var token = $"BRQ1.{Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}";
     var expiresAt = DateTime.UtcNow.AddMinutes(5);
@@ -256,7 +281,8 @@ public sealed class LoyaltyService : ILoyaltyService
       WHERE EXISTS
       (
         SELECT 1 FROM fidelidad.MemberAccount
-        WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]='Active'
+        WHERE Rfc=@Rfc AND PublicSiteId=@PublicSiteId
+          AND Id=@MemberId AND [Status]='Active'
           AND EmailVerified=1
       );
       """,
@@ -264,6 +290,7 @@ public sealed class LoyaltyService : ILoyaltyService
       {
         Id = Guid.NewGuid(),
         Rfc = normalizedRfc,
+        PublicSiteId = publicSiteId,
         MemberId = memberId,
         Hash = HashToken(token),
         ExpiresAt = expiresAt
@@ -349,6 +376,8 @@ public sealed class LoyaltyService : ILoyaltyService
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
+    if (request.PublicSiteId <= 0)
+      return RestaurantCommandResult.Fail("El sitio público no es válido.");
     var rfc = LogisticsRfc.Require(request.Rfc);
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
@@ -362,7 +391,8 @@ public sealed class LoyaltyService : ILoyaltyService
         WHERE EXISTS
         (
           SELECT 1 FROM fidelidad.MemberAccount WITH(UPDLOCK,HOLDLOCK)
-          WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]<>'Closed'
+          WHERE Rfc=@Rfc AND PublicSiteId=@PublicSiteId
+            AND Id=@MemberId AND [Status]<>'Closed'
         );
         UPDATE fidelidad.MemberAccount
         SET [Status]='Closed',ClosedAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME(),
@@ -370,11 +400,16 @@ public sealed class LoyaltyService : ILoyaltyService
             NormalizedEmail=CONCAT('CLOSED-',CONVERT(varchar(36),Id)),
             NormalizedPhone=CONCAT('CLOSED-',CONVERT(varchar(36),Id)),
             EmailVerified=0,PhoneVerified=0
-        WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]<>'Closed';
+        WHERE Rfc=@Rfc AND PublicSiteId=@PublicSiteId
+          AND Id=@MemberId AND [Status]<>'Closed';
         INSERT fidelidad.MemberConsent(Rfc,MemberId,ConsentType,DocumentVersion,IsGranted,Source)
         SELECT @Rfc,@MemberId,consentType,'closure',0,'MemberPortal'
         FROM (VALUES('EmailMarketing'),('SmsMarketing'),('WhatsAppMarketing')) valueInfo(consentType)
-        WHERE EXISTS(SELECT 1 FROM fidelidad.MemberAccount WHERE Rfc=@Rfc AND Id=@MemberId);
+        WHERE EXISTS
+        (
+          SELECT 1 FROM fidelidad.MemberAccount
+          WHERE Rfc=@Rfc AND PublicSiteId=@PublicSiteId AND Id=@MemberId
+        );
         UPDATE identityUser
         SET UserName=CONCAT('closed-',CONVERT(nvarchar(36),@MemberId)),
             NormalizedUserName=UPPER(CONCAT('closed-',CONVERT(nvarchar(36),@MemberId))),
@@ -386,12 +421,15 @@ public sealed class LoyaltyService : ILoyaltyService
         FROM brunos_auth.AspNetUsers identityUser
         JOIN fidelidad.MemberAccount member
           ON member.IdentityUserId=identityUser.Id
-        WHERE member.Rfc=@Rfc AND member.Id=@MemberId;
+        WHERE member.Rfc=@Rfc AND member.PublicSiteId=@PublicSiteId
+          AND member.Id=@MemberId
+          AND identityUser.PublicSiteId=@PublicSiteId;
         """,
         new
         {
           Id = Guid.NewGuid(),
           Rfc = rfc,
+          request.PublicSiteId,
           request.MemberId,
           Reason = request.Reason.Trim()
         },
@@ -417,6 +455,8 @@ public sealed class LoyaltyService : ILoyaltyService
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
+    if (request.PublicSiteId <= 0)
+      return RestaurantCommandResult.Fail("El sitio público no es válido.");
     var rfc = LogisticsRfc.Require(request.Rfc);
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
@@ -428,10 +468,11 @@ public sealed class LoyaltyService : ILoyaltyService
         SELECT CAST(CASE WHEN EXISTS
         (
           SELECT 1 FROM fidelidad.MemberAccount WITH(UPDLOCK,HOLDLOCK)
-          WHERE Rfc=@Rfc AND Id=@MemberId AND [Status]<>'Closed'
+          WHERE Rfc=@Rfc AND PublicSiteId=@PublicSiteId
+            AND Id=@MemberId AND [Status]<>'Closed'
         ) THEN 1 ELSE 0 END AS bit);
         """,
-        new { Rfc = rfc, request.MemberId },
+        new { Rfc = rfc, request.PublicSiteId, request.MemberId },
         tx,
         cancellationToken: ct));
       if (!memberExists)
@@ -728,6 +769,7 @@ public sealed class LoyaltyService : ILoyaltyService
 
   private async Task<LoyaltyMemberProfileDto?> LoadProfileAsync(
     string rfc,
+    long? publicSiteId,
     Guid? memberId,
     string? identityUserId,
     CancellationToken ct)
@@ -741,12 +783,15 @@ public sealed class LoyaltyService : ILoyaltyService
              member.EmailVerified,member.PhoneVerified,member.[Status],
              member.PointsBalance,member.CreatedAt
       FROM fidelidad.MemberAccount member
-      JOIN brunos_auth.AspNetUsers userInfo ON userInfo.Id=member.IdentityUserId
+      JOIN brunos_auth.AspNetUsers userInfo
+        ON userInfo.Id=member.IdentityUserId
+       AND userInfo.PublicSiteId=member.PublicSiteId
       WHERE member.Rfc=@Rfc
+        AND (@PublicSiteId IS NULL OR member.PublicSiteId=@PublicSiteId)
         AND (@MemberId IS NULL OR member.Id=@MemberId)
         AND (@IdentityUserId IS NULL OR member.IdentityUserId=@IdentityUserId);
       """,
-      new { Rfc = rfc, MemberId = memberId, IdentityUserId = identityUserId },
+      new { Rfc = rfc, PublicSiteId = publicSiteId, MemberId = memberId, IdentityUserId = identityUserId },
       cancellationToken: ct));
     if (profile is null)
     {

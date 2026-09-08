@@ -1,101 +1,122 @@
 @page "/"
 @inject IBrunoPublicCatalogService CatalogService
-@inject IWebHostEnvironment Environment
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Bruno's Garden & Snacks · Calpulalpan</PageTitle>
-<HeadContent><meta name="description" content="@settings.SeoDescription" /></HeadContent>
+<PageTitle>@Presentation.PublicName · @Presentation.LocationName</PageTitle>
+<HeadContent><meta name="description" content="@Presentation.SeoDescription" /></HeadContent>
 
-<section class="hero">
-  <div class="hero__shade"></div>
-  <div class="hero__brand-visual" aria-hidden="true">
-    <img class="hero__logo-badge" src="/Images/Brunos/brunos-logo.png" alt="" />
-    <img class="hero__mascot" src="/Images/Brunos/bruno-hero-mascot.png" alt="" />
-  </div>
-  <div class="hero__content">
-    <span>@settings.HeroEyebrow</span>
-    <h1>@settings.HeroTitle</h1>
-    <p>@settings.HeroDescription</p>
-    <div class="hero__actions">
-      @if (membershipEnabled)
-      {
-        <a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Únete gratis a Club Bruno</span><small>Crea tu cuenta</small></a>
-      }
-      <a class="button button--ghost" href="/menu">Ver menú</a>
-      @if (!membershipEnabled)
-      {
-        <a class="button button--ghost" href="/membresia">Conocer Club Bruno</a>
-      }
-    </div>
-    <small class="hero__authenticity">Chicken fingers y hamburguesas de Bruno's</small>
-  </div>
-  <a class="hero__hours" href="/visitanos"><span>Hoy</span><strong>@TodayHours</strong><small>Cómo llegar →</small></a>
-</section>
-
-@if (membershipEnabled)
+@if (settings is null)
 {
-  <section class="club-spotlight" aria-labelledby="club-spotlight-title">
-    <figure class="club-spotlight__visual">
-      <img class="club-spotlight__photo" src="/Images/Brunos/brunos-real-club.jpg" alt="Mesas y luces del jardín real de Bruno's Garden & Snacks" />
-      <img class="club-spotlight__logo" src="/Images/Brunos/brunos-logo.png" alt="" aria-hidden="true" />
-      <img class="club-spotlight__mascot" src="/Images/Brunos/bruno-club-mascot.png" alt="" aria-hidden="true" />
-    </figure>
-    <div class="club-spotlight__content">
-      <span>Club Bruno</span>
-      <h2 id="club-spotlight-title">Cada visita puede sumar</h2>
-      <p>Crea tu cuenta gratis, confirma tu correo e identifícate antes de pagar para acumular puntos en tus compras elegibles.</p>
-      <ul><li>Registro gratuito</li><li>Consulta tus puntos</li><li>QR temporal desde tu cuenta</li></ul>
-      <div class="club-spotlight__actions"><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear mi cuenta gratis</span><small>Quiero ser miembro</small></a><a href="/membresia">Ver cómo funciona →</a></div>
+  <section class="state-card"><h1>Sitio temporalmente no disponible</h1><p>No pudimos cargar la información del restaurante. Inténtalo de nuevo en unos minutos.</p></section>
+}
+else
+{
+  <section class="hero">
+    <div class="hero__shade"></div>
+    <div class="hero__brand-visual" aria-hidden="true">
+      <img class="hero__logo-badge" src="@Presentation.LogoPath" alt="" />
+      <img class="hero__mascot" src="@Presentation.Asset("hero-decoration")" alt="" />
     </div>
+    <div class="hero__content">
+      <span>@settings.HeroEyebrow</span>
+      <h1>@settings.HeroTitle</h1>
+      <p>@settings.HeroDescription</p>
+      <div class="hero__actions">
+        @if (membershipEnabled)
+        {
+          <a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Únete gratis a @MembershipName</span><small>Crea tu cuenta</small></a>
+        }
+        <a class="button button--ghost" href="/menu">Ver menú</a>
+        @if (!membershipEnabled && Presentation.MembershipProgramName is not null)
+        {
+          <a class="button button--ghost" href="/membresia">Conocer @MembershipName</a>
+        }
+      </div>
+      <small class="hero__authenticity">La cocina de @Presentation.ShortName</small>
+    </div>
+    <a class="hero__hours" href="/visitanos"><span>Hoy</span><strong>@TodayHours</strong><small>Cómo llegar →</small></a>
+  </section>
+
+  @if (membershipEnabled)
+  {
+    <section class="club-spotlight" aria-labelledby="club-spotlight-title">
+      <figure class="club-spotlight__visual">
+        <img class="club-spotlight__photo" src="@Presentation.Asset("membership-hero")" alt="Espacio de @Presentation.PublicName" />
+        <img class="club-spotlight__logo" src="@Presentation.LogoPath" alt="" aria-hidden="true" />
+        <img class="club-spotlight__mascot" src="@Presentation.Asset("membership-decoration")" alt="" aria-hidden="true" />
+      </figure>
+      <div class="club-spotlight__content">
+        <span>@MembershipName</span>
+        <h2 id="club-spotlight-title">Cada visita puede sumar</h2>
+        <p>Crea tu cuenta gratis, confirma tu correo e identifícate antes de pagar para acumular puntos en tus compras elegibles.</p>
+        <ul><li>Registro gratuito</li><li>Consulta tus puntos</li><li>QR temporal desde tu cuenta</li></ul>
+        <div class="club-spotlight__actions"><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear mi cuenta gratis</span><small>Quiero ser miembro</small></a><a href="/membresia">Ver cómo funciona →</a></div>
+      </div>
+    </section>
+  }
+
+  <section class="intro-grid">
+    <article><span>01</span><h2>Opciones para compartir</h2><p>Consulta alimentos, bebidas y disponibilidad directamente en el menú actualizado.</p><a href="/menu">Explorar el menú →</a></article>
+    <article><span>02</span><h2>Planea tu visita</h2><p>Revisa la ubicación, el horario vigente y nuestros canales de contacto.</p><a href="/visitanos">Ver información →</a></article>
+    @if (Presentation.MembershipProgramName is not null)
+    {
+      <article><span>03</span><h2>Tus visitas suman</h2><p>Conoce @MembershipName y las reglas vigentes para acumular puntos en compras elegibles.</p><a href="/membresia">Cómo funciona →</a></article>
+    }
+  </section>
+
+  <section class="featured">
+    <div><span>Desde nuestra cocina</span><h2>Elige tu próximo favorito</h2><p>El menú se actualiza directamente desde nuestro catálogo. Precios y disponibilidad pueden cambiar durante el día.</p></div>
+    <div class="featured__products">
+      @foreach (var product in featuredProducts)
+      {
+        <article>
+          @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" /> }
+          <div><small>@product.Sku</small><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
+        </article>
+      }
+    </div>
+  </section>
+
+  <section class="order-preview">
+    <div><span>Próximamente</span><h2>Ordena como te convenga</h2><p>Estamos preparando pedidos en línea para recolección y entrega. Mientras tanto, visítanos para disfrutar el menú completo.</p></div>
+    <div class="order-preview__steps"><span><b>1</b> Confirma ubicación</span><span><b>2</b> Elige recolección o entrega</span><span><b>3</b> Arma y paga tu orden</span></div>
   </section>
 }
 
-<section class="intro-grid">
-  <article><span>01</span><h2>Antojo para todos</h2><p>Chicken fingers, hamburguesas, snacks, bebidas y opciones para compartir.</p><a href="/menu">Explorar el menú →</a></article>
-  <article><span>02</span><h2>Un jardín para quedarte</h2><p>Ambiente familiar y pet friendly para comer, conversar y pasarla bien.</p><a href="/visitanos">Planea tu visita →</a></article>
-  <article><span>03</span><h2>Tus visitas suman</h2><p>Regístrate en Club Bruno, identifícate antes de pagar y acumula puntos en compras elegibles.</p><a href="/membresia">Cómo funciona →</a></article>
-</section>
-
-<section class="featured">
-  <div><span>Desde nuestra cocina</span><h2>Elige tu próximo favorito</h2><p>El menú se actualiza directamente desde nuestro catálogo. Precios y disponibilidad pueden cambiar durante el día.</p></div>
-  <div class="featured__products">
-    @foreach (var product in featuredProducts)
-    {
-      <article>
-        @if (product.HasImage) { <img src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" /> }
-        <div><small>@product.Sku</small><h3>@product.Name</h3><p>@product.Description</p><strong>@product.Price.ToString("C0")</strong></div>
-      </article>
-    }
-  </div>
-</section>
-
-<section class="order-preview">
-  <div><span>Próximamente</span><h2>Ordena como te convenga</h2><p>Estamos preparando pedidos en línea para recolección y entrega. Mientras tanto, visítanos en el jardín para disfrutar el menú completo.</p></div>
-  <div class="order-preview__steps"><span><b>1</b> Confirma ubicación</span><span><b>2</b> Elige recolección o entrega</span><span><b>3</b> Arma y paga tu orden</span></div>
-</section>
-
 @code {
-  private BrunoPublicSiteSettingsDto settings = new()
-  {
-    HeroEyebrow = "Jardín pet friendly en Calpulalpan",
-    HeroTitle = "Snacks, jardín y buenos momentos",
-    HeroDescription = "Un espacio familiar para disfrutar, convivir y venir con tu mascota.",
-    SeoDescription = "Bruno's Garden & Snacks en Calpulalpan."
-  };
+  private BrunoPublicSiteSettingsDto? settings;
   private List<RestaurantProductDto> featuredProducts = [];
   private bool membershipEnabled;
-  private string TodayHours => DateTime.Now.DayOfWeek == DayOfWeek.Monday ? "Cerrado" : "9:00–22:00";
+  private string timeZoneId = "UTC";
+  private string MembershipName => Presentation.MembershipProgramName ?? "la membresía";
+  private string TodayHours => RestaurantOpeningHours.Today(settings?.OpeningHoursJson, timeZoneId, DateTimeOffset.UtcNow);
 
   protected override async Task OnInitializedAsync()
   {
-    membershipEnabled = Environment.IsDevelopment();
     try
     {
-      var catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now);
-      if (catalog is null) return;
+      var binding = await Website.ResolveRequiredAsync();
+      timeZoneId = binding.TimeZoneId;
+      var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
+      var catalog = await CatalogService.GetCatalogAsync(binding.CompanyRfc, binding.SiteKey, localNow);
+      if (catalog is null)
+      {
+        return;
+      }
+
       settings = catalog.Settings;
-      membershipEnabled = catalog.Settings.IsMembershipEnabled || Environment.IsDevelopment();
-      featuredProducts = catalog.Menu.Sections.SelectMany(section => section.Products).Where(product => !product.IsSoldOut).Take(3).ToList();
+      membershipEnabled = catalog.Settings.IsMembershipEnabled;
+      featuredProducts = catalog.Menu.Sections
+        .SelectMany(section => section.Products)
+        .Where(product => !product.IsSoldOut)
+        .Take(3)
+        .ToList();
     }
-    catch { }
+    catch
+    {
+      settings = null;
+      membershipEnabled = false;
+    }
   }
 }

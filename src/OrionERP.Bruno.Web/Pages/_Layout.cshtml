@@ -1,36 +1,59 @@
+@using System.Text.Json
+@using System.Text.Json.Serialization
 @using Microsoft.Extensions.Options
 @using Microsoft.AspNetCore.Components.Web
 @using OrionERP.Bruno.Web.Configuration
 @inject IOptions<BrunoTurnstileOptions> Turnstile
 @inject IOptions<BrunoSiteOptions> BrunoSite
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
 @{
   var isAccountPage = Context.Request.Path.StartsWithSegments("/cuenta");
   var canonicalPath = Context.Request.Path == "/" ? string.Empty : Context.Request.Path.Value;
   var shouldNoIndex = isAccountPage || Context.Response.StatusCode >= 400;
+  var canonicalOrigin = Website.Instance.CanonicalBaseUri.GetLeftPart(UriPartial.Authority);
+  var canonicalUrl = canonicalOrigin + canonicalPath;
+  var openGraphImage = canonicalOrigin + Presentation.Asset("open-graph");
+  var schema = new Dictionary<string, object?>
+  {
+    ["@context"] = "https://schema.org",
+    ["@type"] = "FoodEstablishment",
+    ["name"] = Presentation.PublicName,
+    ["legalName"] = Presentation.LegalName,
+    ["description"] = Presentation.SeoDescription,
+    ["url"] = canonicalOrigin,
+    ["image"] = openGraphImage,
+    ["email"] = Presentation.PublicEmail,
+    ["telephone"] = Presentation.PhoneDisplay ?? Presentation.WhatsAppDisplay,
+    ["address"] = Presentation.OperatingAddress
+  };
+  var schemaJson = JsonSerializer.Serialize(
+    schema,
+    new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
 }
 <!DOCTYPE html>
-<html lang="es-MX">
+<html lang="@Presentation.Locale">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#171512" />
-  <meta name="description" content="Bruno's Garden & Snacks: jardín pet friendly, ambiente familiar, chicken fingers, hamburguesas, snacks y bebidas en Calpulalpan." />
-  <link rel="canonical" href="https://brunosgarden.com@canonicalPath" />
+  <meta name="theme-color" content="@Presentation.PrimaryDarkColor" />
+  <meta name="description" content="@Presentation.SeoDescription" />
+  <link rel="canonical" href="@canonicalUrl" />
   @if (shouldNoIndex)
   {
     <meta name="robots" content="noindex,nofollow" />
   }
   <meta property="og:type" content="website" />
-  <meta property="og:locale" content="es_MX" />
-  <meta property="og:site_name" content="Bruno's Garden & Snacks" />
-  <meta property="og:title" content="Bruno's Garden & Snacks" />
-  <meta property="og:description" content="Snacks, jardín y buenos momentos en Calpulalpan." />
-  <meta property="og:url" content="https://brunosgarden.com@canonicalPath" />
-  <meta property="og:image" content="https://brunosgarden.com/Images/Brunos/og-brunos.png" />
+  <meta property="og:locale" content="@Presentation.Locale.Replace('-', '_')" />
+  <meta property="og:site_name" content="@Presentation.PublicName" />
+  <meta property="og:title" content="@Presentation.PublicName" />
+  <meta property="og:description" content="@Presentation.SeoDescription" />
+  <meta property="og:url" content="@canonicalUrl" />
+  <meta property="og:image" content="@openGraphImage" />
   <meta name="twitter:card" content="summary_large_image" />
-  <title>@(ViewData["Title"] ?? "Bruno's Garden & Snacks")</title>
+  <title>@(ViewData["Title"] ?? Presentation.PublicName)</title>
   <base href="~/" />
-  <link rel="icon" type="image/png" href="~/Images/Brunos/brunos-logo.png" />
+  <link rel="icon" href="@Presentation.FaviconPath" />
   <link rel="stylesheet" href="~/css/brunos-site.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/css/brunos-responsive.css" asp-append-version="true" />
   @if (isAccountPage)
@@ -39,29 +62,26 @@
   }
   <link rel="stylesheet" href="~/css/brunos-improvements.css" asp-append-version="true" />
   <link rel="stylesheet" href="~/OrionERP.Bruno.Web.styles.css" asp-append-version="true" />
+  <style>
+    :root {
+      --red: @Presentation.PrimaryColor;
+      --red-dark: @Presentation.PrimaryDarkColor;
+      --amber: @Presentation.AccentColor;
+      --site-home-hero-image: url('@Presentation.Asset("home-hero")');
+      --site-menu-hero-image: url('@Presentation.Asset("menu-hero")');
+      --site-visit-hero-image: url('@Presentation.Asset("visit-hero")');
+      --site-membership-hero-image: url('@Presentation.Asset("membership-hero")');
+      --site-membership-decoration-image: url('@Presentation.Asset("membership-decoration")');
+      --site-logo-image: url('@Presentation.LogoPath');
+    }
+  </style>
   <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
-  <script type="application/ld+json">
-  {
-    "@@context":"https://schema.org",
-    "@@type":"FoodEstablishment",
-    "name":"Bruno's Garden & Snacks",
-    "url":"https://brunosgarden.com",
-    "image":"https://brunosgarden.com/Images/Brunos/og-brunos.png",
-    "telephone":"+52 749 110 3026",
-    "servesCuisine":["Snacks","Chicken fingers","Hamburguesas","Bebidas"],
-    "priceRange":"$$",
-    "address":{"@@type":"PostalAddress","streetAddress":"Calle Camino Nacional #5","addressLocality":"Calpulalpan","addressRegion":"Tlaxcala","postalCode":"90207","addressCountry":"MX"},
-    "openingHoursSpecification":[
-      {"@@type":"OpeningHoursSpecification","dayOfWeek":["Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"opens":"09:00","closes":"22:00"}
-    ],
-    "sameAs":["https://www.facebook.com/profile.php?id=61592059341008"]
-  }
-  </script>
+  <script type="application/ld+json">@Html.Raw(schemaJson)</script>
 </head>
 <body>
   @if (isAccountPage)
   {
-    <a class="account-brand" href="/" aria-label="Volver a Bruno's Garden & Snacks"><img src="~/Images/Brunos/brunos-logo.png" alt="" /><span>Volver al sitio</span></a>
+    <a class="account-brand" href="/" aria-label="Volver a @Presentation.PublicName"><img src="@Presentation.LogoPath" alt="" /><span>Volver al sitio</span></a>
   }
   @RenderBody()
   <script src="~/_framework/blazor.server.js"></script>

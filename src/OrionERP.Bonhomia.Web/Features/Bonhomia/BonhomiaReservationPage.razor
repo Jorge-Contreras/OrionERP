@@ -12,10 +12,12 @@
 @inject IOptions<BonhomiaCheckoutOptions> CheckoutOptions
 @inject ProtectedSessionStorage SessionStorage
 @inject IJSRuntime Js
+@inject PublicWebsitePresentationDefinition Presentation
+@inject HospitalityWebsiteDefinition Hospitality
 
-<PageTitle>Bonhomia Suites | Reservas en Calpulalpan</PageTitle>
+<PageTitle>@Presentation.PublicName | Reservas en @Presentation.LocationName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Bonhomia Suites: reserva directa en Calpulalpan, Tlaxcala. Consulta disponibilidad, genera cotizacion y paga en linea con PayPal." />
+    <meta name="description" content="@($"{Presentation.PublicName}: reserva directa en {Presentation.LocationName}. Consulta disponibilidad, genera cotizacion y paga en linea con PayPal.")" />
 </HeadContent>
 
 <main class="bonhomia-site bonhomia-reservation-page">
@@ -517,7 +519,7 @@
                                                 <h4>Siguientes pasos</h4>
                                                 <ul>
                                                     <li>Presenta este numero de reservacion al llegar: <strong>@FormatReservationNumber(CompletedReservation.ReservationId)</strong>.</li>
-                                                    <li>El check-in inicia a las 15:00 hrs y el check-out termina a las 12:00 hrs.</li>
+                                                    <li>Check-in: @Hospitality.CheckInDisplay Check-out: @Hospitality.CheckOutDisplay</li>
                                                     <li>Conserva el numero PayPal para cualquier aclaracion: <strong>@DisplayValue(CompletedReservation.PayPalOrderId)</strong>.</li>
                                                 </ul>
                                             </article>
@@ -591,10 +593,10 @@
                                                                value="@Customer.Phone"
                                                                autocomplete="tel"
                                                                inputmode="tel"
-                                                               placeholder="+52 749 000 0000"
+                                                               placeholder="Incluye lada y codigo de pais"
                                                                @oninput="args => OnCustomerChanged(nameof(Customer.Phone), args.Value?.ToString())" />
                                                     </label>
-                                                    <p class="bonhomia-checkout-requirement__legal">Al presionar Aceptar confirmas que leiste y aceptas el centro legal de Bonhomia, incluyendo aviso de privacidad, terminos, politicas de reserva, cancelacion, check-in, convivencia y reglamento de hospedaje.</p>
+                                                    <p class="bonhomia-checkout-requirement__legal">Al presionar Aceptar confirmas que leiste y aceptas el aviso de privacidad version @Presentation.PrivacyVersion y los terminos version @Presentation.TermsVersion de @Presentation.ShortName, incluyendo politicas de reserva, cancelacion, check-in, convivencia y reglamento de hospedaje.</p>
                                                     <div class="bonhomia-checkout-requirement__actions">
                                                         <a class="bonhomia-checkout-requirement__link" href="/legal" target="_blank" rel="noopener noreferrer">Leer centro legal</a>
                                                         <button type="button"
@@ -699,15 +701,11 @@
 <BonhomiaSuiteGalleryModal Gallery="ActiveGallery" OnClose="CloseSuiteGallery" />
 
 @code {
-    private const string WhatsAppPhone = "527491103026";
-    private const string SessionKey = "bonhomia.checkout.v2";
     private const string PayPalContainerId = "bonhomia-paypal-buttons";
     private const string PaymentConfirmationPanelId = "bonhomia-payment-confirmation";
     private const int CalendarVisibleMonthCount = 2;
     private const int CalendarMaxMonthOffset = 6;
     private const int CheckoutPersistDebounceMilliseconds = 350;
-    private static readonly CultureInfo MoneyCulture = CultureInfo.GetCultureInfo("es-MX");
-    private static readonly CultureInfo HeaderCulture = CultureInfo.GetCultureInfo("es-MX");
     private static readonly CheckoutStepDefinition[] WizardSteps =
     [
         new(CheckoutStep.Dates, "Fechas", "Llegada y salida"),
@@ -753,6 +751,10 @@
     private bool _focusPaymentConfirmationAfterRender;
     private DotNetObjectReference<BonhomiaReservationPage>? _dotNetRef;
     private CancellationTokenSource? _checkoutPersistDebounceCts;
+
+    private string SessionKey => $"orion.hospitality.{Presentation.PublicSiteKey}.checkout.v2";
+    private CultureInfo MoneyCulture => CultureInfo.GetCultureInfo(Presentation.Locale);
+    private CultureInfo HeaderCulture => CultureInfo.GetCultureInfo(Presentation.Locale);
 
     private string TodayText => Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private string CheckInText => CheckIn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -1150,7 +1152,7 @@
 
     private void OpenSuiteGallery(string roomName)
     {
-        ActiveGallery = BonhomiaSuiteGalleryCatalog.FindSuite(roomName);
+        ActiveGallery = BonhomiaSuiteGalleryCatalog.FindSuite(Hospitality, roomName);
     }
 
     private void CloseSuiteGallery()
@@ -1618,14 +1620,14 @@
         {
             var message = string.Join(
                 Environment.NewLine,
-                "Hola Bonhomia Suites, quiero consultar disponibilidad.",
+                $"Hola {Presentation.PublicName}, quiero consultar disponibilidad.",
                 $"Check-in: {CheckInText}",
                 $"Check-out: {CheckOutText}",
                 $"Huespedes: {Guests}",
                 $"Suite: {(string.IsNullOrWhiteSpace(SelectedRoomName) ? "Ayudenme a elegir" : SelectedRoomName)}",
                 Quote is null ? "Cotizacion: pendiente" : $"Cotizacion: {FormatMoney(Quote.Total)}");
 
-            return $"https://wa.me/{WhatsAppPhone}?text={Uri.EscapeDataString(message)}";
+            return Presentation.WhatsAppUrl(message);
         }
     }
 
@@ -1633,13 +1635,13 @@
     {
         var message = string.Join(
             Environment.NewLine,
-            "Hola Bonhomia Suites, necesito apoyo con mi reservacion confirmada.",
+            $"Hola {Presentation.PublicName}, necesito apoyo con mi reservacion confirmada.",
             $"Reservacion: {FormatReservationNumber(reservation.ReservationId)}",
             $"PayPal: {DisplayValue(reservation.PayPalOrderId)}",
             $"Suite: {DisplayValue(reservation.RoomName)}",
             $"Fechas: {FormatFullDate(reservation.CheckIn)} - {FormatFullDate(reservation.CheckOut)}");
 
-        return $"https://wa.me/{WhatsAppPhone}?text={Uri.EscapeDataString(message)}";
+        return Presentation.WhatsAppUrl(message);
     }
 
     private async Task TryRestoreCheckoutAsync()
@@ -1667,7 +1669,9 @@
             ExtraQuantities = stored.Request.Extras.ToDictionary(item => item.Code, item => item.Quantity, StringComparer.OrdinalIgnoreCase);
             RestoreExperienceSelection(stored.Request.Experiences);
             Customer = stored.Customer ?? new BonhomiaCustomerInfo();
-            AcceptedPolicies = stored.AcceptedPolicies;
+            AcceptedPolicies = stored.AcceptedPolicies
+                && string.Equals(stored.TermsVersion, Presentation.TermsVersion, StringComparison.Ordinal)
+                && string.Equals(stored.PrivacyVersion, Presentation.PrivacyVersion, StringComparison.Ordinal);
             PendingPayPalOrderId = stored.PendingPayPalOrderId;
             PendingPaymentAttemptId = stored.PendingPaymentAttemptId;
             PaymentConfirmationFailed = !string.IsNullOrWhiteSpace(PendingPayPalOrderId);
@@ -1708,6 +1712,8 @@
                 Request = BuildQuoteRequest(),
                 Customer = Customer,
                 AcceptedPolicies = AcceptedPolicies,
+                TermsVersion = Presentation.TermsVersion,
+                PrivacyVersion = Presentation.PrivacyVersion,
                 QuoteToken = QuoteToken ?? string.Empty,
                 PendingPayPalOrderId = PendingPayPalOrderId ?? string.Empty,
                 PendingPaymentAttemptId = PendingPaymentAttemptId ?? string.Empty
@@ -1800,7 +1806,15 @@
             return;
         }
 
-        var renderKey = string.Join("|", Quote.Fingerprint, QuoteToken, AcceptedPolicies, Customer.Phone.Trim(), CheckoutOptions.Value.PayPalLocale);
+        var renderKey = string.Join(
+            "|",
+            Quote.Fingerprint,
+            QuoteToken,
+            AcceptedPolicies,
+            Presentation.PrivacyVersion,
+            Presentation.TermsVersion,
+            Customer.Phone.Trim(),
+            CheckoutOptions.Value.PayPalLocale);
         if (string.Equals(renderKey, _lastPayPalRenderKey, StringComparison.Ordinal))
         {
             return;
@@ -1824,6 +1838,9 @@
                     locale = CheckoutOptions.Value.PayPalLocale,
                     quoteToken = QuoteToken,
                     quoteFingerprint = Quote.Fingerprint,
+                    accepted = AcceptedPolicies,
+                    privacyVersion = Presentation.PrivacyVersion,
+                    termsVersion = Presentation.TermsVersion,
                     renderKey,
                     paymentAttemptId = PendingPaymentAttemptId,
                     customer = Customer
@@ -1963,6 +1980,9 @@
                 quoteToken = QuoteToken,
                 quoteFingerprint = Quote.Fingerprint,
                 paymentAttemptId = PendingPaymentAttemptId,
+                accepted = AcceptedPolicies,
+                privacyVersion = Presentation.PrivacyVersion,
+                termsVersion = Presentation.TermsVersion,
                 customer = Customer
             },
             _dotNetRef);
@@ -1995,7 +2015,7 @@
     private static bool TryParseDate(string? value, out DateOnly date)
       => DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 
-    private static string FormatMoney(decimal value)
+    private string FormatMoney(decimal value)
     {
         var format = value == decimal.Round(value, 0, MidpointRounding.ToEven) ? "C0" : "C2";
         return $"{value.ToString(format, MoneyCulture)} MXN";
@@ -2004,12 +2024,12 @@
     private static string FormatReservationNumber(int value)
       => value > 0 ? $"#{value.ToString("D6", CultureInfo.InvariantCulture)}" : "#";
 
-    private static string FormatFullDate(DateOnly value)
+    private string FormatFullDate(DateOnly value)
       => value == default
         ? "Sin fecha"
         : value.ToDateTime(TimeOnly.MinValue).ToString("dddd d 'de' MMMM 'de' yyyy", HeaderCulture);
 
-    private static string FormatConfirmationTime(DateTimeOffset value)
+    private string FormatConfirmationTime(DateTimeOffset value)
       => value == default
         ? "Sin hora"
         : value.ToLocalTime().ToString("dddd d 'de' MMMM 'de' yyyy, HH:mm", HeaderCulture);
@@ -2058,6 +2078,8 @@
         public BonhomiaQuoteRequest Request { get; set; } = new();
         public BonhomiaCustomerInfo? Customer { get; set; }
         public bool AcceptedPolicies { get; set; }
+        public string TermsVersion { get; set; } = string.Empty;
+        public string PrivacyVersion { get; set; } = string.Empty;
         public string QuoteToken { get; set; } = string.Empty;
         public string PendingPayPalOrderId { get; set; } = string.Empty;
         public string PendingPaymentAttemptId { get; set; } = string.Empty;

@@ -178,7 +178,8 @@ public static class BonhomiaQuoteCalculator
     ArgumentNullException.ThrowIfNull(quote);
 
     var builder = new StringBuilder();
-    builder.Append(quote.RoomName.Trim().ToUpperInvariant()).Append('|')
+    builder.Append(quote.PublicSiteKey.Trim().ToLowerInvariant()).Append('|')
+      .Append(quote.RoomName.Trim().ToUpperInvariant()).Append('|')
       .Append(quote.CheckIn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append('|')
       .Append(quote.CheckOut.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append('|')
       .Append(quote.Guests.ToString(CultureInfo.InvariantCulture)).Append('|')

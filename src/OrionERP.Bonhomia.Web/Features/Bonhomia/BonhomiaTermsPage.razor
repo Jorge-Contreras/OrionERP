@@ -1,15 +1,16 @@
 @page "/terminos-y-condiciones"
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Terminos y condiciones | Bonhomia Suites</PageTitle>
+<PageTitle>Terminos y condiciones | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Terminos y condiciones de uso del sitio y servicios de hospedaje de Bonhomia Suites." />
+    <meta name="description" content="@($"Terminos y condiciones de uso del sitio y servicios de hospedaje de {Presentation.PublicName}.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
     <article class="bonhomia-document">
         <p class="bonhomia-eyebrow">Documento consolidado</p>
         <h1>Terminos y condiciones</h1>
-        <p>Los terminos del sitio, reserva, pago y hospedaje ahora se consultan desde el centro legal de Bonhomia Suites.</p>
+        <p>Los terminos del sitio, reserva, pago y hospedaje ahora se consultan desde el centro legal de @Presentation.PublicName.</p>
 
         <div class="bonhomia-document-card">
             <h2>Ir a los terminos vigentes</h2>

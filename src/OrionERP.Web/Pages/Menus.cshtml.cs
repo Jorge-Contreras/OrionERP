@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using OrionERP.Application.Features.Restaurante;
 
@@ -10,6 +11,8 @@ public sealed class MenusModel : PageModel
   private readonly IRestaurantSignageService _signageService;
   private readonly IConfiguration _configuration;
   private readonly ILogger<MenusModel> _logger;
+  private bool _usesConfiguredDefault;
+  private bool _allowsLegacyFallback;
 
   public MenusModel(
     IRestaurantSignageService signageService,
@@ -24,25 +27,32 @@ public sealed class MenusModel : PageModel
   public RestaurantSignagePublicScreenDto? Screen { get; private set; }
 
   /// <summary>
-  /// Respaldo heredado: los dos PNG estáticos de wwwroot. Se usa cuando la ruta
-  /// no trae RFC y no hay configuración, cuando la pantalla no existe o quedó sin
-  /// imágenes, y cuando la base de datos no responde. Un tablero de menús debe
-  /// seguir mostrando algo aunque el resto falle; el peor caso es exactamente el
-  /// comportamiento anterior a esta función.
+  /// Respaldo heredado: los dos PNG estáticos de wwwroot. Solo se permite en la
+  /// ruta corta cuando el RFC predeterminado sigue siendo el RFC histórico de
+  /// Bruno. Una solicitud explícita u otro RFC predeterminado nunca debe
+  /// heredar los tableros de esa empresa.
   /// </summary>
-  public bool UseLegacyStaticBoards => Screen is null;
+  public bool UseLegacyStaticBoards => _allowsLegacyFallback && Screen is null;
 
-  public async Task OnGetAsync(string? rfc, string? screenKey, CancellationToken ct)
+  public async Task<IActionResult> OnGetAsync(string? rfc, string? screenKey, CancellationToken ct)
   {
-    var usesConfiguredDefault = string.IsNullOrWhiteSpace(rfc);
-    var resolvedRfc = usesConfiguredDefault
+    _usesConfiguredDefault = string.IsNullOrWhiteSpace(rfc);
+    var resolvedRfc = _usesConfiguredDefault
       ? _configuration["Signage:DefaultRfc"]
       : rfc;
-    var resolvedKey = usesConfiguredDefault
+    var resolvedKey = _usesConfiguredDefault
       ? _configuration["Signage:DefaultScreenKey"]
       : screenKey;
+    _allowsLegacyFallback = _usesConfiguredDefault
+      && string.Equals(
+        resolvedRfc?.Trim(),
+        BrunoRestaurantConstants.Rfc,
+        StringComparison.OrdinalIgnoreCase);
 
-    if (string.IsNullOrWhiteSpace(resolvedRfc)) return;
+    if (string.IsNullOrWhiteSpace(resolvedRfc))
+    {
+      return NotFound();
+    }
 
     try
     {
@@ -51,6 +61,9 @@ public sealed class MenusModel : PageModel
     catch (Exception ex)
     {
       _logger.LogError(ex, "No fue posible resolver la pantalla de señalización {Rfc}/{ScreenKey}.", resolvedRfc, resolvedKey);
+      return _allowsLegacyFallback ? Page() : StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
+
+    return Screen is null && !_allowsLegacyFallback ? NotFound() : Page();
   }
 }

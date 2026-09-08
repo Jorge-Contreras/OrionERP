@@ -1,20 +1,24 @@
 @page "/servicios"
+@using System.Globalization
+@inject PublicWebsitePresentationDefinition Presentation
+@inject HospitalityWebsiteDefinition Hospitality
+@inject IBonhomiaScopedPublicDataReader HospitalityData
 
-<PageTitle>Servicios | Bonhomia Suites</PageTitle>
+<PageTitle>Servicios | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Servicios, amenidades y extras de Bonhomia Suites para trabajo, familia, conferencias y estancias en Calpulalpan." />
+    <meta name="description" content="@($"Servicios, amenidades y extras de {Presentation.PublicName} para trabajo, familia, conferencias y estancias en {Presentation.LocationName}.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
     <section class="bonhomia-page__title">
         <p class="bonhomia-eyebrow">Servicios y amenidades</p>
         <h1>Todo lo necesario para instalarte sin friccion</h1>
-        <p>Bonhomia combina espacios amueblados con extras claros para que el viaje de trabajo, familia o agenda profesional sea mas sencillo de organizar.</p>
+        <p>@Presentation.ShortName combina espacios amueblados con extras claros para que el viaje de trabajo, familia o agenda profesional sea mas sencillo de organizar.</p>
     </section>
 
     <section class="bonhomia-section">
         <div class="bonhomia-grid">
-            @foreach (var service in BonhomiaSiteContent.Services)
+            @foreach (var service in Hospitality.Services)
             {
                 <article class="bonhomia-card">
                     <i class="@service.Icon" aria-hidden="true"></i>
@@ -32,13 +36,24 @@
             <p>Los extras estan sujetos a disponibilidad y se confirman durante el proceso de reserva o por contacto directo.</p>
         </div>
         <div class="bonhomia-grid bonhomia-grid--three">
-            @foreach (var extra in BonhomiaSiteContent.Extras)
+            @if (IsLoadingExtras)
             {
-                <article class="bonhomia-card">
-                    <span class="bonhomia-card__meta">@extra.Price</span>
-                    <h3>@extra.Name</h3>
-                    <p>@extra.Detail</p>
-                </article>
+                <p role="status">Consultando extras disponibles...</p>
+            }
+            else if (!string.IsNullOrWhiteSpace(ExtrasError))
+            {
+                <p role="alert">@ExtrasError</p>
+            }
+            else
+            {
+                @foreach (var extra in Extras)
+                {
+                    <article class="bonhomia-card">
+                        <span class="bonhomia-card__meta">@FormatPrice(extra.UnitPrice)</span>
+                        <h3>@extra.Name</h3>
+                        <p>@extra.Detail</p>
+                    </article>
+                }
             }
         </div>
     </section>
@@ -57,3 +72,28 @@
         </div>
     </section>
 </main>
+
+@code {
+    private IReadOnlyList<BonhomiaExtraOptionDto> Extras { get; set; } = [];
+    private bool IsLoadingExtras { get; set; } = true;
+    private string? ExtrasError { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Extras = await HospitalityData.GetExtraOptionsAsync();
+        }
+        catch
+        {
+            ExtrasError = "Los extras no estan disponibles temporalmente. Puedes confirmar opciones y precios por contacto directo.";
+        }
+        finally
+        {
+            IsLoadingExtras = false;
+        }
+    }
+
+    private string FormatPrice(decimal value)
+      => $"{value.ToString("C0", CultureInfo.GetCultureInfo(Presentation.Locale))} MXN";
+}

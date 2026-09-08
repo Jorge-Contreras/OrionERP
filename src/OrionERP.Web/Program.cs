@@ -28,11 +28,11 @@ using OrionERP.Infrastructure.Features.Auth;
 using OrionERP.Infrastructure.Features.CapitalHumano.Workforce;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Infrastructure.Features.Mail;
+using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
-using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Features.Restaurante;
 using OrionERP.Web.Features.TrainingSafety;
 using OrionERP.Web.Identity;
@@ -84,7 +84,6 @@ else
   // Allow explicit machine-level overrides only via ASPNETCORE_* / DOTNET_*.
   // Examples:
   // - ASPNETCORE_ConnectionStrings__OrionDb
-  // - ASPNETCORE_OpenClawApi__ApiKey
   // - ASPNETCORE_GraphMail__ClientSecret
   builder.Configuration
       .AddEnvironmentVariables(prefix: "ASPNETCORE_")
@@ -202,6 +201,7 @@ var disconnectedCircuitRetentionPeriod = TimeSpan.FromHours(2);
 builder.Services.AddDbContext<OrionIdentityDbContext>(opt =>
     opt.UseSqlServer(conn,
         sql => sql.MigrationsAssembly("OrionERP.Infrastructure"))); // migrations live in Infrastructure
+builder.Services.AddPlatformFoundationReadServices(conn);
 
 // Identity with cookie auth + default token providers
 builder.Services
@@ -457,7 +457,6 @@ builder.Services.AddServerSideBlazor(options =>
   // en conexiones lentas, especialmente durante depuración.
   options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
 });
-builder.Services.Configure<OpenClawApiOptions>(builder.Configuration.GetSection(OpenClawApiOptions.SectionName));
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
 builder.Services.Configure<BonhomiaGraphMailOptions>(builder.Configuration.GetSection(BonhomiaGraphMailOptions.SectionName));
 builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));
@@ -569,7 +568,6 @@ app.MapRestaurantProductImagesApi();
 app.MapRestaurantSignageApi();
 app.MapTrainingReadiness();
 app.MapRestaurantQzTraySigningApi();
-app.MapOpenClawReservationsApi();
 app.MapPost("/api/workforce/kiosk/pair", async (
   KioskPairApiRequest request,
   IKioskAttendanceService service,
@@ -624,17 +622,18 @@ app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
       ? Results.File(bundle.ZipBytes, "application/zip", bundle.ZipFileName)
       : Results.NotFound();
 }).RequireAuthorization("CapitalHumanoNomina");
-app.MapGet("/bonhomia", (IOptions<BonhomiaCheckoutOptions> options) =>
+app.MapGet("/hospedaje", (IOptions<BonhomiaCheckoutOptions> options) =>
 {
   var publicBaseUrl = options.Value.PublicBaseUrl?.Trim();
   if (!string.IsNullOrWhiteSpace(publicBaseUrl)
       && Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))
   {
-    return Results.Redirect(new Uri(baseUri, "/bonhomia").ToString());
+    return Results.Redirect(new Uri(baseUri, "/").ToString());
   }
 
   return Results.Redirect("/");
 });
+app.MapGet("/bonhomia", () => Results.Redirect("/hospedaje"));
 app.MapGet("/company-branding/{rfc}/logo", async (
   string rfc,
   ICompanyAccessService companyAccess,

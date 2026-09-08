@@ -83,7 +83,8 @@ public class BonhomiaPayPalClientTests
             "status": "APPROVED",
             "purchase_units": [
               {
-                "reference_id": "quote-1"
+                "reference_id": "b962a5d8f60f4e7a9bb88599679df0c2",
+                "custom_id": "quote-fingerprint"
               }
             ]
           }
@@ -123,6 +124,8 @@ public class BonhomiaPayPalClientTests
             },
             "purchase_units": [
               {
+                "reference_id": "b962a5d8f60f4e7a9bb88599679df0c2",
+                "custom_id": "quote-fingerprint",
                 "payments": {
                   "captures": [
                     {
@@ -141,11 +144,14 @@ public class BonhomiaPayPalClientTests
           """)
       });
     var client = CreateClient(handler);
+    var quote = CreateQuote();
 
-    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-1", "cap-quote");
+    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-1", quote, "cap-quote");
 
     Assert.Equal("PAYPAL-ORDER-1", result.OrderId);
     Assert.Equal("CAPTURE-1", result.CaptureId);
+    Assert.Equal(quote.Fingerprint, result.CustomId);
+    Assert.Equal(quote.QuoteId.ToString("N"), result.ReferenceId);
     Assert.Equal("COMPLETED", result.Status);
     Assert.Equal("MXN", result.Currency);
     Assert.Equal(4227m, result.Amount);
@@ -196,6 +202,8 @@ public class BonhomiaPayPalClientTests
             },
             "purchase_units": [
               {
+                "reference_id": "b962a5d8f60f4e7a9bb88599679df0c2",
+                "custom_id": "quote-fingerprint",
                 "payments": {
                   "captures": [
                     {
@@ -214,8 +222,9 @@ public class BonhomiaPayPalClientTests
           """)
       });
     var client = CreateClient(handler);
+    var quote = CreateQuote();
 
-    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-COUNTRY-CODE", "cap-quote");
+    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-COUNTRY-CODE", quote, "cap-quote");
 
     Assert.Equal("+52 7491234567", result.PayerPhone);
   }
@@ -252,6 +261,8 @@ public class BonhomiaPayPalClientTests
             },
             "purchase_units": [
               {
+                "reference_id": "b962a5d8f60f4e7a9bb88599679df0c2",
+                "custom_id": "quote-fingerprint",
                 "payments": {
                   "captures": [
                     {
@@ -270,8 +281,9 @@ public class BonhomiaPayPalClientTests
           """)
       });
     var client = CreateClient(handler);
+    var quote = CreateQuote();
 
-    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-2", "cap-quote");
+    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-2", quote, "cap-quote");
 
     Assert.Equal("PAYPAL-ORDER-2", result.OrderId);
     Assert.Equal("CAPTURE-2", result.CaptureId);
@@ -288,6 +300,156 @@ public class BonhomiaPayPalClientTests
       ],
       handler.Requests);
   }
+
+  [Fact]
+  public async Task CaptureOrder_UsesPrevalidatedBindingWhenCaptureResponseOmitsMetadata()
+  {
+    var handler = new SequencedHttpMessageHandler(
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "access_token": "sandbox-token",
+            "expires_in": 3600
+          }
+          """)
+      },
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "id": "PAYPAL-ORDER-NEW",
+            "status": "APPROVED",
+            "purchase_units": [
+              {
+                "reference_id": "b962a5d8f60f4e7a9bb88599679df0c2",
+                "custom_id": "quote-fingerprint"
+              }
+            ]
+          }
+          """)
+      },
+      new HttpResponseMessage(HttpStatusCode.Created)
+      {
+        Content = JsonContent("""
+          {
+            "id": "PAYPAL-ORDER-NEW",
+            "status": "COMPLETED",
+            "purchase_units": [
+              {
+                "payments": {
+                  "captures": [
+                    {
+                      "id": "CAPTURE-NEW",
+                      "status": "COMPLETED",
+                      "amount": {
+                        "currency_code": "MXN",
+                        "value": "1250.00"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          """)
+      });
+    var client = CreateClient(handler);
+    var quote = CreateQuote();
+
+    var result = await client.CaptureOrderAsync("PAYPAL-ORDER-NEW", quote, "cap-new");
+
+    Assert.Equal("CAPTURE-NEW", result.CaptureId);
+    Assert.Equal(quote.Fingerprint, result.CustomId);
+    Assert.Equal(quote.QuoteId.ToString("N"), result.ReferenceId);
+    Assert.Equal(
+      [
+        "POST https://api-m.sandbox.paypal.com/v1/oauth2/token",
+        "GET https://api-m.sandbox.paypal.com/v2/checkout/orders/PAYPAL-ORDER-NEW",
+        "POST https://api-m.sandbox.paypal.com/v2/checkout/orders/PAYPAL-ORDER-NEW/capture"
+      ],
+      handler.Requests);
+  }
+
+  [Fact]
+  public async Task CaptureOrder_RejectsAnotherQuotesOrderBeforeCapture()
+  {
+    var handler = new SequencedHttpMessageHandler(
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "access_token": "sandbox-token",
+            "expires_in": 3600
+          }
+          """)
+      },
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "id": "PAYPAL-ORDER-FOREIGN",
+            "status": "APPROVED",
+            "purchase_units": [
+              {
+                "reference_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "custom_id": "another-sites-fingerprint"
+              }
+            ]
+          }
+          """)
+      });
+    var client = CreateClient(handler);
+
+    var exception = await Assert.ThrowsAsync<BonhomiaPublicBookingException>(() =>
+      client.CaptureOrderAsync("PAYPAL-ORDER-FOREIGN", CreateQuote(), "cap-foreign"));
+
+    Assert.Equal("paypal_quote_mismatch", exception.ErrorCode);
+    Assert.Equal(
+      [
+        "POST https://api-m.sandbox.paypal.com/v1/oauth2/token",
+        "GET https://api-m.sandbox.paypal.com/v2/checkout/orders/PAYPAL-ORDER-FOREIGN"
+      ],
+      handler.Requests);
+  }
+
+  [Fact]
+  public async Task CaptureOrder_FailsClosedWhenOrderBindingCannotBeRead()
+  {
+    var handler = new SequencedHttpMessageHandler(
+      new HttpResponseMessage(HttpStatusCode.OK)
+      {
+        Content = JsonContent("""
+          {
+            "access_token": "sandbox-token",
+            "expires_in": 3600
+          }
+          """)
+      },
+      new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+      {
+        Content = JsonContent("""{ "name": "SERVICE_UNAVAILABLE" }""")
+      });
+    var client = CreateClient(handler);
+
+    var exception = await Assert.ThrowsAsync<BonhomiaPublicBookingException>(() =>
+      client.CaptureOrderAsync("PAYPAL-ORDER-UNVERIFIED", CreateQuote(), "cap-unverified"));
+
+    Assert.Equal("paypal_order_validation_failed", exception.ErrorCode);
+    Assert.Equal(
+      [
+        "POST https://api-m.sandbox.paypal.com/v1/oauth2/token",
+        "GET https://api-m.sandbox.paypal.com/v2/checkout/orders/PAYPAL-ORDER-UNVERIFIED"
+      ],
+      handler.Requests);
+  }
+
+  private static BonhomiaQuoteDto CreateQuote()
+    => new()
+    {
+      QuoteId = Guid.Parse("b962a5d8-f60f-4e7a-9bb8-8599679df0c2"),
+      Fingerprint = "quote-fingerprint"
+    };
 
   private static BonhomiaPayPalClient CreateClient(HttpMessageHandler handler, BonhomiaCheckoutOptions? options = null)
     => new(

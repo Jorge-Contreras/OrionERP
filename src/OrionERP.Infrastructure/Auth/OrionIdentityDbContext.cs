@@ -39,6 +39,7 @@ namespace OrionERP.Infrastructure.Auth
                 {
                     table.HasTrigger("TR_Company_BlockDelete");
                     table.HasTrigger("TR_Company_ImmutableRfc");
+                    table.HasTrigger("TR_Company_PlatformAudit");
                     table.UseSqlOutputClause(false);
                 });
                 entity.HasKey(company => company.Rfc);

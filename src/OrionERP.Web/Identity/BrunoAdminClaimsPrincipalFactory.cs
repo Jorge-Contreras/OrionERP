@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.Data.SqlClient;
-using OrionERP.Application.Features.Restaurante;
 using OrionERP.Infrastructure.Auth;
 
 namespace OrionERP.Web.Identity;
@@ -10,7 +9,6 @@ namespace OrionERP.Web.Identity;
 public sealed class BrunoAdminClaimsPrincipalFactory
   : UserClaimsPrincipalFactory<ApplicationUser, IdentityRole>
 {
-  private readonly UserManager<ApplicationUser> _userManager;
   private readonly IConfiguration _configuration;
 
   public BrunoAdminClaimsPrincipalFactory(
@@ -20,7 +18,6 @@ public sealed class BrunoAdminClaimsPrincipalFactory
     IConfiguration configuration)
     : base(userManager, roleManager, optionsAccessor)
   {
-    _userManager = userManager;
     _configuration = configuration;
   }
 
@@ -46,16 +43,6 @@ public sealed class BrunoAdminClaimsPrincipalFactory
         }
       }
     }
-    var canAdministerBruno =
-      await _userManager.IsInRoleAsync(user, "Administrador") ||
-      await _userManager.IsInRoleAsync(user, "RestauranteAdmin");
-
-    if (canAdministerBruno &&
-        !identity.HasClaim("rfc", BrunoRestaurantConstants.Rfc))
-    {
-      identity.AddClaim(new Claim("rfc", BrunoRestaurantConstants.Rfc));
-    }
-
     return identity;
   }
 }

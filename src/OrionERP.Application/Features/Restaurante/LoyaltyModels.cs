@@ -76,6 +76,7 @@ public sealed class LoyaltyPointLedgerDto
 public sealed class LoyaltyMemberCreateRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
+  [Range(1, long.MaxValue)] public long PublicSiteId { get; set; }
   [Required] public string IdentityUserId { get; set; } = string.Empty;
   [Required, StringLength(100)] public string FirstName { get; set; } = string.Empty;
   [Required, StringLength(100)] public string LastName { get; set; } = string.Empty;
@@ -92,6 +93,7 @@ public sealed class LoyaltyMemberCreateRequest
 public sealed class LoyaltyMemberVerificationRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
+  [Range(1, long.MaxValue)] public long PublicSiteId { get; set; }
   public Guid MemberId { get; set; }
   public bool EmailVerified { get; set; }
   public bool PhoneVerified { get; set; }
@@ -108,6 +110,7 @@ public sealed class LoyaltyAdjustmentRequest
 public sealed class LoyaltyClosureRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
+  [Range(1, long.MaxValue)] public long PublicSiteId { get; set; }
   public Guid MemberId { get; set; }
   [Required, StringLength(500)] public string Reason { get; set; } = string.Empty;
 }
@@ -115,6 +118,7 @@ public sealed class LoyaltyClosureRequest
 public sealed class LoyaltyConsentUpdateRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
+  [Range(1, long.MaxValue)] public long PublicSiteId { get; set; }
   public Guid MemberId { get; set; }
   [Required, StringLength(30)] public string PrivacyVersion { get; set; } = string.Empty;
   [Required, StringLength(30)] public string TermsVersion { get; set; } = string.Empty;

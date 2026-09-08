@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "migrations": [
+    {
+      "id": "20260901_platform_foundation",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260901_platform_foundation.sql",
+      "description": "Fundación aditiva de empresa, sitios, módulos y websites públicos.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260902_platform_sandbox_bonhomia_bruno",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260902_platform_sandbox_bonhomia_bruno.sql",
+      "description": "Aprovisionamiento verificable de Bonhomía y Bruno exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260903_hospitality_public_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/Sql/20260903_hospitality_public_scope_sandbox.sql",
+      "description": "Aislamiento por empresa y sede del recorrido público de Hospedaje, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260903_restaurant_public_identity_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260903_restaurant_public_identity_scope_sandbox.sql",
+      "description": "Aislamiento de Identity y membresía pública de Restaurante por PublicSite, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260904_public_site_presentation_transition_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260904_public_site_presentation_transition_sandbox.sql",
+      "description": "Ventana transaccional y auditable para activar o revertir presentaciones públicas, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260905_hospitality_legal_consent_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/Sql/20260905_hospitality_legal_consent_sandbox.sql",
+      "description": "Evidencia indivisible de versiones legales y aceptación UTC del checkout público de Hospedaje, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    }
+  ]
+}

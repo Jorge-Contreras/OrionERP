@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Infrastructure.Auth;
 using QRCoder;
@@ -13,7 +14,22 @@ public sealed class IndexModel : PageModel
 {
   private readonly UserManager<BrunoMemberUser> _userManager;
   private readonly ILoyaltyService _loyaltyService;
-  public IndexModel(UserManager<BrunoMemberUser> userManager, ILoyaltyService loyaltyService) { _userManager = userManager; _loyaltyService = loyaltyService; }
+  private readonly IPublicWebsiteInstanceContext _website;
+  private readonly PublicWebsitePresentationDefinition _presentation;
+  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  public IndexModel(
+    UserManager<BrunoMemberUser> userManager,
+    ILoyaltyService loyaltyService,
+    IPublicWebsiteInstanceContext website,
+    PublicWebsitePresentationDefinition presentation,
+    IRestaurantPublicIdentityScopeAccessor identityScope)
+  {
+    _userManager = userManager;
+    _loyaltyService = loyaltyService;
+    _website = website;
+    _presentation = presentation;
+    _identityScope = identityScope;
+  }
   public LoyaltyMemberProfileDto Profile { get; private set; } = new();
   public LoyaltyRedeemablePreviewDto? Redeemable { get; private set; }
   [BindProperty] public bool EmailMarketingConsent { get; set; }
@@ -38,7 +54,11 @@ public sealed class IndexModel : PageModel
     if (!await LoadProfileAsync(ct)) return Redirect("/cuenta/acceso");
     try
     {
-      var token = await _loyaltyService.CreateQrTokenAsync(BrunoSiteConstants.Rfc, Profile.Id, ct);
+      var token = await _loyaltyService.CreateQrTokenAsync(
+        _website.CurrentRfc,
+        _identityScope.Current.PublicSiteId,
+        Profile.Id,
+        ct);
       QrData = Convert.ToBase64String(PngByteQRCodeHelper.GetQRCode(token.Token, QRCodeGenerator.ECCLevel.Q, 12));
       QrExpiresAt = token.ExpiresAtUtc;
     }
@@ -51,10 +71,11 @@ public sealed class IndexModel : PageModel
     if (!await LoadProfileAsync(ct)) return Redirect("/cuenta/acceso");
     var result = await _loyaltyService.UpdateConsentsAsync(new LoyaltyConsentUpdateRequest
     {
-      Rfc = BrunoSiteConstants.Rfc,
+      Rfc = _website.CurrentRfc,
+      PublicSiteId = _identityScope.Current.PublicSiteId,
       MemberId = Profile.Id,
-      PrivacyVersion = BrunoSiteConstants.PrivacyVersion,
-      TermsVersion = BrunoSiteConstants.TermsVersion,
+      PrivacyVersion = _presentation.PrivacyVersion,
+      TermsVersion = _presentation.TermsVersion,
       EmailMarketingConsent = EmailMarketingConsent,
       SmsMarketingConsent = SmsMarketingConsent,
       WhatsAppMarketingConsent = WhatsAppMarketingConsent
@@ -67,12 +88,16 @@ public sealed class IndexModel : PageModel
   {
     var user = await _userManager.GetUserAsync(User);
     if (user is null) return false;
-    var profile = await _loyaltyService.GetMemberProfileByIdentityAsync(BrunoSiteConstants.Rfc, user.Id, ct);
+    var profile = await _loyaltyService.GetMemberProfileByIdentityAsync(
+      _website.CurrentRfc,
+      _identityScope.Current.PublicSiteId,
+      user.Id,
+      ct);
     if (profile is null || profile.Status == LoyaltyMemberStatuses.Closed) return false;
     Profile = profile;
     try
     {
-      Redeemable = await _loyaltyService.GetRedeemablePreviewAsync(BrunoSiteConstants.Rfc, profile.Id, ct);
+      Redeemable = await _loyaltyService.GetRedeemablePreviewAsync(_website.CurrentRfc, profile.Id, ct);
     }
     catch
     {

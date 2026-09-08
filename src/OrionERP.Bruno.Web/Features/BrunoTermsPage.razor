@@ -1,11 +1,14 @@
 @page "/terminos"
+@inject PublicWebsitePresentationDefinition Presentation
+@inject IPublicWebsiteInstanceContext Website
+@inject ILoyaltyService LoyaltyService
 
-<PageTitle>Términos · Bruno's Garden & Snacks</PageTitle>
+<PageTitle>Términos · @Presentation.PublicName</PageTitle>
 <article class="legal-page">
-  <header><span>Versión @BrunoSiteConstants.TermsVersion</span><h1>Términos del sitio y Club Bruno</h1><p>Última actualización: 30 de agosto de 2026.</p></header>
+  <header><span>Versión @Presentation.TermsVersion</span><h1>Términos del sitio y @MembershipName</h1><p>Última actualización: @Presentation.TermsUpdatedDisplay.</p></header>
 
   <h2>1. Aceptación y responsable</h2>
-  <p>Estos términos regulan el uso de brunosgarden.com, las cuentas y el programa Club Bruno, operados por Bruno's Garden & Snacks S.A. de C.V., con domicilio en Calle Camino Nacional #5, Colonia Francisco Sarabia, C.P. 90207, Calpulalpan, Tlaxcala, México. Al crear una cuenta declara haber leído y aceptado estos términos y el aviso de privacidad vigente.</p>
+  <p>Estos términos regulan el uso de @Website.Instance.CanonicalHost, las cuentas y el programa @MembershipName, operados por @Presentation.LegalName, con domicilio en @Presentation.FiscalAddress. Al crear una cuenta declara haber leído y aceptado estos términos y el aviso de privacidad vigente.</p>
 
   <h2>2. Requisitos de edad y cuenta</h2>
   <p>Debe tener al menos 18 años y capacidad para aceptar estos términos. Proporcione información veraz, actual y propia; mantenga segura su contraseña; y notifíquenos cualquier uso no autorizado. Solo se permite una membresía por persona y un correo verificado. La cuenta es personal y no puede venderse, transferirse, compartirse ni utilizarse para representar falsamente a otra persona.</p>
@@ -18,23 +21,23 @@
 
   <h2>5. Acumulación de puntos</h2>
   <ul>
-    <li>En v1 se obtiene un punto por cada $10 MXN completos de mercancía elegible después de promociones y descuentos.</li>
+    <li>@AccrualRule</li>
     <li>Los precios incluyen IVA; propinas y cargos de entrega quedan excluidos.</li>
-    <li>Las fracciones menores a $10 no generan punto y no se acumulan como remanente para compras futuras.</li>
+    <li>@RemainderRule</li>
     <li>La cuenta debe vincularse antes del pago. No existen puntos retroactivos por tickets anteriores o cuentas vinculadas después de cobrar.</li>
     <li>La acreditación ocurre una sola vez cuando la orden pasa a Pagada. Controles idempotentes evitan duplicados.</li>
-    <li>Los puntos tienen una vigencia de 12 meses y el sistema consume primero los puntos más antiguos.</li>
+    <li>@ExpirationRule</li>
   </ul>
 
   <h2>6. Naturaleza de los puntos</h2>
-  <p>Los puntos son unidades promocionales sin valor monetario. No constituyen dinero, depósito, inversión, saldo electrónico ni crédito. No pueden venderse, canjearse por efectivo, transferirse, heredarse ni combinarse entre cuentas. En el POS pueden aplicarse como descuento: 1 punto equivale a $1 MXN, el canje mínimo es de 100 puntos y el socio elige una cantidad entera hasta el límite de su saldo y de la mercancía restante. El canje no cubre entrega ni propina y nunca genera cambio o saldo en efectivo.</p>
+  <p>Los puntos son unidades promocionales sin valor monetario. No constituyen dinero, depósito, inversión, saldo electrónico ni crédito. No pueden venderse, canjearse por efectivo, transferirse, heredarse ni combinarse entre cuentas. @RedemptionRule El canje no cubre entrega ni propina y nunca genera cambio o saldo en efectivo.</p>
 
   <h2>7. Reembolsos, cancelaciones y ajustes</h2>
   <p>Una cancelación o reembolso total revierte los puntos ganados y restituye todos los puntos canjeados pendientes. En un reembolso parcial, el sistema distribuye proporcionalmente el importe, revierte los puntos ganados que ya no se justifican y restituye la proporción correspondiente de los puntos canjeados. Si el saldo disponible es menor para una reversión, podremos registrar la corrección permitida y revisar la cuenta. Los ajustes administrativos exigen permiso, motivo y auditoría. Puede solicitar una aclaración proporcionando folio y fecha.</p>
 
   <h2>8. Promociones y códigos</h2>
   <p>Cada promoción publicará vigencia, horario, sede, productos o categorías, existencias o volumen, requisitos, límites, canal y reglas de acumulación. Los códigos pueden ser compartidos y tener límites globales o por miembro. Ingresar un código no garantiza su aplicación: el servidor lo valida al cotizar y vuelve a calcularlo dentro de la transacción de cobro.</p>
-  <p>Una unidad no recibe más de una promoción. El sistema elige el mayor ahorro y usa prioridad administrativa e identificador para desempatar. Solo promociones expresamente combinables pueden actuar sobre el remanente elegible. Las unidades gratuitas en grupos con precios distintos serán las elegibles de menor precio. Los descuentos manuales autorizados se aplican después de promociones y el canje de Club Bruno se aplica al final sobre la mercancía restante; ninguno puede producir un total negativo.</p>
+  <p>Una unidad no recibe más de una promoción. El sistema elige el mayor ahorro y usa prioridad administrativa e identificador para desempatar. Solo promociones expresamente combinables pueden actuar sobre el remanente elegible. Las unidades gratuitas en grupos con precios distintos serán las elegibles de menor precio. Los descuentos manuales autorizados se aplican después de promociones y el canje de @MembershipName se aplica al final sobre la mercancía restante; ninguno puede producir un total negativo.</p>
 
   <h2>9. Disponibilidad, precios y menú</h2>
   <p>El menú público refleja el catálogo operativo, pero productos, imágenes, ingredientes, alérgenos, precio, disponibilidad, horario y existencias pueden cambiar. Las fotografías son ilustrativas. Consulte al personal sobre alergias y dietas; existe posibilidad de contacto cruzado. La información mostrada al confirmar una compra presencial y el ticket correspondiente prevalecen para esa transacción.</p>
@@ -49,10 +52,10 @@
   <p>Enviaremos mensajes transaccionales de cuenta y seguridad aunque no acepte mercadotecnia. Las comunicaciones promocionales requieren consentimiento separado por canal. Puede retirar ese consentimiento desde Mi cuenta. Mantenga actualizado su correo y teléfono.</p>
 
   <h2>13. Propiedad intelectual y uso del sitio</h2>
-  <p>El nombre, logo, fotografías, textos, diseño, software y demás contenido pertenecen a Bruno's o se utilizan con autorización. Puede consultar el sitio para uso personal, pero no copiar, explotar, modificar, extraer masivamente ni presentar el contenido como propio sin permiso escrito.</p>
+  <p>El nombre, logo, fotografías, textos, diseño, software y demás contenido pertenecen a @Presentation.LegalName o se utilizan con autorización. Puede consultar el sitio para uso personal, pero no copiar, explotar, modificar, extraer masivamente ni presentar el contenido como propio sin permiso escrito.</p>
 
   <h2>14. Suspensión, baja y terminación</h2>
-  <p>Puede solicitar la baja desde Mi cuenta. Deshabilitaremos acceso y mercadotecnia y trataremos la información conforme al aviso de privacidad. El cierre no elimina obligaciones ni registros transaccionales que deban conservarse. Bruno's puede suspender funciones por seguridad, mantenimiento, abuso o cambio operativo. Al descontinuar el programa comunicaremos las medidas razonables aplicables al saldo, considerando que los puntos carecen de valor monetario.</p>
+  <p>Puede solicitar la baja desde Mi cuenta. Deshabilitaremos acceso y mercadotecnia y trataremos la información conforme al aviso de privacidad. El cierre no elimina obligaciones ni registros transaccionales que deban conservarse. @Presentation.LegalName puede suspender funciones por seguridad, mantenimiento, abuso o cambio operativo. Al descontinuar el programa comunicaremos las medidas razonables aplicables al saldo, considerando que los puntos carecen de valor monetario.</p>
 
   <h2>15. Responsabilidad y continuidad</h2>
   <p>Trabajamos para mantener información y servicios disponibles, pero pueden existir interrupciones de red, proveedores, mantenimiento o fuerza mayor. Nada en estos términos limita derechos irrenunciables de las personas consumidoras ni excluye responsabilidades que legalmente no puedan excluirse.</p>
@@ -61,5 +64,37 @@
   <p>Podemos actualizar estos términos por nuevas funciones, reglas o requisitos. Publicaremos versión y fecha. Los cambios sustanciales que requieran aceptación se presentarán antes de seguir usando la función afectada. Las reglas de una promoción específica prevalecen para esa promoción cuando sean más concretas.</p>
 
   <h2>17. Legislación y atención</h2>
-  <p>Se aplican las leyes mexicanas y los derechos de protección al consumidor. Antes de iniciar una controversia, puede escribir a <a href="mailto:info@brunosgarden.com">info@brunosgarden.com</a> para buscar una solución. También conserva el derecho de acudir a las autoridades competentes.</p>
+  <p>Se aplican las leyes mexicanas y los derechos de protección al consumidor. Antes de iniciar una controversia, puede escribir a <a href="mailto:@Presentation.PublicEmail">@Presentation.PublicEmail</a> para buscar una solución. También conserva el derecho de acudir a las autoridades competentes.</p>
 </article>
+
+@code {
+  private LoyaltyProgramSettingsDto? program;
+  private string MembershipName => Presentation.MembershipProgramName ?? "la membresía";
+  private string AccrualRule => program is null
+    ? "La tasa de acumulación aplicable es la que se encuentre publicada y habilitada al momento de la compra."
+    : $"Se obtiene un punto por cada {program.PesosPerPoint:C} MXN completos de mercancía elegible después de promociones y descuentos.";
+  private string RemainderRule => program is null
+    ? "Las fracciones que no completen la tasa vigente no generan punto y no se acumulan como remanente para compras futuras."
+    : $"Las fracciones menores a {program.PesosPerPoint:C} MXN no generan punto y no se acumulan como remanente para compras futuras.";
+  private string ExpirationRule => program is null
+    ? "La vigencia de los puntos será la configuración publicada y vigente del programa."
+    : program.PointsExpire
+      ? $"Los puntos tienen una vigencia de {program.PointsValidityMonths:N0} meses y el sistema consume primero los puntos más antiguos."
+      : "Actualmente los puntos no tienen vencimiento programado.";
+  private string RedemptionRule => program is null
+    ? "Cuando el canje esté habilitado, el POS aplicará el valor y mínimo vigentes publicados por el programa."
+    : $"En el POS pueden aplicarse como descuento: 1 punto equivale a {program.PointValueMxn:C} MXN, el canje mínimo es de {program.MinimumRedeemPoints:N0} puntos y el socio elige una cantidad entera hasta el límite de su saldo y de la mercancía restante.";
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      var binding = await Website.ResolveRequiredAsync();
+      program = await LoyaltyService.GetProgramSettingsAsync(binding.CompanyRfc);
+    }
+    catch
+    {
+      program = null;
+    }
+  }
+}

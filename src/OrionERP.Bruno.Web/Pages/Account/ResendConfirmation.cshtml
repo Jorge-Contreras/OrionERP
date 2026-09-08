@@ -5,13 +5,14 @@
 @inject IOptions<BrunoTurnstileOptions> Turnstile
 @inject IWebHostEnvironment Environment
 @{
-  ViewData["Title"] = "Reenviar confirmación · Club Bruno";
+  var membershipName = Presentation.MembershipProgramName ?? "Membresía";
+  ViewData["Title"] = $"Reenviar confirmación · {membershipName}";
   var canValidateRequest = Environment.IsDevelopment() || Turnstile.Value.IsConfigured;
 }
 <div class="account-shell">
   <div class="account-art" aria-hidden="true"></div>
   <section class="account-panel">
-    <span>Club Bruno</span>
+    <span>@membershipName</span>
     <h1>Reenvía tu confirmación</h1>
     @if (Model.Sent)
     {

@@ -14,7 +14,10 @@
 <div class="company-admin">
     <header class="company-admin__hero">
         <div><p class="company-admin__eyebrow">Administración global</p><h1>Empresas de OrionERP</h1><p>Controla qué RFC pueden iniciar sesión y cómo se presentan. Las credenciales FIEL permanecen en el perfil fiscal.</p></div>
-        <button class="btn btn-light" type="button" @onclick="NewCompany">Registrar empresa</button>
+        <div class="company-admin__hero-actions">
+            <a class="btn btn-outline-light" href="/admin/plataforma">Plataforma y websites</a>
+            <button class="btn btn-light" type="button" @onclick="NewCompany">Registrar empresa</button>
+        </div>
     </header>
 
     @if (loading)

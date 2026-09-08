@@ -1,0 +1,53 @@
+{
+  "PublicWebsite": {
+    "PublicSiteKey": "brunos-main",
+    "ExpectedCompanyRfc": "BRUNOS260707L26",
+    "SiteKey": "brunos-01",
+    "ModuleCode": "RESTAURANT",
+    "CanonicalHost": "brunosgarden.com",
+    "LoopbackPort": 5020
+  },
+  "PublicWebsitePresentation": {
+    "PublicSiteKey": "brunos-main",
+    "BrandingVersion": 1,
+    "ContentVersion": 1,
+    "PublicName": "Bruno's Garden & Snacks",
+    "ShortName": "Bruno's",
+    "MembershipProgramName": "Club Bruno",
+    "LegalName": "Bruno's Garden & Snacks S.A. de C.V.",
+    "LocationName": "Calpulalpan, Tlaxcala",
+    "Tagline": "Snacks, jardín y buenos momentos",
+    "FooterSummary": "Snacks, jardín y buenos momentos.",
+    "SeoDescription": "Bruno's Garden & Snacks: jardín pet friendly, ambiente familiar, chicken fingers, hamburguesas, snacks y bebidas en Calpulalpan.",
+    "Locale": "es-MX",
+    "PublicEmail": "info@brunosgarden.com",
+    "PhoneE164": "+527491103026",
+    "PhoneDisplay": "+52 749 110 3026",
+    "WhatsAppE164": "+527491103026",
+    "WhatsAppDisplay": "+52 749 110 3026",
+    "OperatingAddress": "Calle Camino Nacional #5, Colonia Francisco Sarabia, C.P. 90207, Calpulalpan, Tlaxcala, México",
+    "FiscalAddress": "Calle Camino Nacional #5, Colonia Francisco Sarabia, C.P. 90207, Calpulalpan, Tlaxcala, México",
+    "PrivacyEmail": "info@brunosgarden.com",
+    "PrivacyVersion": "2026-07-31",
+    "PrivacyUpdatedDisplay": "31 de julio de 2026",
+    "TermsVersion": "2026-08-30",
+    "TermsUpdatedDisplay": "30 de agosto de 2026",
+    "PrimaryColor": "#8F271C",
+    "PrimaryDarkColor": "#5E1813",
+    "AccentColor": "#E8A247",
+    "Assets": {
+      "logo": "/Images/Brunos/brunos-logo.png",
+      "favicon": "/Images/Brunos/brunos-logo.png",
+      "open-graph": "/Images/Brunos/og-brunos.png",
+      "home-hero": "/Images/Brunos/brunos-food-hero.jpg",
+      "menu-hero": "/Images/Brunos/brunos-opening-poster.png",
+      "visit-hero": "/Images/Brunos/brunos-real-hero.jpg",
+      "membership-hero": "/Images/Brunos/brunos-real-club.jpg",
+      "hero-decoration": "/Images/Brunos/bruno-hero-mascot.png",
+      "membership-decoration": "/Images/Brunos/bruno-club-mascot.png"
+    }
+  },
+  "BrunoGraphMail": {
+    "SenderAddress": "info@brunosgarden.com"
+  }
+}

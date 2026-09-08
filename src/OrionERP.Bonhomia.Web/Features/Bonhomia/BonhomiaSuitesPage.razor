@@ -1,8 +1,10 @@
 @page "/suites"
+@inject PublicWebsitePresentationDefinition Presentation
+@inject HospitalityWebsiteDefinition Hospitality
 
-<PageTitle>Suites | Bonhomia Suites</PageTitle>
+<PageTitle>Suites | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Conoce las suites y casas amuebladas de Bonhomia Suites en Calpulalpan por capacidad, privacidad y tipo de viaje." />
+    <meta name="description" content="@($"Conoce las suites y casas amuebladas de {Presentation.PublicName} en {Presentation.LocationName} por capacidad, privacidad y tipo de viaje.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
@@ -14,14 +16,14 @@
 
     <section class="bonhomia-section">
         <div class="bonhomia-grid bonhomia-grid--four">
-            @foreach (var suite in BonhomiaSiteContent.Suites)
+            @foreach (var suite in Hospitality.Rooms)
             {
                 <article class="bonhomia-card bonhomia-suite-card">
                     <button type="button"
                             class="bonhomia-suite-card__media"
-                            title="@($"Ver fotos de {suite.Name}")"
-                            @onclick="() => OpenSuiteGallery(suite.Name)">
-                        <img src="@suite.Image" alt="@($"Vista de referencia para {suite.Name}")" />
+                            title="@($"Ver fotos de {suite.RoomCode}")"
+                            @onclick="() => OpenSuiteGallery(suite.RoomCode)">
+                        <img src="@suite.PrimaryImage" alt="@($"Vista de referencia para {suite.RoomCode}")" />
                         <span class="bonhomia-suite-card__media-action">
                             <i class="bi bi-images" aria-hidden="true"></i>
                             <span>Ver fotos</span>
@@ -30,18 +32,18 @@
                     <div class="bonhomia-suite-card__body">
                         <div class="bonhomia-suite-card__topline">
                             <span class="bonhomia-card__meta">@suite.Tag</span>
-                            <strong>@suite.StartingRate</strong>
+                            <strong>Consulta tarifa</strong>
                         </div>
-                        <h3>@suite.Name</h3>
-                        <p>@suite.Description</p>
+                        <h3>@suite.RoomCode</h3>
+                        <p>@suite.Ideal</p>
                         <div class="bonhomia-suite-card__meta">
-                            <span><i class="bi bi-people" aria-hidden="true"></i>@suite.Capacity</span>
-                            <span><i class="bi bi-moon" aria-hidden="true"></i>@suite.Bedrooms</span>
-                            <span><i class="bi bi-droplet" aria-hidden="true"></i>@suite.Bathrooms</span>
+                            <span><i class="bi bi-people" aria-hidden="true"></i>@suite.Capacity personas</span>
+                            <span><i class="bi bi-moon" aria-hidden="true"></i>@suite.Bedrooms recamaras</span>
+                            <span><i class="bi bi-droplet" aria-hidden="true"></i>@suite.Bathrooms baños</span>
                         </div>
                         <button type="button"
                                 class="bonhomia-button bonhomia-button--outline bonhomia-suite-card__gallery"
-                                @onclick="() => OpenSuiteGallery(suite.Name)">
+                                @onclick="() => OpenSuiteGallery(suite.RoomCode)">
                             <i class="bi bi-images" aria-hidden="true"></i>
                             <span>Ver fotos</span>
                         </button>
@@ -53,7 +55,7 @@
 
     <section class="bonhomia-section">
         <div class="bonhomia-gallery">
-            @foreach (var image in BonhomiaSuiteGalleryCatalog.BuildingImages)
+            @foreach (var image in BonhomiaSuiteGalleryCatalog.GetBuildingImages(Hospitality, Presentation.PublicName))
             {
                 <img src="@image.Source" alt="@image.Alt" />
             }
@@ -85,7 +87,7 @@
 
     private void OpenSuiteGallery(string suiteName)
     {
-        ActiveGallery = BonhomiaSuiteGalleryCatalog.FindSuite(suiteName);
+        ActiveGallery = BonhomiaSuiteGalleryCatalog.FindSuite(Hospitality, suiteName);
     }
 
     private void CloseSuiteGallery()

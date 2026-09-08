@@ -1,4 +1,4 @@
-@page "/restaurante/sitio-brunos"
+@page "/restaurante/sitio-publico"
 @attribute [Authorize(Policy = "RestaurantAdmin")]
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
@@ -7,17 +7,38 @@
 @inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Restaurante · Sitio de Bruno's</PageTitle>
+<PageTitle>Restaurante · Sitio público</PageTitle>
 
 <main class="site-admin">
   <header class="site-admin__hero">
-    <div><span>brunosgarden.com</span><h1>Contenido y lanzamiento</h1><p>Datos públicos, SEO, redes y banderas independientes de producción.</p></div>
+    <div><span>Experiencia pública</span><h1>Contenido y lanzamiento</h1><p>Datos públicos, SEO, redes y banderas independientes por sede.</p></div>
     <button type="button" class="btn btn-light" @onclick="LoadAsync" disabled="@isBusy">Actualizar</button>
   </header>
 
   @if (!string.IsNullOrWhiteSpace(message))
   {
     <div class="alert @(isError ? "alert-danger" : "alert-success")">@message</div>
+  }
+
+  @if (sites.Count > 0)
+  {
+    <section class="site-panel site-panel--wide site-selector" aria-labelledby="site-selector-title">
+      <header><div><span>Alcance</span><h2 id="site-selector-title">Sede del sitio público</h2></div></header>
+      <label>
+        Selecciona la sede que deseas administrar
+        <select class="form-select" value="@SelectedSiteValue" @onchange="OnSiteChangedAsync" disabled="@isBusy">
+          <option value="">Selecciona una sede</option>
+          @foreach (var site in sites)
+          {
+            <option value="@site.Id">@site.Name (@site.SiteCode)</option>
+          }
+        </select>
+      </label>
+      @if (sites.Count > 1 && !selectedSiteId.HasValue)
+      {
+        <p class="rollout-note">Hay varias sedes disponibles. La selección es obligatoria para evitar editar el sitio equivocado.</p>
+      }
+    </section>
   }
 
   @if (settings is not null)
@@ -29,8 +50,8 @@
         <header><div><span>Publicación gradual</span><h2>Banderas de lanzamiento</h2></div><button type="submit" class="btn btn-primary" disabled="@isBusy">Guardar cambios</button></header>
         <div class="flag-grid">
           <label><InputCheckbox @bind-Value="settings.IsWebsiteEnabled" /><span><strong>Sitio público</strong><small>Permite servir contenido después de configurar dominio y túnel.</small></span></label>
-          <label><InputCheckbox @bind-Value="settings.IsMembershipEnabled" /><span><strong>Registro y cuenta</strong><small>Habilita alta, verificación y acceso al Club Bruno.</small></span></label>
-          <label><InputCheckbox @bind-Value="settings.IsLoyaltyAccrualEnabled" /><span><strong>Acumulación de puntos</strong><small>Acredita 1 punto por cada $10 elegibles al pagar.</small></span></label>
+          <label><InputCheckbox @bind-Value="settings.IsMembershipEnabled" /><span><strong>Registro y cuenta</strong><small>Habilita alta, verificación y acceso al programa de membresía.</small></span></label>
+          <label><InputCheckbox @bind-Value="settings.IsLoyaltyAccrualEnabled" /><span><strong>Acumulación de puntos</strong><small>Activa la acumulación según la configuración vigente del programa.</small></span></label>
           <label><InputCheckbox @bind-Value="settings.IsPromotionsEnabled" /><span><strong>Promociones</strong><small>Activa cotización y aplicación en POS y sitio.</small></span></label>
         </div>
         <p class="rollout-note">Las cuatro banderas inician apagadas. El esquema, el ledger y la auditoría permanecen intactos al desactivar una función.</p>
@@ -74,21 +95,24 @@
 </main>
 
 @code {
+  private List<RestaurantSiteDto> sites = [];
   private BrunoPublicSiteSettingsSaveRequest? settings;
+  private int? selectedSiteId;
   private bool isBusy;
   private string? message;
   private bool isError;
-  private const string CurrentRfc = BrunoRestaurantConstants.Rfc;
+  private string CurrentRfc => RfcState.RequireRfc();
+  private string SelectedSiteValue => selectedSiteId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
 
   protected override async Task OnInitializedAsync()
   {
     try
     {
-      RfcState.EnsureRfc(CurrentRfc);
+      _ = CurrentRfc;
     }
-    catch (InvalidOperationException)
+    catch (UnauthorizedAccessException)
     {
-      Show("Esta página requiere una sesión iniciada con Bruno's. Cierra sesión e ingresa con esa empresa.", true);
+      Show("Esta página requiere una sesión con una empresa activa. Vuelve a iniciar sesión y selecciona la empresa que deseas administrar.", true);
       return;
     }
     await LoadAsync();
@@ -99,27 +123,91 @@
     isBusy = true;
     try
     {
-      var sites = await CatalogService.GetSitesAsync(CurrentRfc);
-      var site = sites.FirstOrDefault(item => item.SiteCode == BrunoRestaurantConstants.SiteCode);
-      if (site is null) { settings = null; Show("No existe una sede de restaurante para el RFC activo.", true); return; }
-      var value = await PublicCatalogService.GetSettingsAsync(CurrentRfc, site.Id);
-      if (value is null) { settings = null; Show("Aplica primero la migración de promociones y sitio Bruno.", true); return; }
-      settings = new BrunoPublicSiteSettingsSaveRequest
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc))
+        .Where(item => item.IsEnabled)
+        .OrderBy(item => item.Name)
+        .ThenBy(item => item.Id)
+        .ToList();
+      if (sites.Count == 0)
       {
-        Rfc = CurrentRfc, SiteId = value.SiteId, LegalName = value.LegalName, PublicName = value.PublicName,
-        HeroEyebrow = value.HeroEyebrow, HeroTitle = value.HeroTitle, HeroDescription = value.HeroDescription,
-        AddressLine = value.AddressLine, Neighborhood = value.Neighborhood, PostalCode = value.PostalCode,
-        City = value.City, StateName = value.StateName, CountryName = value.CountryName,
-        WhatsAppPhone = value.WhatsAppPhone, WhatsAppDisplay = value.WhatsAppDisplay, MapsUrl = value.MapsUrl,
-        FacebookUrl = value.FacebookUrl, InstagramUrl = value.InstagramUrl, TikTokUrl = value.TikTokUrl,
-        OpeningHoursJson = value.OpeningHoursJson, SeoDescription = value.SeoDescription,
-        IsWebsiteEnabled = value.IsWebsiteEnabled, IsMembershipEnabled = value.IsMembershipEnabled,
-        IsLoyaltyAccrualEnabled = value.IsLoyaltyAccrualEnabled, IsPromotionsEnabled = value.IsPromotionsEnabled
-      };
-      message = null;
+        selectedSiteId = null;
+        settings = null;
+        Show("No existe una sede de restaurante habilitada para la empresa activa.", true);
+        return;
+      }
+
+      if (selectedSiteId.HasValue && sites.All(item => item.Id != selectedSiteId.Value))
+      {
+        selectedSiteId = null;
+      }
+      if (!selectedSiteId.HasValue && sites.Count == 1)
+      {
+        selectedSiteId = sites[0].Id;
+      }
+
+      await LoadSelectedSiteAsync();
     }
     catch (Exception ex) { Show(ex.Message, true); }
     finally { isBusy = false; }
+  }
+
+  private async Task OnSiteChangedAsync(ChangeEventArgs args)
+  {
+    selectedSiteId = int.TryParse(
+      args.Value?.ToString(),
+      System.Globalization.NumberStyles.None,
+      System.Globalization.CultureInfo.InvariantCulture,
+      out var parsedSiteId)
+        ? parsedSiteId
+        : null;
+    isBusy = true;
+    try
+    {
+      await LoadSelectedSiteAsync();
+    }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { isBusy = false; }
+  }
+
+  private async Task LoadSelectedSiteAsync()
+  {
+    settings = null;
+    if (!selectedSiteId.HasValue)
+    {
+      message = null;
+      isError = false;
+      return;
+    }
+
+    var site = sites.SingleOrDefault(item => item.Id == selectedSiteId.Value);
+    if (site is null)
+    {
+      selectedSiteId = null;
+      Show("La sede seleccionada ya no está disponible para la empresa activa.", true);
+      return;
+    }
+
+    var value = await PublicCatalogService.GetSettingsAsync(CurrentRfc, site.Id);
+    if (value is null)
+    {
+      Show("La sede seleccionada todavía no tiene configuración de sitio público.", true);
+      return;
+    }
+
+    settings = new BrunoPublicSiteSettingsSaveRequest
+    {
+      Rfc = CurrentRfc, SiteId = value.SiteId, LegalName = value.LegalName, PublicName = value.PublicName,
+      HeroEyebrow = value.HeroEyebrow, HeroTitle = value.HeroTitle, HeroDescription = value.HeroDescription,
+      AddressLine = value.AddressLine, Neighborhood = value.Neighborhood, PostalCode = value.PostalCode,
+      City = value.City, StateName = value.StateName, CountryName = value.CountryName,
+      WhatsAppPhone = value.WhatsAppPhone, WhatsAppDisplay = value.WhatsAppDisplay, MapsUrl = value.MapsUrl,
+      FacebookUrl = value.FacebookUrl, InstagramUrl = value.InstagramUrl, TikTokUrl = value.TikTokUrl,
+      OpeningHoursJson = value.OpeningHoursJson, SeoDescription = value.SeoDescription,
+      IsWebsiteEnabled = value.IsWebsiteEnabled, IsMembershipEnabled = value.IsMembershipEnabled,
+      IsLoyaltyAccrualEnabled = value.IsLoyaltyAccrualEnabled, IsPromotionsEnabled = value.IsPromotionsEnabled
+    };
+    message = null;
+    isError = false;
   }
 
   private async Task SaveAsync()
@@ -128,9 +216,14 @@
     isBusy = true;
     try
     {
+      if (!selectedSiteId.HasValue || settings.SiteId != selectedSiteId.Value || sites.All(item => item.Id != selectedSiteId.Value))
+      {
+        Show("Selecciona una sede válida antes de guardar.", true);
+        return;
+      }
       settings.Rfc = CurrentRfc;
       var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-      var result = await PublicCatalogService.SaveSettingsAsync(settings, auth.User.Identity?.Name ?? "sitio-brunos");
+      var result = await PublicCatalogService.SaveSettingsAsync(settings, auth.User.Identity?.Name ?? "sitio-publico");
       Show(result.Message, !result.Success);
     }
     catch (Exception ex) { Show(ex.Message, true); }

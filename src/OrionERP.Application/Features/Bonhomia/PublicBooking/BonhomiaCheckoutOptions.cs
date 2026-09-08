@@ -15,9 +15,12 @@ public sealed class BonhomiaCheckoutOptions
   public int MaxStayNights { get; set; } = 60;
   public string TimeZone { get; set; } = BonhomiaBookingCutoffPolicy.DefaultTimeZone;
   public string? PublicBaseUrl { get; set; }
-  public string AccountingRfc { get; set; } = "OHM191112Q26";
+  public string AccountingRfc { get; set; } = string.Empty;
   public string AccountingPaymentForm { get; set; } = "03";
-  public string AccountingAccount { get; set; } = "ORION HABITAT DE MEXICO";
+  public string AccountingAccount { get; set; } = string.Empty;
+  public string PublicName { get; set; } = "Hospedaje";
+  public string ReservationSourceLabel { get; set; } = "Website de hospedaje";
+  public string PdfFilePrefix { get; set; } = "reservacion";
 
   public bool IsPayPalConfigured
     => !string.IsNullOrWhiteSpace(PayPalClientId)

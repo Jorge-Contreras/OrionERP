@@ -17,11 +17,6 @@ public sealed class GraphMailOptions : MicrosoftGraphMailOptions
 public sealed class BonhomiaGraphMailOptions : MicrosoftGraphMailOptions
 {
   public const string SectionName = "BonhomiaGraphMail";
-
-  public BonhomiaGraphMailOptions()
-  {
-    SenderAddress = "recepcion@bonhomiasuites.com";
-  }
 }
 
 public sealed class BrunoGraphMailOptions : MicrosoftGraphMailOptions

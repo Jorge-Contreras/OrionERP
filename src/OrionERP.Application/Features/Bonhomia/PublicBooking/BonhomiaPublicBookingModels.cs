@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 
 namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
@@ -81,6 +82,12 @@ public sealed class BonhomiaSelectedExperienceAddOnRequest
 public sealed class BonhomiaQuoteDto
 {
   public Guid QuoteId { get; set; } = Guid.NewGuid();
+  /// <summary>
+  /// Trusted website identity stamped by the server before the quote is
+  /// protected. It is part of the fingerprint and is never used to select a
+  /// database scope.
+  /// </summary>
+  public string PublicSiteKey { get; set; } = string.Empty;
   public BonhomiaQuoteRequest Request { get; set; } = new();
   public string RoomName { get; set; } = string.Empty;
   public string RoomImage { get; set; } = string.Empty;
@@ -118,6 +125,46 @@ public sealed class BonhomiaCustomerInfo
   public string Phone { get; set; } = string.Empty;
 }
 
+public sealed record BonhomiaLegalAcceptance(
+  string PrivacyVersion,
+  string TermsVersion,
+  DateTimeOffset AcceptedAtUtc);
+
+public static class BonhomiaLegalConsentPolicy
+{
+  public static BonhomiaLegalAcceptance EnsureAccepted(
+    bool accepted,
+    string? privacyVersion,
+    string? termsVersion,
+    PublicWebsitePresentationDefinition presentation,
+    DateTimeOffset acceptedAtUtc)
+  {
+    ArgumentNullException.ThrowIfNull(presentation);
+
+    if (!accepted
+        || string.IsNullOrWhiteSpace(privacyVersion)
+        || string.IsNullOrWhiteSpace(termsVersion))
+    {
+      throw new BonhomiaPublicBookingException(
+        "legal_consent_required",
+        "Debes aceptar el aviso de privacidad y los terminos vigentes antes de continuar.");
+    }
+
+    if (!string.Equals(privacyVersion.Trim(), presentation.PrivacyVersion, StringComparison.Ordinal)
+        || !string.Equals(termsVersion.Trim(), presentation.TermsVersion, StringComparison.Ordinal))
+    {
+      throw new BonhomiaPublicBookingException(
+        "legal_documents_changed",
+        "El aviso de privacidad o los terminos cambiaron. Revisa y acepta las versiones vigentes.");
+    }
+
+    return new BonhomiaLegalAcceptance(
+      presentation.PrivacyVersion,
+      presentation.TermsVersion,
+      acceptedAtUtc.ToUniversalTime());
+  }
+}
+
 public sealed class BonhomiaPayPalOrderResult
 {
   public string OrderId { get; set; } = string.Empty;
@@ -127,6 +174,8 @@ public sealed class BonhomiaPayPalOrderResult
 public sealed class BonhomiaPayPalCaptureResult
 {
   public string OrderId { get; set; } = string.Empty;
+  public string CustomId { get; set; } = string.Empty;
+  public string ReferenceId { get; set; } = string.Empty;
   public string OrderStatus { get; set; } = string.Empty;
   public string CaptureId { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;

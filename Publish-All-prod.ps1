@@ -12,6 +12,8 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 Set-Location -Path $PSScriptRoot
 
+. (Join-Path $PSScriptRoot "deployment\Publish-Safety.ps1")
+
 function Write-Step {
     param([string]$Message)
 
@@ -49,32 +51,6 @@ function Invoke-NativeCommand {
     }
 }
 
-function Assert-GitState {
-    $insideWorkTree = (& git -C $PSScriptRoot rev-parse --is-inside-work-tree 2>$null).Trim()
-    if ($LASTEXITCODE -ne 0 -or $insideWorkTree -ne "true") {
-        throw "The publish script must run from the OrionERP Git working tree."
-    }
-
-    $branch = (& git -C $PSScriptRoot branch --show-current).Trim()
-    if (-not $AllowNonMain -and $branch -ne "main") {
-        throw "Production publishing requires branch 'main'. Current branch: '$branch'. Use -AllowNonMain only for an intentional production smoke test."
-    }
-
-    $changes = @(& git -C $PSScriptRoot status --porcelain)
-    if (-not $AllowDirty -and $changes.Count -gt 0) {
-        throw "Production publishing requires a clean working tree. Commit or stash the current changes first."
-    }
-
-    if (-not $AllowNonMain) {
-        Invoke-NativeCommand -FilePath "git" -ArgumentList @("-C", $PSScriptRoot, "fetch", "origin", "main", "--quiet")
-        $head = (& git -C $PSScriptRoot rev-parse HEAD).Trim()
-        $originMain = (& git -C $PSScriptRoot rev-parse origin/main).Trim()
-        if ($LASTEXITCODE -ne 0 -or $head -ne $originMain) {
-            throw "Local main is not identical to origin/main. Pull the latest main before publishing."
-        }
-    }
-}
-
 $targets = @{
     OrionERP = [pscustomobject]@{
         DisplayName = "OrionERP management console"
@@ -86,13 +62,15 @@ $targets = @{
         # HTTP fails once antiforgery cookies require a secure request, which would
         # fail the health check and roll back a perfectly good deployment.
         HealthCheckUrl = "http://127.0.0.1:5000/readyz"
+        InstanceSettingsPath = ""
     }
     Bonhomia = [pscustomobject]@{
         DisplayName = "Bonhomia public website"
         ServiceName = "OrionERP.Bonhomia"
         ProjectPath = "src\OrionERP.Bonhomia.Web\OrionERP.Bonhomia.Web.csproj"
         OutputDirectory = "C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP.Bonhomia.Web"
-        HealthCheckUrl = "http://127.0.0.1:5010/healthz"
+        HealthCheckUrl = "http://127.0.0.1:5010/readyz"
+        InstanceSettingsPath = "deployment\public-sites\bonhomia-main.json"
     }
     Bruno = [pscustomobject]@{
         DisplayName = "Bruno's public website"
@@ -100,6 +78,7 @@ $targets = @{
         ProjectPath = "src\OrionERP.Bruno.Web\OrionERP.Bruno.Web.csproj"
         OutputDirectory = "C:\Users\Orion\Grupo Carpio Dropbox\Grupo Orion\Software\GitHubs\Production\OrionERP.Bruno.Web"
         HealthCheckUrl = "http://127.0.0.1:5020/readyz"
+        InstanceSettingsPath = "deployment\public-sites\brunos-main.json"
     }
 }
 
@@ -108,7 +87,10 @@ if ($selectedTargets.Count -eq 0) {
     throw "Select at least one application to publish."
 }
 
-Assert-GitState
+Assert-OrionProductionGitState `
+    -RepositoryRoot $PSScriptRoot `
+    -AllowNonMain:$AllowNonMain `
+    -AllowDirty:$AllowDirty
 
 if (-not $ValidateOnly -and -not (Test-IsAdministrator)) {
     $powerShellExe = (Get-Process -Id $PID).Path
@@ -133,35 +115,22 @@ if (-not $ValidateOnly -and -not (Test-IsAdministrator)) {
     exit $elevatedProcess.ExitCode
 }
 
+$publishWorker = Join-Path $PSScriptRoot "Publish-prod.ps1"
 if ($ValidateOnly) {
-    $tempRoot = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
-    $validationRoot = [System.IO.Path]::GetFullPath((Join-Path $tempRoot ("OrionERP-full-publish-validation-" + [Guid]::NewGuid().ToString("N"))))
-    if (-not $validationRoot.StartsWith($tempRoot + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "The validation directory resolved outside the system temporary directory."
+    foreach ($target in $selectedTargets) {
+        Write-Step "Validating $($target.DisplayName)"
+        & $publishWorker `
+            -ServiceName $target.ServiceName `
+            -ProjectPath $target.ProjectPath `
+            -OutputDirectory $target.OutputDirectory `
+            -Runtime $Runtime `
+            -InstanceSettingsPath $target.InstanceSettingsPath `
+            -AllowNonMain:$AllowNonMain `
+            -AllowDirty:$AllowDirty `
+            -ValidateOnly
     }
 
-    try {
-        foreach ($target in $selectedTargets) {
-            Write-Step "Validating $($target.DisplayName)"
-            $targetOutput = Join-Path $validationRoot $target.ServiceName
-            Invoke-NativeCommand -FilePath "dotnet" -ArgumentList @(
-                "publish",
-                (Join-Path $PSScriptRoot $target.ProjectPath),
-                "-c", "Release",
-                "-r", $Runtime,
-                "--self-contained", "false",
-                "--nologo",
-                "--verbosity", "minimal",
-                "-o", $targetOutput
-            )
-        }
-
-        Write-Step "Validation completed successfully"
-    }
-    finally {
-        Remove-Item -LiteralPath $validationRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
+    Write-Step "Validation completed successfully"
     exit 0
 }
 
@@ -171,7 +140,6 @@ foreach ($target in $selectedTargets) {
     }
 }
 
-$publishWorker = Join-Path $PSScriptRoot "Publish-prod.ps1"
 foreach ($target in $selectedTargets) {
     Write-Step "Publishing $($target.DisplayName)"
     & $publishWorker `
@@ -179,7 +147,10 @@ foreach ($target in $selectedTargets) {
         -ProjectPath $target.ProjectPath `
         -OutputDirectory $target.OutputDirectory `
         -Runtime $Runtime `
-        -HealthCheckUrl $target.HealthCheckUrl
+        -HealthCheckUrl $target.HealthCheckUrl `
+        -InstanceSettingsPath $target.InstanceSettingsPath `
+        -AllowNonMain:$AllowNonMain `
+        -AllowDirty:$AllowDirty
 }
 
 Write-Step "Full production publish completed successfully"

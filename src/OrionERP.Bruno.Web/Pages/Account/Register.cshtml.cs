@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Bruno.Web.Configuration;
 using OrionERP.Bruno.Web.Services;
@@ -20,8 +21,10 @@ public sealed class RegisterModel : PageModel
   private readonly ILoyaltyService _loyaltyService;
   private readonly IBrunoPublicCatalogService _publicCatalog;
   private readonly IBrunoTurnstileService _turnstile;
-  private readonly IWebHostEnvironment _environment;
   private readonly ILogger<RegisterModel> _logger;
+  private readonly IPublicWebsiteInstanceContext _website;
+  private readonly PublicWebsitePresentationDefinition _presentation;
+  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
 
   public RegisterModel(
     UserManager<BrunoMemberUser> userManager,
@@ -29,16 +32,20 @@ public sealed class RegisterModel : PageModel
     ILoyaltyService loyaltyService,
     IBrunoPublicCatalogService publicCatalog,
     IBrunoTurnstileService turnstile,
-    IWebHostEnvironment environment,
-    ILogger<RegisterModel> logger)
+    ILogger<RegisterModel> logger,
+    IPublicWebsiteInstanceContext website,
+    PublicWebsitePresentationDefinition presentation,
+    IRestaurantPublicIdentityScopeAccessor identityScope)
   {
     _userManager = userManager;
     _emailSender = emailSender;
     _loyaltyService = loyaltyService;
     _publicCatalog = publicCatalog;
     _turnstile = turnstile;
-    _environment = environment;
     _logger = logger;
+    _website = website;
+    _presentation = presentation;
+    _identityScope = identityScope;
   }
 
   [BindProperty] public InputModel Input { get; set; } = new();
@@ -47,8 +54,9 @@ public sealed class RegisterModel : PageModel
   public async Task<IActionResult> OnGetAsync(string? returnUrl = null)
   {
     ReturnUrl = returnUrl;
-    var settings = await _publicCatalog.GetSettingsAsync(BrunoSiteConstants.Rfc);
-    if (settings?.IsMembershipEnabled != true && !_environment.IsDevelopment())
+    var binding = await _website.ResolveRequiredAsync();
+    var settings = await _publicCatalog.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+    if (settings?.IsMembershipEnabled != true)
       return Redirect("/membresia");
     return Page();
   }
@@ -56,6 +64,11 @@ public sealed class RegisterModel : PageModel
   public async Task<IActionResult> OnPostAsync(string? returnUrl = null, CancellationToken ct = default)
   {
     ReturnUrl = returnUrl;
+    var binding = await _website.ResolveRequiredAsync(ct);
+    var settings = await _publicCatalog.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey, ct);
+    if (settings?.IsMembershipEnabled != true)
+      return Redirect("/membresia");
+
     if (!Input.IsAdultConfirmed) ModelState.AddModelError("Input.IsAdultConfirmed", "Debes confirmar que tienes al menos 18 años.");
     if (!Input.AcceptDocuments) ModelState.AddModelError("Input.AcceptDocuments", "Debes aceptar el aviso de privacidad y los términos.");
     var turnstileToken = Request.Form["cf-turnstile-response"].ToString();
@@ -73,6 +86,7 @@ public sealed class RegisterModel : PageModel
     catch (ValidationException ex) { ModelState.AddModelError("Input.Phone", ex.Message); return Page(); }
     var user = new BrunoMemberUser
     {
+      PublicSiteId = _identityScope.Current.PublicSiteId,
       UserName = email,
       Email = email,
       PhoneNumber = phone,
@@ -91,15 +105,16 @@ public sealed class RegisterModel : PageModel
     {
       member = await _loyaltyService.CreateMemberAsync(new LoyaltyMemberCreateRequest
       {
-        Rfc = BrunoSiteConstants.Rfc,
+        Rfc = binding.CompanyRfc,
+        PublicSiteId = _identityScope.Current.PublicSiteId,
         IdentityUserId = user.Id,
         FirstName = user.FirstName,
         LastName = user.LastName,
         Email = email,
         Phone = phone,
         IsAdultConfirmed = true,
-        PrivacyVersion = BrunoSiteConstants.PrivacyVersion,
-        TermsVersion = BrunoSiteConstants.TermsVersion,
+        PrivacyVersion = _presentation.PrivacyVersion,
+        TermsVersion = _presentation.TermsVersion,
         EmailMarketingConsent = Input.EmailMarketingConsent,
         SmsMarketingConsent = Input.SmsMarketingConsent,
         WhatsAppMarketingConsent = Input.WhatsAppMarketingConsent

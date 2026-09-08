@@ -1,0 +1,283 @@
+@page "/admin/plataforma"
+@using Microsoft.AspNetCore.Authorization
+@using OrionERP.Application.Features.Platform
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Plataforma y websites</PageTitle>
+
+<main class="platform-admin">
+  <header class="platform-admin__hero">
+    <div>
+      <p class="platform-admin__eyebrow">Configuración por empresa</p>
+      <h1>Plataforma y websites</h1>
+      <p>Administra sedes, módulos y dominios únicamente para la empresa de tu sesión.</p>
+    </div>
+    <button type="button" class="btn btn-light" disabled="@IsBusy" @onclick="RefreshAsync">
+      @(IsLoading ? "Actualizando…" : "Actualizar")
+    </button>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(LoadError))
+  {
+    <div class="alert alert-danger" role="alert">
+      <strong>No se pudo cargar la configuración.</strong> @LoadError
+    </div>
+  }
+
+  @if (Snapshot is null)
+  {
+    <section class="platform-admin__loading" aria-live="polite">
+      <span class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando</span></span>
+      <p>Cargando la empresa de tu sesión…</p>
+    </section>
+  }
+  else
+  {
+    <section class="platform-admin__summary" aria-label="Resumen de configuración">
+      <article>
+        <span>Empresa activa</span>
+        <strong>@Snapshot.Company.DisplayName</strong>
+        <small>@Snapshot.Company.Rfc</small>
+      </article>
+      <article>
+        <span>Sedes</span>
+        <strong>@Snapshot.Sites.Count</strong>
+        <small>@Snapshot.Sites.Count(site => site.IsActive) activas</small>
+      </article>
+      <article>
+        <span>Módulos</span>
+        <strong>@Snapshot.Modules.Count(module => module.IsEntitled)</strong>
+        <small>habilitados o incluidos</small>
+      </article>
+      <article>
+        <span>Websites</span>
+        <strong>@Snapshot.PublicSites.Count</strong>
+        <small>@Snapshot.PublicSites.Count(site => site.IsActive) publicados</small>
+      </article>
+    </section>
+
+    <nav class="platform-tabs" role="tablist" aria-label="Secciones de plataforma">
+      <button type="button" role="tab" aria-selected="@(ActiveTab == PlatformAdminTab.Company)" class="@(TabClass(PlatformAdminTab.Company))" @onclick="() => SelectTab(PlatformAdminTab.Company)">Empresa</button>
+      <button type="button" role="tab" aria-selected="@(ActiveTab == PlatformAdminTab.Sites)" class="@(TabClass(PlatformAdminTab.Sites))" @onclick="() => SelectTab(PlatformAdminTab.Sites)">Sedes <span>@Snapshot.Sites.Count</span></button>
+      <button type="button" role="tab" aria-selected="@(ActiveTab == PlatformAdminTab.Modules)" class="@(TabClass(PlatformAdminTab.Modules))" @onclick="() => SelectTab(PlatformAdminTab.Modules)">Módulos <span>@Snapshot.Modules.Count</span></button>
+      <button type="button" role="tab" aria-selected="@(ActiveTab == PlatformAdminTab.Capabilities)" class="@(TabClass(PlatformAdminTab.Capabilities))" @onclick="() => SelectTab(PlatformAdminTab.Capabilities)">Capacidades <span>@Snapshot.SiteCapabilities.Count</span></button>
+      <button type="button" role="tab" aria-selected="@(ActiveTab == PlatformAdminTab.PublicSites)" class="@(TabClass(PlatformAdminTab.PublicSites))" @onclick="() => SelectTab(PlatformAdminTab.PublicSites)">Websites <span>@Snapshot.PublicSites.Count</span></button>
+    </nav>
+
+    <section class="platform-workspace">
+      @if (ActiveTab == PlatformAdminTab.Company)
+      {
+        <div class="platform-panel platform-panel--narrow" role="tabpanel">
+          <header class="platform-panel__header">
+            <div><p class="platform-admin__eyebrow">Identidad de plataforma</p><h2>@Snapshot.Company.DisplayName</h2></div>
+            <span class="state-pill @(Snapshot.Company.IsActive ? "is-active" : "is-inactive")">@(Snapshot.Company.IsActive ? "Activa" : "Inactiva")</span>
+          </header>
+          <p class="platform-panel__intro">El RFC heredado identifica la sesión y no puede cambiarse aquí. Los dos campos siguientes preparan la separación entre identidad fiscal e identidad técnica.</p>
+          <div class="platform-form-grid">
+            <label><span>RFC de sesión</span><input class="form-control" value="@Snapshot.Company.Rfc" readonly aria-readonly="true" /><small>Solo lectura</small></label>
+            <label><span>RFC fiscal</span><input class="form-control" maxlength="13" autocomplete="off" @bind="CompanyForm.TaxRfc" /><small>Opcional; 12 o 13 caracteres</small></label>
+            <label class="platform-form-grid__wide"><span>Clave heredada</span><input class="form-control" maxlength="50" autocomplete="off" @bind="CompanyForm.LegacyTenantKey" /><small>Opcional; conserva el vínculo con datos históricos sin alterar el RFC de acceso.</small></label>
+          </div>
+          <div class="platform-actions"><button type="button" class="btn btn-primary" disabled="@IsBusy" @onclick="SaveCompanyAsync">Guardar identidad</button></div>
+        </div>
+      }
+      else if (ActiveTab == PlatformAdminTab.Sites)
+      {
+        <div class="platform-split" role="tabpanel">
+          <section class="platform-list">
+            <header class="platform-list__header"><div><h2>Sedes</h2><p>Unidades operativas de la empresa activa.</p></div><button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewSite">Nueva sede</button></header>
+            @if (Snapshot.Sites.Count == 0)
+            {
+              <div class="platform-empty"><strong>Aún no hay sedes.</strong><span>Crea la primera para asignarle Hospedaje o Restaurante.</span></div>
+            }
+            @foreach (var site in Snapshot.Sites)
+            {
+              <button type="button" class="platform-card @(SiteForm.SiteId == site.SiteId ? "is-selected" : null)" @onclick="() => EditSite(site)">
+                <span><strong>@site.DisplayName</strong><small>@site.SiteKey · @site.TimeZoneId</small></span>
+                <span class="state-pill @(site.IsActive ? "is-active" : "is-inactive")">@(site.IsActive ? "Activa" : "Inactiva")</span>
+              </button>
+            }
+          </section>
+          <section class="platform-editor" aria-label="Editor de sede">
+            <header><p class="platform-admin__eyebrow">@(SiteForm.SiteId.HasValue ? "Editar sede" : "Nueva sede")</p><h2>@(string.IsNullOrWhiteSpace(SiteForm.DisplayName) ? "Sede" : SiteForm.DisplayName)</h2></header>
+            <div class="platform-form-grid platform-form-grid--single">
+              <label><span>Clave técnica</span><input class="form-control" maxlength="100" disabled="@SiteForm.SiteId.HasValue" @bind="SiteForm.SiteKey" /><small>Letras minúsculas, números y guiones; será inmutable.</small></label>
+              <label><span>Nombre visible</span><input class="form-control" maxlength="200" @bind="SiteForm.DisplayName" /></label>
+              <label><span>Zona horaria</span><input class="form-control" maxlength="100" list="platform-timezones" @bind="SiteForm.TimeZoneId" /><small>Identificador de Windows usado por el servidor.</small></label>
+              <datalist id="platform-timezones"><option value="Central Standard Time (Mexico)"></option><option value="Pacific Standard Time (Mexico)"></option><option value="Eastern Standard Time (Mexico)"></option><option value="UTC"></option></datalist>
+              <label class="platform-toggle"><input type="checkbox" @bind="SiteForm.IsActive" /><span>Sede activa</span></label>
+            </div>
+            <div class="platform-actions">
+              <button type="button" class="btn btn-primary" disabled="@IsBusy" @onclick="SaveSiteAsync">@(SiteForm.SiteId.HasValue ? "Guardar cambios" : "Crear sede")</button>
+              @if (SiteForm.SiteId.HasValue)
+              {
+                <button type="button" class="btn btn-outline-danger" disabled="@(IsBusy || SiteForm.IsActive)" @onclick="RequestSiteDelete">Eliminar</button>
+              }
+            </div>
+            @if (SiteForm.SiteId.HasValue && SiteForm.IsActive)
+            {
+              <p class="platform-safety-note">Para eliminar una sede debes guardarla primero como inactiva y retirar sus relaciones.</p>
+            }
+          </section>
+        </div>
+      }
+      else if (ActiveTab == PlatformAdminTab.Modules)
+      {
+        <div class="platform-split" role="tabpanel">
+          <section class="platform-list">
+            <header class="platform-list__header"><div><h2>Módulos</h2><p>Catálogo fijo; aquí solo administras la asignación de esta empresa.</p></div></header>
+            @foreach (var item in Snapshot.Modules)
+            {
+              <button type="button" class="platform-card @(ModuleForm.ModuleCode == item.Module.ModuleCode ? "is-selected" : null)" @onclick="() => EditModule(item)">
+                <span><strong>@item.Module.DisplayName</strong><small>@item.Module.ModuleCode</small></span>
+                <span class="state-pill @(item.IsEntitled ? "is-active" : "is-inactive")">@ModuleStatusText(item)</span>
+              </button>
+            }
+          </section>
+          <section class="platform-editor" aria-label="Editor de módulo">
+            @if (string.IsNullOrWhiteSpace(ModuleForm.ModuleCode))
+            {
+              <div class="platform-empty"><strong>Selecciona un módulo.</strong><span>Podrás preparar, habilitar o suspender su asignación.</span></div>
+            }
+            else
+            {
+              <header><p class="platform-admin__eyebrow">Asignación de empresa</p><h2>@ModuleName(ModuleForm.ModuleCode)</h2></header>
+              <div class="platform-form-grid platform-form-grid--single">
+                <label><span>Código</span><input class="form-control" value="@ModuleForm.ModuleCode" readonly /></label>
+                <label><span>Estado</span><select class="form-select" disabled="@ModuleForm.IsCore" @bind="ModuleForm.Status">@if(ModuleForm.IsCore){<option value="Enabled">Habilitado</option>}else{<option value="Provisioning">En preparación</option><option value="Enabled">Habilitado</option><option value="Suspended">Suspendido</option>}</select></label>
+                <label><span>Vigente desde (UTC)</span><input class="form-control" type="datetime-local" disabled="@ModuleForm.IsCore" @bind="ModuleForm.EffectiveFromUtc" @bind:format="yyyy-MM-ddTHH:mm" /></label>
+                <label><span>Vigente hasta (UTC)</span><input class="form-control" type="datetime-local" disabled="@ModuleForm.IsCore" @bind="ModuleForm.EffectiveToUtc" @bind:format="yyyy-MM-ddTHH:mm" /></label>
+              </div>
+              @if (ModuleForm.IsCore)
+              {
+                <p class="platform-safety-note">Contabilidad forma parte del núcleo: siempre habilitada, permanente y no eliminable.</p>
+              }
+              <div class="platform-actions">
+                <button type="button" class="btn btn-primary" disabled="@IsBusy" @onclick="SaveModuleAsync">@(ModuleForm.Exists ? "Guardar asignación" : "Asignar módulo")</button>
+                @if (ModuleForm.Exists && !ModuleForm.IsCore)
+                {
+                  <button type="button" class="btn btn-outline-danger" disabled="@(IsBusy || ModuleForm.Status == PlatformCompanyModuleStatuses.Enabled)" @onclick="RequestModuleDelete">Eliminar</button>
+                }
+              </div>
+            }
+          </section>
+        </div>
+      }
+      else if (ActiveTab == PlatformAdminTab.Capabilities)
+      {
+        <div class="platform-split" role="tabpanel">
+          <section class="platform-list">
+            <header class="platform-list__header"><div><h2>Capacidades por sede</h2><p>Conecta una sede con un módulo previamente asignado.</p></div><button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewCapability">Nueva capacidad</button></header>
+            @if (Snapshot.SiteCapabilities.Count == 0)
+            {
+              <div class="platform-empty"><strong>No hay capacidades.</strong><span>Asigna primero el módulo a la empresa.</span></div>
+            }
+            @foreach (var capability in Snapshot.SiteCapabilities)
+            {
+              <button type="button" class="platform-card @(IsSelected(capability) ? "is-selected" : null)" @onclick="() => EditCapability(capability)">
+                <span><strong>@SiteName(capability.SiteId)</strong><small>@ModuleName(capability.ModuleCode)</small></span>
+                <span class="state-pill @(capability.IsEnabled ? "is-active" : "is-inactive")">@(capability.IsEnabled ? "Habilitada" : "Deshabilitada")</span>
+              </button>
+            }
+          </section>
+          <section class="platform-editor" aria-label="Editor de capacidad">
+            <header><p class="platform-admin__eyebrow">@(CapabilityForm.Exists ? "Editar capacidad" : "Nueva capacidad")</p><h2>Operación por sede</h2></header>
+            <div class="platform-form-grid platform-form-grid--single">
+              <label><span>Sede</span><select class="form-select" disabled="@CapabilityForm.Exists" @bind="CapabilityForm.SiteId"><option value="0">Selecciona una sede</option>@foreach(var site in Snapshot.Sites){<option value="@site.SiteId">@site.DisplayName</option>}</select></label>
+              <label><span>Módulo</span><select class="form-select" disabled="@CapabilityForm.Exists" @bind="CapabilityForm.ModuleCode"><option value="">Selecciona un módulo</option>@foreach(var module in AssignableModules){<option value="@module.Module.ModuleCode">@module.Module.DisplayName</option>}</select></label>
+              <label class="platform-toggle"><input type="checkbox" @bind="CapabilityForm.IsEnabled" /><span>Capacidad habilitada</span></label>
+            </div>
+            <p class="platform-safety-note">Solo se habilita si la sede y la asignación del módulo están activas y vigentes.</p>
+            <div class="platform-actions">
+              <button type="button" class="btn btn-primary" disabled="@IsBusy" @onclick="SaveCapabilityAsync">@(CapabilityForm.Exists ? "Guardar capacidad" : "Crear capacidad")</button>
+              @if (CapabilityForm.Exists)
+              {
+                <button type="button" class="btn btn-outline-danger" disabled="@(IsBusy || CapabilityForm.IsEnabled)" @onclick="RequestCapabilityDelete">Eliminar</button>
+              }
+            </div>
+          </section>
+        </div>
+      }
+      else
+      {
+        <div class="platform-split" role="tabpanel">
+          <section class="platform-list">
+            <header class="platform-list__header"><div><h2>Websites públicos</h2><p>Cada registro representa una configuración reutilizable detrás de su propio dominio y túnel.</p></div><button type="button" class="btn btn-outline-primary btn-sm" @onclick="NewPublicSite">Nuevo website</button></header>
+            @if (Snapshot.PublicSites.Count == 0)
+            {
+              <div class="platform-empty"><strong>No hay websites configurados.</strong><span>Prepara primero sede, módulo y capacidad.</span></div>
+            }
+            @foreach (var publicSite in Snapshot.PublicSites)
+            {
+              <button type="button" class="platform-card @(PublicSiteForm.PublicSiteId == publicSite.PublicSiteId ? "is-selected" : null)" @onclick="() => EditPublicSite(publicSite)">
+                <span><strong>@publicSite.CanonicalHost</strong><small>@publicSite.PublicSiteKey · @SiteName(publicSite.SiteId) · @ModuleName(publicSite.ModuleCode) · marca v@publicSite.BrandingVersion · contenido v@publicSite.ContentVersion@if(IsPresentationRollbackAvailable(publicSite.FallbackUntilUtc)){<text> · reversión disponible</text>}else if(publicSite.FallbackUntilUtc.HasValue){<text> · transición vencida</text>}</small></span>
+                <span class="state-pill @(publicSite.IsActive ? "is-active" : "is-inactive")">@(publicSite.IsActive ? "Activo" : "Inactivo")</span>
+              </button>
+            }
+          </section>
+          <section class="platform-editor" aria-label="Editor de website">
+            <header><p class="platform-admin__eyebrow">@(PublicSiteForm.PublicSiteId.HasValue ? "Editar website" : "Nuevo website")</p><h2>@(string.IsNullOrWhiteSpace(PublicSiteForm.CanonicalHost) ? "Website público" : PublicSiteForm.CanonicalHost)</h2></header>
+            <div class="platform-form-grid platform-form-grid--single">
+              <label><span>Clave técnica</span><input class="form-control" maxlength="100" disabled="@PublicSiteForm.PublicSiteId.HasValue" @bind="PublicSiteForm.PublicSiteKey" /><small>Identidad estable e inmutable del despliegue.</small></label>
+              <label><span>Sede</span><select class="form-select" disabled="@PublicSiteForm.PublicSiteId.HasValue" @bind="PublicSiteForm.SiteId"><option value="0">Selecciona una sede</option>@foreach(var site in Snapshot.Sites){<option value="@site.SiteId">@site.DisplayName</option>}</select></label>
+              <label><span>Módulo</span><select class="form-select" disabled="@PublicSiteForm.PublicSiteId.HasValue" @bind="PublicSiteForm.ModuleCode"><option value="">Selecciona un módulo</option>@foreach(var module in AssignableModules){<option value="@module.Module.ModuleCode">@module.Module.DisplayName</option>}</select></label>
+              <label><span>Dominio canónico</span><input class="form-control" maxlength="253" inputmode="url" placeholder="reservaciones.ejemplo.com" @bind="PublicSiteForm.CanonicalHost" /><small>Sin https://, puerto ni ruta.</small></label>
+              <label><span>Versión de marca</span><input class="form-control" type="number" min="1" step="1" @bind="PublicSiteForm.BrandingVersion" /><small>Al aumentarla se conserva la pareja anterior durante 30 minutos.</small></label>
+              <label><span>Versión de contenido</span><input class="form-control" type="number" min="1" step="1" @bind="PublicSiteForm.ContentVersion" /><small>Marca y contenido se activan y revierten siempre como una sola pareja.</small></label>
+              <label class="platform-toggle"><input type="checkbox" @bind="PublicSiteForm.IsActive" /><span>Website activo</span></label>
+            </div>
+            @if (PublicSiteForm.FallbackUntilUtc.HasValue)
+            {
+              <div class="platform-presentation-transition" role="status">
+                <strong>Activación protegida</strong>
+                <span>Versión anterior: marca v@PublicSiteForm.FallbackBrandingVersion · contenido v@PublicSiteForm.FallbackContentVersion</span>
+                @if (IsPresentationRollbackAvailable(PublicSiteForm.FallbackUntilUtc))
+                {
+                  <small>Reversión disponible hasta @FormatUtc(PublicSiteForm.FallbackUntilUtc.Value). Antes de revertir aquí, restaura y valida el release anterior con el script de publicación.</small>
+                }
+                else
+                {
+                  <small>La ventana de reversión venció. Cierra esta transición; la pareja anterior ya no debe restaurarse.</small>
+                }
+                <div class="platform-actions">
+                  @if (IsPresentationRollbackAvailable(PublicSiteForm.FallbackUntilUtc))
+                  {
+                    <button type="button" class="btn btn-outline-warning" disabled="@IsBusy" @onclick="RollbackPublicSitePresentationAsync">Confirmar reversión después de restaurar release</button>
+                  }
+                  <button type="button" class="btn btn-outline-success" disabled="@IsBusy" @onclick="FinalizePublicSitePresentationAsync">Finalizar activación</button>
+                </div>
+              </div>
+            }
+            <div class="platform-chain" aria-label="Requisitos para publicación">
+              <strong>Cadena de publicación</strong>
+              <span>Empresa → sede → módulo → capacidad → website</span>
+              <small>La activación se rechazará si cualquiera de esos elementos no está activo y vigente.</small>
+            </div>
+            <div class="platform-actions">
+              <button type="button" class="btn btn-primary" disabled="@IsBusy" @onclick="SavePublicSiteAsync">@(PublicSiteForm.PublicSiteId.HasValue ? "Guardar y preparar activación" : "Crear website")</button>
+              @if (PublicSiteForm.PublicSiteId.HasValue)
+              {
+                <button type="button" class="btn btn-outline-danger" disabled="@(IsBusy || PublicSiteForm.IsActive)" @onclick="RequestPublicSiteDelete">Eliminar</button>
+              }
+            </div>
+          </section>
+        </div>
+      }
+    </section>
+  }
+
+  @if (PendingDelete is not null)
+  {
+    <section class="platform-confirm" role="alertdialog" aria-modal="true" aria-labelledby="platform-delete-title">
+      <div>
+        <p class="platform-admin__eyebrow">Confirmación requerida</p>
+        <h2 id="platform-delete-title">Eliminar @PendingDelete.Label</h2>
+        <p>Esta acción elimina la configuración inactiva. No puede deshacerse desde esta pantalla.</p>
+        <div class="platform-actions">
+          <button type="button" class="btn btn-danger" disabled="@IsBusy" @onclick="ConfirmDeleteAsync">Sí, eliminar</button>
+          <button type="button" class="btn btn-outline-secondary" disabled="@IsBusy" @onclick="CancelDelete">Cancelar</button>
+        </div>
+      </div>
+    </section>
+  }
+</main>

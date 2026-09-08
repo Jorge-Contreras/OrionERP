@@ -1,15 +1,16 @@
 @page "/aviso-de-privacidad"
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Aviso de privacidad | Bonhomia Suites</PageTitle>
+<PageTitle>Aviso de privacidad | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Aviso de privacidad de Bonhomia Suites para datos personales tratados en solicitudes, reservas, pagos y seguimiento de hospedaje." />
+    <meta name="description" content="@($"Aviso de privacidad de {Presentation.PublicName} para datos personales tratados en solicitudes, reservas, pagos y seguimiento de hospedaje.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
     <article class="bonhomia-document">
         <p class="bonhomia-eyebrow">Documento consolidado</p>
         <h1>Aviso de privacidad</h1>
-        <p>El aviso de privacidad integral ahora forma parte del centro legal de Bonhomia Suites.</p>
+        <p>El aviso de privacidad integral ahora forma parte del centro legal de @Presentation.PublicName.</p>
 
         <div class="bonhomia-document-card">
             <h2>Ir al aviso vigente</h2>

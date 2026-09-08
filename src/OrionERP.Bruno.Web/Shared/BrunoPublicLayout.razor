@@ -1,20 +1,24 @@
 @inherits LayoutComponentBase
 @inject IBrunoPublicCatalogService CatalogService
-@inject IWebHostEnvironment Environment
 @inject NavigationManager Navigation
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
 
 <div class="site-shell">
   <a class="skip-link" href="#contenido-principal">Saltar al contenido</a>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Bruno's Garden & Snacks, inicio">
-      <img src="/Images/Brunos/brunos-logo.png" alt="Bruno's Garden & Snacks" />
+    <a class="brand" href="/" aria-label="@Presentation.PublicName, inicio">
+      <img src="@Presentation.LogoPath" alt="@Presentation.PublicName" />
     </a>
     <button class="nav-toggle" type="button" aria-label="@(menuOpen ? "Cerrar navegación" : "Abrir navegación")" aria-controls="navegacion-principal" aria-expanded="@menuOpen" @onclick="() => menuOpen = !menuOpen"><span></span><span></span><span></span></button>
     <nav id="navegacion-principal" class="@(menuOpen ? "is-open" : null)" aria-label="Navegación principal">
       <NavLink href="/" Match="NavLinkMatch.All" @onclick="CloseMenu">Inicio</NavLink>
       <NavLink href="/menu" @onclick="CloseMenu">Menú</NavLink>
       <NavLink href="/promociones" @onclick="CloseMenu">Promociones</NavLink>
-      <NavLink href="/membresia" @onclick="CloseMenu">Club Bruno</NavLink>
+      @if (Presentation.MembershipProgramName is not null)
+      {
+        <NavLink href="/membresia" @onclick="CloseMenu">@MembershipName</NavLink>
+      }
       <NavLink href="/visitanos" @onclick="CloseMenu">Visítanos</NavLink>
       @if (membershipEnabled)
       {
@@ -22,7 +26,7 @@
           <Authorized><a class="account-link" href="/cuenta" target="_top">Mi cuenta</a></Authorized>
           <NotAuthorized>
             <a class="account-login-link" href="/cuenta/acceso" target="_top">Ingresar</a>
-            <a class="club-join-link" href="/cuenta/registro" target="_top"><span>Club Bruno</span><strong>Únete gratis</strong></a>
+            <a class="club-join-link" href="/cuenta/registro" target="_top"><span>@MembershipName</span><strong>Únete gratis</strong></a>
           </NotAuthorized>
         </AuthorizeView>
       }
@@ -34,14 +38,14 @@
   @if (membershipEnabled && !IsHomePage)
   {
     <AuthorizeView>
-      <NotAuthorized><a class="club-fab" href="/cuenta/registro" target="_top" aria-label="Crear una cuenta gratis en Club Bruno"><span>Club Bruno</span><strong>Únete gratis</strong></a></NotAuthorized>
+      <NotAuthorized><a class="club-fab" href="/cuenta/registro" target="_top" aria-label="Crear una cuenta gratis en @MembershipName"><span>@MembershipName</span><strong>Únete gratis</strong></a></NotAuthorized>
     </AuthorizeView>
   }
 
   <footer class="site-footer">
-    <div class="footer-brand"><img src="/Images/Brunos/brunos-logo.png" alt="" /><p>Snacks, jardín y buenos momentos.</p></div>
-    <div><strong>Visítanos</strong><p>Calle Camino Nacional #5<br />Col. Francisco Sarabia<br />Calpulalpan, Tlaxcala · C.P. 90207</p></div>
-    <div><strong>Horario</strong><p>Martes a domingo<br />9:00 a 22:00<br />Lunes cerrado</p></div>
+    <div class="footer-brand"><img src="@Presentation.LogoPath" alt="" /><p>@Presentation.FooterSummary</p></div>
+    <div><strong>Visítanos</strong><p>@Presentation.OperatingAddress</p></div>
+    <div><strong>Horario</strong>@foreach (var day in WeekHours) { <p><b>@day.DayName:</b> @day.Hours</p> }</div>
     <div><strong>Información</strong><a href="/privacidad">Aviso de privacidad</a><a href="/terminos">Términos del sitio y membresía</a>@if (membershipEnabled) { <a href="/cuenta/baja" target="_top">Solicitud de baja</a> }</div>
     <div class="footer-connect">
       <strong>Síguenos</strong>
@@ -50,12 +54,10 @@
         @if (!string.IsNullOrWhiteSpace(settings?.InstagramUrl)) { <a href="@settings.InstagramUrl" target="_blank" rel="noopener">Instagram</a> }
         @if (!string.IsNullOrWhiteSpace(settings?.TikTokUrl)) { <a href="@settings.TikTokUrl" target="_blank" rel="noopener">TikTok</a> }
       </div>
-      @if (!string.IsNullOrWhiteSpace(settings?.WhatsAppPhone))
-      {
-        <a class="footer-whatsapp" href="https://wa.me/@settings.WhatsAppPhone" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>
-      }
+      <a class="footer-whatsapp" href="@WhatsAppUrl" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>
+      <a href="mailto:@Presentation.PublicEmail">@Presentation.PublicEmail</a>
     </div>
-    <small>© @DateTime.Now.Year Bruno's Garden & Snacks S.A. de C.V.</small>
+    <small>© @DateTime.Now.Year @Presentation.LegalName</small>
   </footer>
 </div>
 
@@ -63,20 +65,25 @@
   private bool menuOpen;
   private bool membershipEnabled;
   private BrunoPublicSiteSettingsDto? settings;
+  private string MembershipName => Presentation.MembershipProgramName ?? "Membresía";
+  private string WhatsAppUrl => Presentation.WhatsAppUrl($"Hola, {Presentation.ShortName}.");
   private bool IsHomePage => string.Equals(new Uri(Navigation.Uri).AbsolutePath, "/", StringComparison.Ordinal);
+  private IReadOnlyList<RestaurantOpeningHoursDay> WeekHours => RestaurantOpeningHours.Week(settings?.OpeningHoursJson);
 
   protected override async Task OnInitializedAsync()
   {
     try
     {
-      settings = await CatalogService.GetSettingsAsync(BrunoSiteConstants.Rfc);
+      var binding = await Website.ResolveRequiredAsync();
+      settings = await CatalogService.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+      membershipEnabled = Presentation.MembershipProgramName is not null
+        && settings?.IsMembershipEnabled == true;
     }
     catch
     {
       settings = null;
+      membershipEnabled = false;
     }
-
-    membershipEnabled = Environment.IsDevelopment() || settings?.IsMembershipEnabled == true;
   }
 
   private void CloseMenu() => menuOpen = false;

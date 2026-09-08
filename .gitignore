@@ -31,6 +31,7 @@ tools/marketing/.env
 tools/marketing/.env.local
 tools/marketing/local-music/
 tools/marketing/private-assets/
+**/appsettings.Instance.json
 recepcion_bonhomia entra secret.txt
 TestResults/
 test-results/

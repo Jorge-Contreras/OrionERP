@@ -11,18 +11,28 @@ namespace OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 public sealed class ReservacionPdfService : IReservacionPdfService
 {
-  private const string BrandPrimary = "#0B5A68";
-  private const string BrandPrimaryDark = "#083F49";
+  private readonly string BrandPrimary;
+  private readonly string BrandPrimaryDark;
+  private readonly string BrandAccent;
   private const string BrandMuted = "#6B7E83";
   private const string BrandBorder = "#D7E2E0";
   private const string BrandSurface = "#F8FBFA";
   private readonly string _logoSvg;
+  private readonly string _publicName;
+  private readonly string _tagline;
 
   public ReservacionPdfService(IOptions<ReservacionPdfOptions> options)
   {
     QuestPDF.Settings.License = LicenseType.Community;
 
-    var logoPath = options.Value.LogoPath?.Trim();
+    var configured = options.Value;
+    BrandPrimary = configured.PrimaryColor;
+    BrandPrimaryDark = configured.PrimaryDarkColor;
+    BrandAccent = configured.AccentColor;
+    _publicName = configured.PublicName;
+    _tagline = configured.Tagline;
+
+    var logoPath = configured.LogoPath?.Trim();
     _logoSvg = File.Exists(logoPath)
       ? File.ReadAllText(logoPath)
       : FallbackLogoSvg;
@@ -58,12 +68,12 @@ public sealed class ReservacionPdfService : IReservacionPdfService
         row.RelativeItem().PaddingLeft(12).Column(textColumn =>
         {
           textColumn.Spacing(2);
-          textColumn.Item().Text("Bonhomia Suites")
+          textColumn.Item().Text(_publicName)
             .FontSize(25).FontFamily("Tahoma")
             .Bold()
             .FontColor(BrandPrimary);
 
-          textColumn.Item().Text("Relajate, Ya estas en casa")
+          textColumn.Item().Text(_tagline)
             .FontSize(11).FontFamily("Tahoma")
             .Italic()
             .FontColor(BrandMuted);
@@ -86,7 +96,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
         });
       });
 
-      column.Item().LineHorizontal(1).LineColor(BrandBorder);
+      column.Item().LineHorizontal(1).LineColor(BrandAccent);
     });
   }
 
@@ -201,11 +211,11 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static void ComposeFooter(IContainer container)
+  private void ComposeFooter(IContainer container)
   {
     container.Row(row =>
     {
-      row.RelativeItem().Text("Bonhomia Suites")
+      row.RelativeItem().Text(_publicName)
         .FontSize(8)
         .FontColor(BrandMuted);
 
@@ -220,7 +230,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static void ComposeFieldPairs(IContainer container, IReadOnlyList<FieldEntry> fields)
+  private void ComposeFieldPairs(IContainer container, IReadOnlyList<FieldEntry> fields)
   {
     container.Column(column =>
     {
@@ -246,7 +256,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static void ComposeTable<TRow>(
+  private void ComposeTable<TRow>(
     IContainer container,
     IReadOnlyList<string> headers,
     IReadOnlyList<TRow> rows,
@@ -283,7 +293,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static void ComposeReservationSummary(IContainer container, ReservacionPdfDocumentModel model)
+  private void ComposeReservationSummary(IContainer container, ReservacionPdfDocumentModel model)
   {
     container.Element(CompactFieldBlock).Column(column =>
     {
@@ -309,7 +319,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static void ComposeTotalsSummary(IContainer container, ReservacionPdfDocumentModel model)
+  private void ComposeTotalsSummary(IContainer container, ReservacionPdfDocumentModel model)
   {
     container.Row(row =>
     {
@@ -393,27 +403,27 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static IContainer SectionCard(IContainer container)
+  private IContainer SectionCard(IContainer container)
     => container
       .Border(1)
       .BorderColor(BrandBorder)
       .Background(BrandSurface)
       .Padding(12);
 
-  private static IContainer SectionTitle(IContainer container)
+  private IContainer SectionTitle(IContainer container)
     => container
       .PaddingBottom(6)
       .BorderBottom(1)
       .BorderColor(BrandBorder);
 
-  private static IContainer FieldBlock(IContainer container)
+  private IContainer FieldBlock(IContainer container)
     => container
       .Background(Colors.White)
       .Border(1)
       .BorderColor(BrandBorder)
       .Padding(8);
 
-  private static IContainer CompactFieldBlock(IContainer container)
+  private IContainer CompactFieldBlock(IContainer container)
     => container
       .Background(Colors.White)
       .Border(1)
@@ -421,14 +431,14 @@ public sealed class ReservacionPdfService : IReservacionPdfService
       .PaddingHorizontal(8)
       .PaddingVertical(7);
 
-  private static IContainer TableHeaderCell(IContainer container)
+  private IContainer TableHeaderCell(IContainer container)
     => container
       .Background(BrandPrimary)
       .PaddingHorizontal(6)
       .PaddingVertical(5)
       .DefaultTextStyle(style => style.FontColor(Colors.White).FontSize(9));
 
-  private static IContainer TableBodyCell(IContainer container, float fontSize = 9)
+  private IContainer TableBodyCell(IContainer container, float fontSize = 9)
     => container
       .BorderBottom(1)
       .BorderColor(BrandBorder)
@@ -439,7 +449,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
   private static string Safe(string? value)
     => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
 
-  private static void ComposeFieldBlock(IContainer container, FieldEntry field)
+  private void ComposeFieldBlock(IContainer container, FieldEntry field)
   {
     container.Element(FieldBlock).Column(column =>
     {
@@ -451,7 +461,7 @@ public sealed class ReservacionPdfService : IReservacionPdfService
     });
   }
 
-  private static void ComposeInlineValue(
+  private void ComposeInlineValue(
     IContainer container,
     string label,
     string value,
@@ -508,4 +518,9 @@ public sealed class ReservacionPdfService : IReservacionPdfService
 public sealed class ReservacionPdfOptions
 {
   public string? LogoPath { get; set; }
+  public string PublicName { get; set; } = "Hospedaje";
+  public string Tagline { get; set; } = "Confirmacion de reservacion";
+  public string PrimaryColor { get; set; } = "#0B5A68";
+  public string PrimaryDarkColor { get; set; } = "#083F49";
+  public string AccentColor { get; set; } = "#D7E2E0";
 }

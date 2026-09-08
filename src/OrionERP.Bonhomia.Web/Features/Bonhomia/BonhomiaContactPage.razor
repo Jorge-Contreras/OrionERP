@@ -1,14 +1,15 @@
 @page "/contacto"
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Contacto | Bonhomia Suites</PageTitle>
+<PageTitle>Contacto | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Contacta a Bonhomia Suites en Calpulalpan por WhatsApp, correo o direccion para resolver dudas antes de reservar." />
+    <meta name="description" content="@($"Contacta a {Presentation.PublicName} en {Presentation.LocationName} por WhatsApp, correo o direccion para resolver dudas antes de reservar.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
     <section class="bonhomia-page__title">
         <p class="bonhomia-eyebrow">Contacto</p>
-        <h1>Te esperamos en Calpulalpan</h1>
+        <h1>Te esperamos en @Presentation.LocationName</h1>
         <p>Comparte fechas, numero de huespedes y motivo de viaje para orientarte antes de reservar.</p>
     </section>
 
@@ -17,16 +18,16 @@
             <div class="bonhomia-document-card">
                 <h2>Datos de contacto</h2>
                 <dl>
-                    <div><dt>Direccion</dt><dd>@BonhomiaSiteContent.Address</dd></div>
-                    <div><dt>WhatsApp</dt><dd>@BonhomiaSiteContent.WhatsAppDisplay</dd></div>
-                    <div><dt>Correo</dt><dd>@BonhomiaSiteContent.Email</dd></div>
+                    <div><dt>Direccion</dt><dd>@Presentation.OperatingAddress</dd></div>
+                    <div><dt>WhatsApp</dt><dd>@Presentation.WhatsAppDisplay</dd></div>
+                    <div><dt>Correo</dt><dd>@Presentation.PublicEmail</dd></div>
                 </dl>
                 <div class="bonhomia-actions">
-                    <a class="bonhomia-button bonhomia-button--primary" href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, quiero informacion para una estancia.")' target="_blank" rel="noopener noreferrer">
+                    <a class="bonhomia-button bonhomia-button--primary" href='@Presentation.WhatsAppUrl($"Hola {Presentation.PublicName}, quiero informacion para una estancia.")' target="_blank" rel="noopener noreferrer">
                         <i class="bi bi-whatsapp" aria-hidden="true"></i>
                         <span>WhatsApp</span>
                     </a>
-                    <a class="bonhomia-button bonhomia-button--outline" href="mailto:@BonhomiaSiteContent.Email">
+                    <a class="bonhomia-button bonhomia-button--outline" href="mailto:@Presentation.PublicEmail">
                         <i class="bi bi-envelope" aria-hidden="true"></i>
                         <span>Correo</span>
                     </a>

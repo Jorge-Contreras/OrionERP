@@ -1,16 +1,17 @@
 @page "/privacidad"
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Aviso de privacidad · Bruno's Garden & Snacks</PageTitle>
+<PageTitle>Aviso de privacidad · @Presentation.PublicName</PageTitle>
 <article class="legal-page">
   <header>
-    <span>Versión @BrunoSiteConstants.PrivacyVersion</span>
+    <span>Versión @Presentation.PrivacyVersion</span>
     <h1>Aviso de privacidad integral</h1>
-    <p>Última actualización: 31 de julio de 2026.</p>
+    <p>Última actualización: @Presentation.PrivacyUpdatedDisplay.</p>
   </header>
   <aside class="legal-draft"><strong>Borrador operativo.</strong> Este texto implementa las decisiones de privacidad del servicio y debe recibir revisión jurídica antes de habilitar registro en producción.</aside>
 
   <h2>1. Identidad y domicilio del responsable</h2>
-  <p><strong>Bruno's Garden & Snacks S.A. de C.V.</strong> (“Bruno's”, “nosotros” o el “Responsable”), con domicilio en Calle Camino Nacional #5, Colonia Francisco Sarabia, C.P. 90207, Calpulalpan, Tlaxcala, México, es responsable del tratamiento de los datos personales descritos en este aviso. Para asuntos de privacidad y ejercicio de derechos puede escribir a <a href="mailto:info@brunosgarden.com">info@brunosgarden.com</a>.</p>
+  <p><strong>@Presentation.LegalName</strong> (“@Presentation.ShortName”, “nosotros” o el “Responsable”), con domicilio en @Presentation.FiscalAddress, es responsable del tratamiento de los datos personales descritos en este aviso. Para asuntos de privacidad y ejercicio de derechos puede escribir a <a href="mailto:@Presentation.PrivacyEmail">@Presentation.PrivacyEmail</a>.</p>
 
   <h2>2. Datos personales que tratamos</h2>
   <p>Según la interacción que tenga con nosotros, podemos tratar:</p>
@@ -26,17 +27,17 @@
 
   <h2>3. Finalidades necesarias</h2>
   <p>Usamos sus datos para crear, autenticar, proteger y administrar su cuenta; verificar el correo; identificar su membresía en el POS; calcular, acreditar, consultar, ajustar y revertir puntos; aplicar límites de promociones y códigos; emitir información en el ticket; atender reembolsos, aclaraciones, seguridad y prevención de fraude; recuperar contraseñas; atender solicitudes de privacidad; mantener evidencia transaccional y de auditoría; cumplir obligaciones legales, fiscales, contables y de protección al consumidor; asegurar, medir y operar el sitio.</p>
-  <p>Estas finalidades son necesarias para prestar Club Bruno y la operación asociada. Si no desea el tratamiento necesario, puede abstenerse de crear una cuenta o solicitar su baja.</p>
+  <p>Estas finalidades son necesarias para prestar @MembershipName y la operación asociada. Si no desea el tratamiento necesario, puede abstenerse de crear una cuenta o solicitar su baja.</p>
 
   <h2>4. Finalidades opcionales de mercadotecnia</h2>
   <p>Solo con su consentimiento separado podremos enviar novedades, invitaciones, beneficios o promociones por: (a) correo electrónico, (b) SMS y (c) WhatsApp. Negarse o retirar cualquiera de estos consentimientos no afecta las compras, el saldo de puntos ni las comunicaciones estrictamente transaccionales o de seguridad.</p>
-  <p>La versión inicial recopila estas preferencias, pero no realizará campañas masivas automatizadas. Puede cambiarlas desde Mi cuenta o escribir a info@brunosgarden.com.</p>
+  <p>La versión inicial recopila estas preferencias, pero no realizará campañas masivas automatizadas. Puede cambiarlas desde Mi cuenta o escribir a <a href="mailto:@Presentation.PrivacyEmail">@Presentation.PrivacyEmail</a>.</p>
 
   <h2>5. Base de tratamiento y consentimiento</h2>
   <p>Al registrarse, confirma que leyó este aviso y acepta el tratamiento necesario para operar la cuenta y el programa. Las finalidades opcionales se aceptan mediante controles independientes que no vienen premarcados. Conservamos la versión del documento, la decisión y la fecha para demostrar sus instrucciones.</p>
 
   <h2>6. Proveedores, encargados y transferencias</h2>
-  <p>Podemos apoyarnos en proveedores que tratan datos por cuenta de Bruno's bajo instrucciones y medidas contractuales, incluyendo: Microsoft 365 y Microsoft Graph para correo; Cloudflare para DNS, túnel, mitigación, Turnstile y analítica; servicios de infraestructura, respaldo, seguridad, soporte y alojamiento; y asesores profesionales cuando sea necesario.</p>
+  <p>Podemos apoyarnos en proveedores que tratan datos por cuenta de @Presentation.LegalName bajo instrucciones y medidas contractuales, incluyendo: Microsoft 365 y Microsoft Graph para correo; Cloudflare para DNS, túnel, mitigación, Turnstile y analítica; servicios de infraestructura, respaldo, seguridad, soporte y alojamiento; y asesores profesionales cuando sea necesario.</p>
   <p>Algunos proveedores pueden procesar datos fuera de México. Adoptaremos medidas razonables para que el tratamiento mantenga una protección compatible con este aviso. También podremos comunicar información a autoridades competentes cuando exista obligación o requerimiento legal. No vendemos sus datos personales.</p>
 
   <h2>7. Conservación</h2>
@@ -47,11 +48,11 @@
   <p>Aplicamos controles técnicos y organizativos razonables: cifrado en tránsito, contraseñas con hash, cookies seguras y exclusivas, protección antifalsificación, límites de solicitudes, bloqueo por intentos fallidos, verificación del correo, separación de identidades administrativas y públicas, acceso por roles, auditoría, enlaces y QR de vigencia corta, aislamiento por RFC y secretos fuera del repositorio. Ningún sistema es infalible; en caso de un incidente relevante actuaremos conforme a la normativa aplicable.</p>
 
   <h2>9. Derechos ARCO y otros derechos</h2>
-  <p>Puede solicitar acceso a sus datos; rectificación de información inexacta; cancelación cuando proceda; oposición a determinados tratamientos; revocación del consentimiento; o limitación de uso y divulgación. Envíe la solicitud a info@brunosgarden.com indicando: nombre, medio para recibir respuesta, derecho que desea ejercer, descripción clara de los datos y, cuando corresponda, documentos que acrediten identidad o representación. Podemos pedir información razonable para verificar identidad y evitar accesos no autorizados.</p>
+  <p>Puede solicitar acceso a sus datos; rectificación de información inexacta; cancelación cuando proceda; oposición a determinados tratamientos; revocación del consentimiento; o limitación de uso y divulgación. Envíe la solicitud a <a href="mailto:@Presentation.PrivacyEmail">@Presentation.PrivacyEmail</a> indicando: nombre, medio para recibir respuesta, derecho que desea ejercer, descripción clara de los datos y, cuando corresponda, documentos que acrediten identidad o representación. Podemos pedir información razonable para verificar identidad y evitar accesos no autorizados.</p>
   <p>Le comunicaremos la determinación y, cuando proceda, la haremos efectiva dentro de los plazos legales. Si la solicitud no puede atenderse total o parcialmente por una obligación o excepción aplicable, explicaremos el motivo y los medios de inconformidad disponibles.</p>
 
   <h2>10. Revocación y limitación</h2>
-  <p>Puede retirar consentimientos opcionales desde Mi cuenta. Para revocar otros consentimientos o limitar comunicaciones, escriba a info@brunosgarden.com. La revocación no produce efectos retroactivos ni impide tratamientos necesarios por relación jurídica u obligación legal. También puede usar mecanismos de baja incluidos en comunicaciones futuras.</p>
+  <p>Puede retirar consentimientos opcionales desde Mi cuenta. Para revocar otros consentimientos o limitar comunicaciones, escriba a <a href="mailto:@Presentation.PrivacyEmail">@Presentation.PrivacyEmail</a>. La revocación no produce efectos retroactivos ni impide tratamientos necesarios por relación jurídica u obligación legal. También puede usar mecanismos de baja incluidos en comunicaciones futuras.</p>
 
   <h2>11. Cookies, Turnstile y analítica</h2>
   <p>Usamos cookies estrictamente necesarias para sesión, seguridad, preferencias y protección antifalsificación. Cloudflare Turnstile evalúa señales técnicas para distinguir interacciones legítimas de abuso. Cloudflare Web Analytics recopila métricas agregadas del uso del sitio. No usamos en v1 perfiles publicitarios conductuales ni vendemos identificadores. Puede configurar su navegador para rechazar cookies, pero las cookies necesarias son indispensables para iniciar sesión.</p>
@@ -63,5 +64,9 @@
   <p>Podremos actualizar este aviso por cambios legales, operativos o de servicios. Publicaremos la nueva versión y fecha en esta página. Cuando el cambio requiera un nuevo consentimiento, lo solicitaremos de forma verificable antes de aplicar la finalidad correspondiente.</p>
 
   <h2>14. Contacto</h2>
-  <p>Responsable: Bruno's Garden & Snacks S.A. de C.V.<br />Domicilio: Calle Camino Nacional #5, Colonia Francisco Sarabia, C.P. 90207, Calpulalpan, Tlaxcala, México.<br />Privacidad y derechos ARCO: <a href="mailto:info@brunosgarden.com">info@brunosgarden.com</a>.</p>
+  <p>Responsable: @Presentation.LegalName<br />Domicilio: @Presentation.FiscalAddress.<br />Privacidad y derechos ARCO: <a href="mailto:@Presentation.PrivacyEmail">@Presentation.PrivacyEmail</a>.</p>
 </article>
+
+@code {
+  private string MembershipName => Presentation.MembershipProgramName ?? "la membresía";
+}

@@ -1,15 +1,16 @@
 @page "/politicas-de-reserva"
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Politicas de reserva | Bonhomia Suites</PageTitle>
+<PageTitle>Politicas de reserva | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Politicas de reserva, check-in, cancelacion, convivencia, pagos y extras de Bonhomia Suites." />
+    <meta name="description" content="@($"Politicas de reserva, check-in, cancelacion, convivencia, pagos y extras de {Presentation.PublicName}.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
     <article class="bonhomia-document">
         <p class="bonhomia-eyebrow">Documento consolidado</p>
         <h1>Politicas de reserva</h1>
-        <p>Las politicas de reserva, pago, cancelacion, check-in, convivencia y extras ahora se consultan desde el centro legal de Bonhomia Suites.</p>
+        <p>Las politicas de reserva, pago, cancelacion, check-in, convivencia y extras ahora se consultan desde el centro legal de @Presentation.PublicName.</p>
 
         <div class="bonhomia-document-card">
             <h2>Ir a politicas vigentes</h2>

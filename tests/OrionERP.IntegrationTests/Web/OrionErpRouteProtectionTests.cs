@@ -8,6 +8,7 @@ using OrionERP.Web.Features.Logistica.Materials;
 using OrionERP.Web.Features.Logistica.PhysicalCounts;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.Logistica.Vendors;
+using OrionERP.Web.Features.Platform;
 using OrionERP.Web.Features.Reservaciones.ListaReservaciones;
 
 namespace OrionERP.IntegrationTests.Web;
@@ -17,6 +18,7 @@ public class OrionErpRouteProtectionTests
   [Theory]
   [InlineData(typeof(ListaReservacionesPage), "/reservaciones/lista", "Administrador,SatOperator")]
   [InlineData(typeof(IdentityAdminPage), "/admin/seguridad", "Administrador")]
+  [InlineData(typeof(PlatformAdministrationPage), "/admin/plataforma", "Administrador")]
   public void ProtectedErpRoutes_RetainAuthorizeMetadata(Type componentType, string route, string roles)
   {
     var routeTemplates = componentType.GetCustomAttributes<RouteAttribute>()
@@ -64,6 +66,8 @@ public class OrionErpRouteProtectionTests
   [InlineData("/restaurante/produccion", "RestaurantAdmin")]
   [InlineData("/restaurante/inventario", "RestaurantAdmin")]
   [InlineData("/restaurante/reportes", "RestaurantAdmin")]
+  [InlineData("/restaurante/promociones", "RestaurantAdmin")]
+  [InlineData("/restaurante/sitio-publico", "RestaurantAdmin")]
   [InlineData("/restaurante/configuracion", "RestaurantAdmin")]
   [InlineData("/restaurante/pos", "RestaurantPos")]
   [InlineData("/restaurante/ordenes", "RestaurantPos")]

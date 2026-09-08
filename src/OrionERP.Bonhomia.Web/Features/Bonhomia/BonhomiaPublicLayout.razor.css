@@ -10,7 +10,7 @@
   --bonhomia-gold: #c99d4a;
   --bonhomia-border: rgba(23, 38, 34, 0.14);
   min-height: 100vh;
-  background: #fbfaf6;
+  background: var(--bonhomia-warm);
   color: var(--bonhomia-ink);
   font-family: "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
   letter-spacing: 0;
@@ -32,8 +32,8 @@
   align-items: center;
   min-height: 5.2rem;
   padding: 0.75rem clamp(1rem, 4vw, 2rem);
-  border-bottom: 1px solid rgba(15, 76, 92, 0.12);
-  background: linear-gradient(180deg, rgba(251, 250, 246, 0.98), rgba(251, 250, 246, 0.9));
+  border-bottom: 1px solid color-mix(in srgb, var(--bonhomia-teal) 12%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bonhomia-warm) 98%, transparent), color-mix(in srgb, var(--bonhomia-warm) 90%, transparent));
   backdrop-filter: blur(20px);
   box-shadow: 0 18px 44px rgba(23, 38, 34, 0.07);
 }
@@ -44,7 +44,7 @@
   bottom: -1px;
   left: clamp(1rem, 4vw, 2rem);
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(201, 157, 74, 0.56), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--bonhomia-gold) 56%, transparent), transparent);
   content: "";
   pointer-events: none;
 }
@@ -181,7 +181,7 @@
 .bonhomia-public-brand:focus-visible,
 .bonhomia-public-nav__links ::deep a:focus-visible,
 .bonhomia-public-footer a:focus-visible {
-  outline: 3px solid rgba(201, 157, 74, 0.42);
+  outline: 3px solid color-mix(in srgb, var(--bonhomia-gold) 42%, transparent);
   outline-offset: 2px;
 }
 

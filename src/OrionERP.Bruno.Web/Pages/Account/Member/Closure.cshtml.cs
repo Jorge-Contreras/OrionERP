@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Infrastructure.Auth;
 
@@ -14,7 +15,21 @@ public sealed class ClosureModel : PageModel
   private readonly UserManager<BrunoMemberUser> _userManager;
   private readonly SignInManager<BrunoMemberUser> _signInManager;
   private readonly ILoyaltyService _loyaltyService;
-  public ClosureModel(UserManager<BrunoMemberUser> userManager, SignInManager<BrunoMemberUser> signInManager, ILoyaltyService loyaltyService) { _userManager = userManager; _signInManager = signInManager; _loyaltyService = loyaltyService; }
+  private readonly IPublicWebsiteInstanceContext _website;
+  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  public ClosureModel(
+    UserManager<BrunoMemberUser> userManager,
+    SignInManager<BrunoMemberUser> signInManager,
+    ILoyaltyService loyaltyService,
+    IPublicWebsiteInstanceContext website,
+    IRestaurantPublicIdentityScopeAccessor identityScope)
+  {
+    _userManager = userManager;
+    _signInManager = signInManager;
+    _loyaltyService = loyaltyService;
+    _website = website;
+    _identityScope = identityScope;
+  }
   [BindProperty]
   [Required(ErrorMessage = "El motivo es obligatorio.")]
   [StringLength(500, ErrorMessage = "El motivo no puede exceder {1} caracteres.")]
@@ -31,9 +46,14 @@ public sealed class ClosureModel : PageModel
     if (!ModelState.IsValid) return Page();
     var user = await _userManager.GetUserAsync(User);
     if (user is null) return Redirect("/cuenta/acceso");
-    var profile = await _loyaltyService.GetMemberProfileByIdentityAsync(BrunoSiteConstants.Rfc, user.Id, ct);
+    var publicSiteId = _identityScope.Current.PublicSiteId;
+    var profile = await _loyaltyService.GetMemberProfileByIdentityAsync(
+      _website.CurrentRfc,
+      publicSiteId,
+      user.Id,
+      ct);
     if (profile is null) return Redirect("/");
-    var result = await _loyaltyService.RequestClosureAsync(new LoyaltyClosureRequest { Rfc = BrunoSiteConstants.Rfc, MemberId = profile.Id, Reason = Reason }, ct);
+    var result = await _loyaltyService.RequestClosureAsync(new LoyaltyClosureRequest { Rfc = _website.CurrentRfc, PublicSiteId = publicSiteId, MemberId = profile.Id, Reason = Reason }, ct);
     if (!result.Success) { ModelState.AddModelError(string.Empty, result.Message); return Page(); }
     await _signInManager.SignOutAsync();
     return Redirect("/?baja=solicitada");

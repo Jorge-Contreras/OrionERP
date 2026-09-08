@@ -1,8 +1,10 @@
 @page "/promociones"
 @inject IBrunoPublicCatalogService CatalogService
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Promociones · Bruno's Garden & Snacks</PageTitle>
-<section class="page-hero page-hero--promos"><span>Más Bruno's por tu visita</span><h1>Promociones</h1><p>Cada promoción publicada muestra sus condiciones completas y se aplica en el servidor al cobrar.</p></section>
+<PageTitle>Promociones · @Presentation.PublicName</PageTitle>
+<section class="page-hero page-hero--promos"><span>Más beneficios en tu visita</span><h1>Promociones</h1><p>Cada promoción publicada muestra sus condiciones completas y se aplica en el servidor al cobrar.</p></section>
 
 <section class="promotion-page">
   @if (promotions.Count == 0)
@@ -28,7 +30,7 @@
         <aside class="promo-join">
           <div>
             <strong>Algunas promociones son solo para socios</strong>
-            <p>Crear tu cuenta de Club Bruno es gratis y toma menos de un minuto. Además, cada compra elegible te suma puntos.</p>
+            <p>Crear tu cuenta de @MembershipName es gratis. Además, cada compra elegible puede sumar puntos.</p>
           </div>
           <a class="button button--accent" href="/cuenta/registro" target="_top">Únete gratis</a>
         </aside>
@@ -46,10 +48,14 @@
   {
     try
     {
-      var catalog = await CatalogService.GetCatalogAsync(BrunoSiteConstants.Rfc, BrunoSiteConstants.SiteCode, DateTimeOffset.Now);
+      var binding = await Website.ResolveRequiredAsync();
+      var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
+      var catalog = await CatalogService.GetCatalogAsync(binding.CompanyRfc, binding.SiteKey, localNow);
       promotions = catalog?.Promotions ?? [];
       membershipEnabled = catalog?.Settings?.IsMembershipEnabled == true;
     }
     catch { }
   }
+
+  private string MembershipName => Presentation.MembershipProgramName ?? "la membresía";
 }

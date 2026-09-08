@@ -9,7 +9,7 @@
     var principalMenuUrl = FileVersionProvider.AddFileVersionToPath(pathBase, principalMenuPath);
     var beveragesMenuUrl = FileVersionProvider.AddFileVersionToPath(pathBase, beveragesMenuPath);
     var screen = Model.Screen;
-    var title = screen is null ? "Menús de Bruno's" : screen.Name;
+    var title = screen is null ? "Menús" : screen.Name;
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -29,14 +29,14 @@
     <main class="menu-signage"
           data-menu-signage
           data-interval-ms="8000"
-          aria-label="Menús de Bruno's Garden &amp; Snacks">
+          aria-label="Tableros de menú">
         <img class="menu-signage__slide is-active"
              src="@principalMenuUrl"
-             alt="Menú principal de alimentos de Bruno's Garden &amp; Snacks"
+             alt="Menú principal de alimentos"
              fetchpriority="high" />
         <img class="menu-signage__slide"
              src="@beveragesMenuUrl"
-             alt="Menú de bebidas de Bruno's Garden &amp; Snacks" />
+             alt="Menú de bebidas" />
     </main>
 }
 else

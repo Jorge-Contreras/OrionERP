@@ -4,11 +4,13 @@ public interface IBrunoMemberService
 {
   Task<LoyaltyMemberProfileDto?> GetMemberProfileByIdentityAsync(
     string rfc,
+    long publicSiteId,
     string identityUserId,
     CancellationToken ct = default);
 
   Task<LoyaltyQrTokenDto> CreateQrTokenAsync(
     string rfc,
+    long publicSiteId,
     Guid memberId,
     CancellationToken ct = default);
 

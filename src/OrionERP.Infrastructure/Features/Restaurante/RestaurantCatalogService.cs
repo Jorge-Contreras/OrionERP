@@ -599,7 +599,31 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     };
   }
 
-  public async Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, long productId, bool thumbnail, CancellationToken ct = default)
+  public Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
+    string rfc,
+    long productId,
+    bool thumbnail,
+    CancellationToken ct = default)
+    => GetProductImageCoreAsync(rfc, null, productId, thumbnail, ct);
+
+  public Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
+    string rfc,
+    long siteId,
+    long productId,
+    bool thumbnail,
+    CancellationToken ct = default)
+  {
+    if (siteId <= 0)
+      throw new ArgumentOutOfRangeException(nameof(siteId));
+    return GetProductImageCoreAsync(rfc, siteId, productId, thumbnail, ct);
+  }
+
+  private async Task<(byte[] Bytes, string ContentType)?> GetProductImageCoreAsync(
+    string rfc,
+    long? siteId,
+    long productId,
+    bool thumbnail,
+    CancellationToken ct)
   {
     const string sql =
       """
@@ -611,12 +635,29 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       FROM restaurante.Product product
       JOIN restaurante.ProductCard card ON card.Rfc = product.Rfc AND card.Id = product.ProductCardId
       LEFT JOIN logistica.Material material ON material.Rfc = product.Rfc AND material.Id = product.MaterialId
-      WHERE product.Rfc = @Rfc AND product.Id = @ProductId;
+      LEFT JOIN restaurante.KitchenStation station ON station.Rfc = product.Rfc AND station.Id = product.KitchenStationId
+      WHERE product.Rfc = @Rfc AND product.Id = @ProductId
+        AND
+        (
+          @SiteId IS NULL
+          OR
+          (
+            product.IsActive = 1
+            AND (product.KitchenStationId IS NULL OR station.SiteId = @SiteId)
+            AND EXISTS
+            (
+              SELECT 1
+              FROM restaurante.Site siteInfo
+              WHERE siteInfo.Rfc = product.Rfc AND siteInfo.Id = @SiteId AND siteInfo.IsEnabled = 1
+            )
+          )
+        );
       """;
     using var conn = CreateConnection();
     var row = await conn.QueryFirstOrDefaultAsync<ImageRow>(new CommandDefinition(sql, new
     {
       Rfc = LogisticsRfc.Require(rfc),
+      SiteId = siteId,
       ProductId = productId,
       Thumbnail = thumbnail
     }, cancellationToken: ct));

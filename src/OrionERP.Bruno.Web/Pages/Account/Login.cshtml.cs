@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.RateLimiting;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Bruno.Web.Services;
 using OrionERP.Infrastructure.Auth;
@@ -16,7 +17,23 @@ public sealed class LoginModel : PageModel
   private readonly UserManager<BrunoMemberUser> _userManager;
   private readonly ILoyaltyService _loyaltyService;
   private readonly IBrunoTurnstileService _turnstile;
-  public LoginModel(SignInManager<BrunoMemberUser> signInManager, UserManager<BrunoMemberUser> userManager, ILoyaltyService loyaltyService, IBrunoTurnstileService turnstile) { _signInManager = signInManager; _userManager = userManager; _loyaltyService = loyaltyService; _turnstile = turnstile; }
+  private readonly IPublicWebsiteInstanceContext _website;
+  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  public LoginModel(
+    SignInManager<BrunoMemberUser> signInManager,
+    UserManager<BrunoMemberUser> userManager,
+    ILoyaltyService loyaltyService,
+    IBrunoTurnstileService turnstile,
+    IPublicWebsiteInstanceContext website,
+    IRestaurantPublicIdentityScopeAccessor identityScope)
+  {
+    _signInManager = signInManager;
+    _userManager = userManager;
+    _loyaltyService = loyaltyService;
+    _turnstile = turnstile;
+    _website = website;
+    _identityScope = identityScope;
+  }
   [BindProperty] public InputModel Input { get; set; } = new();
   public string? ReturnUrl { get; private set; }
   public void OnGet(string? returnUrl = null) => ReturnUrl = returnUrl;
@@ -32,7 +49,11 @@ public sealed class LoginModel : PageModel
     if (!ModelState.IsValid) return Page();
     var user = await _userManager.FindByEmailAsync(Input.Email.Trim());
     if (user is null) { ModelState.AddModelError(string.Empty, "Correo o contraseña incorrectos."); return Page(); }
-    var member = await _loyaltyService.GetMemberProfileByIdentityAsync(BrunoSiteConstants.Rfc, user.Id, ct);
+    var member = await _loyaltyService.GetMemberProfileByIdentityAsync(
+      _website.CurrentRfc,
+      _identityScope.Current.PublicSiteId,
+      user.Id,
+      ct);
     if (member is null || member.Status == LoyaltyMemberStatuses.Closed || user.ClosedAt.HasValue)
     {
       ModelState.AddModelError(string.Empty, "La cuenta no está disponible.");

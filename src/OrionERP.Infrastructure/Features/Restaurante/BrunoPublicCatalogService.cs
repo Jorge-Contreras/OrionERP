@@ -85,24 +85,61 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
 
   public async Task<BrunoPublicSiteSettingsDto?> GetSettingsAsync(
     string rfc,
-    int? siteId = null,
+    int siteId,
     CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
+    if (siteId <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(siteId));
+    }
+
     using var conn = CreateConnection();
     return await conn.QuerySingleOrDefaultAsync<BrunoPublicSiteSettingsDto>(new CommandDefinition(
       """
-      SELECT TOP(1)
+      SELECT
         Rfc,SiteId,LegalName,PublicName,HeroEyebrow,HeroTitle,HeroDescription,
         AddressLine,Neighborhood,PostalCode,City,StateName,CountryName,
         WhatsAppPhone,WhatsAppDisplay,MapsUrl,FacebookUrl,InstagramUrl,TikTokUrl,
         OpeningHoursJson,SeoDescription,IsWebsiteEnabled,IsMembershipEnabled,
         IsLoyaltyAccrualEnabled,IsPromotionsEnabled,UpdatedAt
       FROM restaurante.PublicSiteSettings
-      WHERE Rfc=@Rfc AND (@SiteId IS NULL OR SiteId=@SiteId)
-      ORDER BY SiteId;
+      WHERE Rfc=@Rfc AND SiteId=@SiteId;
       """,
       new { Rfc = normalizedRfc, SiteId = siteId },
+      cancellationToken: ct));
+  }
+
+  public async Task<BrunoPublicSiteSettingsDto?> GetSettingsAsync(
+    string rfc,
+    string siteCode,
+    CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    var normalizedSiteCode = string.IsNullOrWhiteSpace(siteCode)
+      ? throw new ArgumentException("SiteCode is required.", nameof(siteCode))
+      : siteCode.Trim();
+
+    using var conn = CreateConnection();
+    return await conn.QuerySingleOrDefaultAsync<BrunoPublicSiteSettingsDto>(new CommandDefinition(
+      """
+      SELECT
+        settings.Rfc,settings.SiteId,settings.LegalName,settings.PublicName,
+        settings.HeroEyebrow,settings.HeroTitle,settings.HeroDescription,
+        settings.AddressLine,settings.Neighborhood,settings.PostalCode,settings.City,
+        settings.StateName,settings.CountryName,settings.WhatsAppPhone,
+        settings.WhatsAppDisplay,settings.MapsUrl,settings.FacebookUrl,
+        settings.InstagramUrl,settings.TikTokUrl,settings.OpeningHoursJson,
+        settings.SeoDescription,settings.IsWebsiteEnabled,settings.IsMembershipEnabled,
+        settings.IsLoyaltyAccrualEnabled,settings.IsPromotionsEnabled,settings.UpdatedAt
+      FROM restaurante.PublicSiteSettings settings
+      INNER JOIN restaurante.Site site
+        ON site.Rfc=settings.Rfc AND site.Id=settings.SiteId
+      WHERE settings.Rfc=@Rfc
+        AND site.SiteCode=@SiteCode
+        AND site.IsEnabled=1;
+      """,
+      new { Rfc = normalizedRfc, SiteCode = normalizedSiteCode },
       cancellationToken: ct));
   }
 

@@ -23,6 +23,7 @@ public interface IBonhomiaPublicBookingService
     BonhomiaQuoteDto quote,
     BonhomiaCustomerInfo customer,
     BonhomiaPayPalCaptureResult payment,
+    BonhomiaLegalAcceptance legalAcceptance,
     CancellationToken ct = default);
 
   Task<ReservacionDetailDto?> GetReservationDetailAsync(

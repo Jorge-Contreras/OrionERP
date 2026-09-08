@@ -1,0 +1,112 @@
+using System.Text.Json;
+
+namespace OrionERP.Bruno.Web.Services;
+
+public sealed record RestaurantOpeningHoursDay(string DayName, string Hours);
+
+public static class RestaurantOpeningHours
+{
+  private static readonly (DayOfWeek Day, string JsonName, string DisplayName)[] Days =
+  [
+    (DayOfWeek.Monday, "Monday", "Lunes"),
+    (DayOfWeek.Tuesday, "Tuesday", "Martes"),
+    (DayOfWeek.Wednesday, "Wednesday", "Miércoles"),
+    (DayOfWeek.Thursday, "Thursday", "Jueves"),
+    (DayOfWeek.Friday, "Friday", "Viernes"),
+    (DayOfWeek.Saturday, "Saturday", "Sábado"),
+    (DayOfWeek.Sunday, "Sunday", "Domingo")
+  ];
+
+  public static DateTimeOffset LocalNow(string timeZoneId, DateTimeOffset utcNow)
+    => TimeZoneInfo.ConvertTime(utcNow, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
+
+  public static string Today(
+    string? openingHoursJson,
+    string timeZoneId,
+    DateTimeOffset utcNow)
+  {
+    DayOfWeek day;
+    try
+    {
+      day = LocalNow(timeZoneId, utcNow).DayOfWeek;
+    }
+    catch (TimeZoneNotFoundException)
+    {
+      return "Consulta el horario";
+    }
+    catch (InvalidTimeZoneException)
+    {
+      return "Consulta el horario";
+    }
+
+    var item = Days.Single(candidate => candidate.Day == day);
+    return Read(openingHoursJson, item.JsonName) ?? "Consulta el horario";
+  }
+
+  public static IReadOnlyList<RestaurantOpeningHoursDay> Week(string? openingHoursJson)
+    => Days
+      .Select(day => new RestaurantOpeningHoursDay(
+        day.DisplayName,
+        Read(openingHoursJson, day.JsonName) ?? "Horario no disponible"))
+      .ToArray();
+
+  private static string? Read(string? openingHoursJson, string dayName)
+  {
+    if (string.IsNullOrWhiteSpace(openingHoursJson))
+    {
+      return null;
+    }
+
+    try
+    {
+      using var document = JsonDocument.Parse(openingHoursJson);
+      if (document.RootElement.ValueKind != JsonValueKind.Object
+          || !TryGetProperty(document.RootElement, dayName, out var intervals)
+          || intervals.ValueKind != JsonValueKind.Array)
+      {
+        return null;
+      }
+
+      if (intervals.GetArrayLength() == 0)
+      {
+        return "Cerrado";
+      }
+
+      var values = new List<string>();
+      foreach (var interval in intervals.EnumerateArray())
+      {
+        if (interval.ValueKind != JsonValueKind.Object
+            || !TryGetProperty(interval, "opens", out var opensElement)
+            || !TryGetProperty(interval, "closes", out var closesElement)
+            || !TimeOnly.TryParseExact(opensElement.GetString(), "HH:mm", out var opens)
+            || !TimeOnly.TryParseExact(closesElement.GetString(), "HH:mm", out var closes))
+        {
+          return null;
+        }
+
+        values.Add($"{opens:HH\\:mm}–{closes:HH\\:mm}");
+      }
+
+      return string.Join(" · ", values);
+    }
+    catch (JsonException)
+    {
+      return null;
+    }
+  }
+
+  private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+  {
+    foreach (var property in element.EnumerateObject())
+    {
+      if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+      {
+        value = property.Value;
+        return true;
+      }
+    }
+
+    value = default;
+    return false;
+  }
+}

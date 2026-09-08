@@ -1,8 +1,10 @@
 @page "/preguntas-frecuentes"
+@inject PublicWebsitePresentationDefinition Presentation
+@inject HospitalityWebsiteDefinition Hospitality
 
-<PageTitle>Preguntas frecuentes | Bonhomia Suites</PageTitle>
+<PageTitle>Preguntas frecuentes | @Presentation.PublicName</PageTitle>
 <HeadContent>
-    <meta name="description" content="Preguntas frecuentes de Bonhomia Suites sobre reservas, trabajo remoto, familias, pagos, politicas y facturacion." />
+    <meta name="description" content="@($"Preguntas frecuentes de {Presentation.PublicName} sobre reservas, trabajo remoto, familias, pagos, politicas y facturacion.")" />
 </HeadContent>
 
 <main class="bonhomia-page">
@@ -14,7 +16,7 @@
 
     <section class="bonhomia-section bonhomia-section--last">
         <div class="bonhomia-faq">
-            @foreach (var faq in BonhomiaSiteContent.Faqs)
+            @foreach (var faq in Hospitality.Faqs)
             {
                 <details>
                     <summary>@faq.Question</summary>
@@ -30,7 +32,7 @@
                 <p>Para viajes de trabajo, estancias familiares o agenda institucional, conviene confirmar requisitos especiales antes de pagar.</p>
             </div>
             <div class="bonhomia-contact-panel__actions">
-                <a class="bonhomia-button bonhomia-button--primary" href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, tengo una pregunta antes de reservar.")' target="_blank" rel="noopener noreferrer">
+                <a class="bonhomia-button bonhomia-button--primary" href='@Presentation.WhatsAppUrl($"Hola {Presentation.PublicName}, tengo una pregunta antes de reservar.")' target="_blank" rel="noopener noreferrer">
                     <i class="bi bi-whatsapp" aria-hidden="true"></i>
                     <span>WhatsApp</span>
                 </a>

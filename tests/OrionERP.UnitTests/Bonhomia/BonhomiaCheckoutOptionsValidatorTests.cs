@@ -68,6 +68,10 @@ public class BonhomiaCheckoutOptionsValidatorTests
       Environment = "Live",
       PayPalClientId = "live-client-id",
       PayPalClientSecret = "live-client-secret",
-      PublicBaseUrl = "https://bonhomiasuites.com"
+      PublicBaseUrl = "https://hospitality.example.test",
+      AccountingRfc = "AAA010101AAA",
+      AccountingAccount = "cuenta-prueba",
+      PublicName = "Hospedaje de Prueba",
+      ReservationSourceLabel = "Portal de hospedaje"
     };
 }

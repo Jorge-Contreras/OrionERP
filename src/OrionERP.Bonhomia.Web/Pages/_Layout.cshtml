@@ -1,13 +1,16 @@
 @using Microsoft.AspNetCore.Components.Web
+@using OrionERP.Application.Features.Platform
+@inject PublicWebsitePresentationDefinition Presentation
 @namespace OrionERP.Bonhomia.Web.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 <!DOCTYPE html>
-<html lang="es">
+<html lang="@Presentation.Locale">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>@ViewData["Title"] - Bonhomia Suites</title>
+    <title>@ViewData["Title"] - @Presentation.PublicName</title>
     <base href="~/" />
+    <link rel="icon" href="@Presentation.FaviconPath" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="~/css/bonhomia-site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/OrionERP.Bonhomia.Web.styles.css" asp-append-version="true" />

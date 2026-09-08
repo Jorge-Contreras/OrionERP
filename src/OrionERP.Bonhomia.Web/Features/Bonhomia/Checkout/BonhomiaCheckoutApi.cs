@@ -1,9 +1,12 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
@@ -12,9 +15,9 @@ public static class BonhomiaCheckoutApi
 {
   public static IEndpointRouteBuilder MapBonhomiaCheckoutApi(this IEndpointRouteBuilder endpoints)
   {
-    endpoints.MapPost("/api/bonhomia/checkout/orders", CreatePayPalOrderAsync).AllowAnonymous();
-    endpoints.MapPost("/api/bonhomia/checkout/orders/{orderId}", ConfirmPayPalOrderAsync).AllowAnonymous();
-    endpoints.MapGet("/api/bonhomia/checkout/reservations/{reservationId:int}/pdf", DownloadReservationPdfAsync).AllowAnonymous();
+    endpoints.MapPost("/api/hospitality/checkout/orders", CreatePayPalOrderAsync).AllowAnonymous();
+    endpoints.MapPost("/api/hospitality/checkout/orders/{orderId}", ConfirmPayPalOrderAsync).AllowAnonymous();
+    endpoints.MapGet("/api/hospitality/checkout/reservations/{reservationId:int}/pdf", DownloadReservationPdfAsync).AllowAnonymous();
     return endpoints;
   }
 
@@ -23,6 +26,7 @@ public static class BonhomiaCheckoutApi
     IBonhomiaQuoteTokenService quoteTokenService,
     IBonhomiaPublicBookingService bookingService,
     IBonhomiaPayPalClient payPalClient,
+    PublicWebsitePresentationDefinition presentation,
     CancellationToken ct)
   {
     if (!TryReadQuote(request.QuoteToken, request.QuoteFingerprint, quoteTokenService, out var quote, out var errorResult))
@@ -32,6 +36,13 @@ public static class BonhomiaCheckoutApi
 
     try
     {
+      _ = BonhomiaLegalConsentPolicy.EnsureAccepted(
+        request.Accepted,
+        request.PrivacyVersion,
+        request.TermsVersion,
+        presentation,
+        DateTimeOffset.UtcNow);
+
       var liveQuote = await bookingService.CreateQuoteAsync(quote!.Request, ct);
       if (!string.Equals(liveQuote.Fingerprint, quote.Fingerprint, StringComparison.Ordinal))
       {
@@ -41,7 +52,12 @@ public static class BonhomiaCheckoutApi
           statusCode: StatusCodes.Status409Conflict);
       }
 
-      var order = await payPalClient.CreateOrderAsync(liveQuote, BuildPayPalRequestId("ord", request.PaymentAttemptId, quote.QuoteId), ct);
+      // Use the protected quote (not the newly calculated quote id) so the
+      // PayPal reference can be verified again during confirmation.
+      var order = await payPalClient.CreateOrderAsync(
+        quote,
+        BuildPayPalRequestId("ord", request.PaymentAttemptId, quote.QuoteId, quote.Fingerprint),
+        ct);
       return Results.Ok(new BonhomiaCreatePayPalOrderResponse
       {
         Id = order.OrderId,
@@ -62,6 +78,7 @@ public static class BonhomiaCheckoutApi
     IBonhomiaPayPalClient payPalClient,
     IBonhomiaReservationPdfTokenService pdfTokenService,
     IBonhomiaReservationConfirmationEmailSender confirmationEmailSender,
+    PublicWebsitePresentationDefinition presentation,
     IOptions<BonhomiaCheckoutOptions> options,
     ILoggerFactory loggerFactory,
     HttpContext httpContext,
@@ -84,6 +101,13 @@ public static class BonhomiaCheckoutApi
 
     try
     {
+      var legalAcceptance = BonhomiaLegalConsentPolicy.EnsureAccepted(
+        request.Accepted,
+        request.PrivacyVersion,
+        request.TermsVersion,
+        presentation,
+        DateTimeOffset.UtcNow);
+
       var liveQuote = await bookingService.CreateQuoteAsync(quote!.Request, ct);
       if (!string.Equals(liveQuote.Fingerprint, quote.Fingerprint, StringComparison.Ordinal))
       {
@@ -93,9 +117,25 @@ public static class BonhomiaCheckoutApi
           statusCode: StatusCodes.Status409Conflict);
       }
 
-      var capture = await payPalClient.CaptureOrderAsync(orderId, BuildPayPalRequestId("cap", request.PaymentAttemptId, quote.QuoteId), ct);
+      // Preserve the freshly resolved operational data (including calendar
+      // row ids) while restoring the protected identity used in PayPal's
+      // purchase-unit reference. QuoteId is intentionally not part of the
+      // pricing fingerprint checked above.
+      liveQuote.QuoteId = quote.QuoteId;
+
+      var capture = await payPalClient.CaptureOrderAsync(
+        orderId,
+        quote,
+        BuildPayPalRequestId("cap", request.PaymentAttemptId, quote.QuoteId, quote.Fingerprint),
+        ct);
+      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(capture, quote);
       var customer = BuildCustomerFromPayPal(request.Customer, capture);
-      var result = await bookingService.CreatePaidReservationAsync(liveQuote, customer, capture, ct);
+      var result = await bookingService.CreatePaidReservationAsync(
+        liveQuote,
+        customer,
+        capture,
+        legalAcceptance,
+        ct);
       var confirmedAtUtc = DateTimeOffset.UtcNow;
       var pdfUrl = BuildReservationPdfUrl(
         httpContext,
@@ -206,6 +246,7 @@ public static class BonhomiaCheckoutApi
     IBonhomiaPublicBookingService bookingService,
     IReservacionPdfDocumentFactory pdfDocumentFactory,
     IReservacionPdfService pdfService,
+    IOptions<BonhomiaCheckoutOptions> options,
     CancellationToken ct)
   {
     if (!pdfTokenService.TryValidate(reservationId, token, out var errorMessage))
@@ -221,7 +262,7 @@ public static class BonhomiaCheckoutApi
 
     var document = pdfDocumentFactory.CreateFromDetail(detail);
     var bytes = pdfService.Generate(document);
-    var fileName = $"bonhomia-reservacion-{reservationId:D6}.pdf";
+    var fileName = $"{options.Value.PdfFilePrefix}-{reservationId:D6}.pdf";
 
     return Results.File(bytes, "application/pdf", fileName);
   }
@@ -260,9 +301,9 @@ public static class BonhomiaCheckoutApi
   {
     var statusCode = ex.ErrorCode switch
     {
-      "not_available" or "quote_changed" or "capacity_exceeded" => StatusCodes.Status409Conflict,
+      "not_available" or "quote_changed" or "capacity_exceeded" or "paypal_quote_mismatch" or "legal_documents_changed" => StatusCodes.Status409Conflict,
       "paypal_not_configured" => StatusCodes.Status503ServiceUnavailable,
-      "paypal_create_failed" or "paypal_capture_failed" or "paypal_auth_failed" => StatusCodes.Status502BadGateway,
+      "paypal_create_failed" or "paypal_capture_failed" or "paypal_auth_failed" or "paypal_order_validation_failed" => StatusCodes.Status502BadGateway,
       _ => StatusCodes.Status400BadRequest
     };
 
@@ -276,7 +317,11 @@ public static class BonhomiaCheckoutApi
       });
   }
 
-  private static string BuildPayPalRequestId(string prefix, string? paymentAttemptId, Guid fallbackQuoteId)
+  private static string BuildPayPalRequestId(
+    string prefix,
+    string? paymentAttemptId,
+    Guid fallbackQuoteId,
+    string quoteFingerprint)
   {
     var raw = string.IsNullOrWhiteSpace(paymentAttemptId)
       ? fallbackQuoteId.ToString("N")
@@ -291,13 +336,17 @@ public static class BonhomiaCheckoutApi
       safe = fallbackQuoteId.ToString("N");
     }
 
-    var requestId = $"{prefix}-{safe}";
-    return requestId.Length <= 38 ? requestId : requestId[..38];
+    var fingerprint = string.IsNullOrWhiteSpace(quoteFingerprint)
+      ? fallbackQuoteId.ToString("N")
+      : quoteFingerprint.Trim();
+    var material = Encoding.UTF8.GetBytes($"{prefix}|{fingerprint}|{safe}");
+    var digest = Convert.ToHexString(SHA256.HashData(material)).ToLowerInvariant();
+    return $"{prefix}-{digest[..32]}";
   }
 
   private static string BuildReservationPdfUrl(HttpContext httpContext, BonhomiaCheckoutOptions options, int reservationId, string token)
   {
-    var path = $"/api/bonhomia/checkout/reservations/{reservationId}/pdf?token={Uri.EscapeDataString(token)}";
+    var path = $"/api/hospitality/checkout/reservations/{reservationId}/pdf?token={Uri.EscapeDataString(token)}";
     var configuredBaseUrl = options.PublicBaseUrl?.Trim();
     if (!string.IsNullOrWhiteSpace(configuredBaseUrl)
         && Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var baseUri))
@@ -314,6 +363,9 @@ public sealed class BonhomiaCreatePayPalOrderRequest
   public string QuoteToken { get; set; } = string.Empty;
   public string QuoteFingerprint { get; set; } = string.Empty;
   public string PaymentAttemptId { get; set; } = string.Empty;
+  public bool Accepted { get; set; }
+  public string PrivacyVersion { get; set; } = string.Empty;
+  public string TermsVersion { get; set; } = string.Empty;
 }
 
 public sealed class BonhomiaCreatePayPalOrderResponse
@@ -327,6 +379,9 @@ public sealed class BonhomiaConfirmPayPalOrderRequest
   public string QuoteToken { get; set; } = string.Empty;
   public string QuoteFingerprint { get; set; } = string.Empty;
   public string PaymentAttemptId { get; set; } = string.Empty;
+  public bool Accepted { get; set; }
+  public string PrivacyVersion { get; set; } = string.Empty;
+  public string TermsVersion { get; set; } = string.Empty;
   public BonhomiaCustomerInfo Customer { get; set; } = new();
 }
 

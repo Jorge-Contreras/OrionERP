@@ -23,7 +23,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #e8a247;
+  outline: 3px solid var(--amber);
   outline-offset: 3px;
 }
 
@@ -55,7 +55,7 @@ h1[tabindex="-1"]:focus {
   width: min(100%, 38rem);
   margin-top: 0.9rem;
   padding: 1rem 1.1rem;
-  border-left: 4px solid #e8a247;
+  border-left: 4px solid var(--amber);
   background: #171512d9;
 }
 

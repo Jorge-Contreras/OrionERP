@@ -30,6 +30,18 @@ public static class BonhomiaCheckoutOptionsValidator
       errors.Add("Production Bonhomia checkout requires BonhomiaCheckout:PublicBaseUrl to be an absolute HTTPS URL.");
     }
 
+    if (string.IsNullOrWhiteSpace(options.AccountingRfc)
+        || string.IsNullOrWhiteSpace(options.AccountingAccount))
+    {
+      errors.Add("Production hospitality checkout requires a bound accounting RFC and account name.");
+    }
+
+    if (string.IsNullOrWhiteSpace(options.PublicName)
+        || string.IsNullOrWhiteSpace(options.ReservationSourceLabel))
+    {
+      errors.Add("Production hospitality checkout requires its public name and reservation source label.");
+    }
+
     return errors;
   }
 

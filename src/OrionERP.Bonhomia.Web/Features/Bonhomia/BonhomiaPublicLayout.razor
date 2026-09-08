@@ -1,11 +1,12 @@
 @inherits LayoutComponentBase
 @inject IJSRuntime Js
+@inject PublicWebsitePresentationDefinition Presentation
 
-<div class="bonhomia-public-shell">
-    <header class="bonhomia-public-nav" aria-label="Bonhomia Suites">
-        <a class="bonhomia-public-brand" href="/" aria-label="Bonhomia Suites inicio">
-            <img src="/Images/Bonhomia/logo-vertical.png" alt="Bonhomia Suites" />
-            <span>Bonhomia Suites</span>
+<div class="bonhomia-public-shell" style="--bonhomia-ink: @Presentation.PrimaryDarkColor; --bonhomia-muted: color-mix(in srgb, @Presentation.PrimaryDarkColor 62%, white); --bonhomia-teal: @Presentation.PrimaryColor; --bonhomia-teal-dark: @Presentation.PrimaryDarkColor; --bonhomia-ivory: color-mix(in srgb, @Presentation.AccentColor 14%, white); --bonhomia-warm: color-mix(in srgb, @Presentation.AccentColor 5%, white); --bonhomia-sage: color-mix(in srgb, @Presentation.PrimaryColor 72%, @Presentation.AccentColor); --bonhomia-clay: color-mix(in srgb, @Presentation.AccentColor 72%, @Presentation.PrimaryDarkColor); --bonhomia-gold: @Presentation.AccentColor; --bonhomia-border: color-mix(in srgb, @Presentation.PrimaryDarkColor 14%, transparent);">
+    <header class="bonhomia-public-nav" aria-label="@Presentation.PublicName">
+        <a class="bonhomia-public-brand" href="/" aria-label="@Presentation.PublicName inicio">
+            <img src="@Presentation.LogoPath" alt="@Presentation.PublicName" />
+            <span>@Presentation.PublicName</span>
         </a>
 
         <nav class="bonhomia-public-nav__links" aria-label="Navegacion principal">
@@ -26,11 +27,11 @@
 
     <footer class="bonhomia-public-footer">
         <div class="bonhomia-public-footer__brand">
-            <img src="/Images/Bonhomia/logo-letterhead.svg" alt="Bonhomia Suites" />
-            <p>Suites y casas amuebladas para viajes de trabajo, familia y agenda profesional en Calpulalpan.</p>
+            <img src="@Presentation.Asset("letterhead-logo")" alt="@Presentation.PublicName" />
+            <p>@Presentation.FooterSummary</p>
         </div>
 
-        <nav aria-label="Documentos Bonhomia">
+        <nav aria-label="Documentos de @Presentation.PublicName">
             <a href="/legal">Centro legal</a>
             <a href="/legal#politicas-reserva">Politicas de reserva</a>
             <a href="/legal#terminos-condiciones">Terminos y condiciones</a>
@@ -39,17 +40,17 @@
         </nav>
 
         <div class="bonhomia-public-footer__contact">
-            <span>@BonhomiaSiteContent.Address</span>
-            <a href='@BonhomiaSiteContent.WhatsAppUrl("Hola Bonhomia Suites, quiero informacion para una estancia.")' target="_blank" rel="noopener noreferrer">WhatsApp @BonhomiaSiteContent.WhatsAppDisplay</a>
-            <a href="mailto:@BonhomiaSiteContent.Email">@BonhomiaSiteContent.Email</a>
+            <span>@Presentation.OperatingAddress</span>
+            <a href='@Presentation.WhatsAppUrl($"Hola {Presentation.PublicName}, quiero informacion para una estancia.")' target="_blank" rel="noopener noreferrer">WhatsApp @Presentation.WhatsAppDisplay</a>
+            <a href="mailto:@Presentation.PublicEmail">@Presentation.PublicEmail</a>
             <a href="/erp">Portal OrionERP</a>
         </div>
     </footer>
 
-    <aside class="bonhomia-legal-ack" data-bonhomia-legal-ack="@BonhomiaSiteContent.LegalVersion" aria-label="Reconocimiento de documentos legales">
+    <aside class="bonhomia-legal-ack" data-bonhomia-legal-ack="@LegalVersionKey" aria-label="Reconocimiento de documentos legales">
         <p>
-            <strong>Centro legal Bonhomia.</strong>
-            Aviso de privacidad, terminos, politicas y reglas de hospedaje version @BonhomiaSiteContent.LegalVersion.
+            <strong>Centro legal de @Presentation.ShortName.</strong>
+            Aviso de privacidad @Presentation.PrivacyVersion y terminos @Presentation.TermsVersion, ademas de politicas y reglas de hospedaje.
             <a href="/legal">Leer</a>
         </p>
         <button type="button" class="bonhomia-legal-ack__button" data-bonhomia-legal-accept>
@@ -68,11 +69,16 @@
 
     try
     {
-      await Js.InvokeVoidAsync("bonhomiaLegal.initAcknowledgement", BonhomiaSiteContent.LegalVersion);
+      await Js.InvokeVoidAsync(
+        "bonhomiaLegal.initAcknowledgement",
+        Presentation.PublicSiteKey,
+        LegalVersionKey);
     }
     catch
     {
       // The site remains usable if browser storage is unavailable.
     }
   }
+
+  private string LegalVersionKey => $"{Presentation.PrivacyVersion}|{Presentation.TermsVersion}";
 }

@@ -271,7 +271,7 @@
             </header>
             <section class="pos-order-options">
           <section class="pos-membership" aria-label="Membresía y promociones">
-            <header><div><span>Club Bruno’s</span><strong>Pregunta primero si el cliente es miembro</strong></div></header>
+            <header><div><span>Programa de membresía</span><strong>Pregunta primero si el cliente es miembro</strong></div></header>
             <div class="pos-membership__lookup">
               <label>QR, número, correo o teléfono
                 <input @bind="memberIdentifier" @bind:event="oninput" autocomplete="off" placeholder="Ej. teléfono de 10 dígitos" />
@@ -422,7 +422,7 @@
             }
             @if (AppliedRedemptionValue > 0)
             {
-              <div class="is-redemption"><span>Club Bruno · @appliedRedemptionPoints puntos</span><b>-@AppliedRedemptionValue.ToString("C")</b></div>
+              <div class="is-redemption"><span>Membresía · @appliedRedemptionPoints puntos</span><b>-@AppliedRedemptionValue.ToString("C")</b></div>
             }
           }
           <div><span>Subtotal antes de IVA</span><b>@PosTotals.SubtotalBeforeTax.ToString("C")</b></div>

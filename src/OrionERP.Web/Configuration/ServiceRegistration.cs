@@ -37,7 +37,6 @@ using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
-using OrionERP.Application.Features.Reservaciones.OpenClaw;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Application.Features.Logistica.Locations;
 using OrionERP.Application.Features.Logistica.Materials;
@@ -65,7 +64,6 @@ using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 using OrionERP.Web.Features.Restaurante;
-using OrionERP.Web.Features.Reservaciones.OpenClaw;
 using OrionERP.Web.Identity;
 using OrionERP.Web.Services;
 using Sat.MassiveDownload;
@@ -74,7 +72,6 @@ using ContabITransaccionService = OrionERP.Application.Features.Contabilidad.Tra
 using ContabTransaccionService = OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services.TransaccionService;
 using OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
-using ReservacionesIOpenClawReservationsService = OrionERP.Application.Features.Reservaciones.OpenClaw.IOpenClawReservationsService;
 using ReservacionesIListaReservacionesService = OrionERP.Application.Features.Reservaciones.ListaReservaciones.IListaReservacionesService;
 using ReservacionesListaReservacionesService = OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Services.ListaReservacionesService;
 
@@ -111,9 +108,7 @@ public static class ServiceRegistration
     services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
     services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
     services.AddScoped<ISaludEmpresaExcelService, SaludEmpresaExcelService>();
-    services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
-    services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
 
     services.AddScoped<ISatMetadataIngestService, SatMetadataIngestService>();
     services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();
@@ -207,9 +202,7 @@ public static class ServiceRegistration
     services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
     services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
     services.AddScoped<ISaludEmpresaExcelService, SaludEmpresaExcelService>();
-    services.AddScoped<ReservacionesIOpenClawReservationsService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
-    services.AddSingleton<IOpenClawReservationPdfTokenService, OpenClawReservationPdfTokenService>();
 
     return services;
   }

@@ -169,7 +169,7 @@ public sealed class RestaurantReceiptPdfService : IRestaurantReceiptPdfService
       {
         column.Item().Element(item => ComposeMoneyRow(
           item,
-          $"Club Bruno ({model.PointsRedeemed} pts)",
+          $"Membresía ({model.PointsRedeemed} pts)",
           -model.RedemptionValue));
       }
       foreach (var promotion in model.Promotions)

@@ -526,7 +526,7 @@ VALUES
 
   (N'REST-COMERCIAL', N'OPERAR', 3, 1, N'ENLACE', N'Abrir promociones y membresía', N'/restaurante/promociones', N'Acceso local a reglas, códigos y puntos de membresía ficticios.'),
   (N'REST-COMERCIAL', N'OPERAR', 3, 2, N'ENLACE', N'Abrir reportes de restaurante', N'/restaurante/reportes', N'Acceso local a reportes de venta, margen y liquidaciones.'),
-  (N'REST-COMERCIAL', N'OPERAR', 3, 3, N'ENLACE', N'Abrir el sitio público', N'/restaurante/sitio-brunos', N'Acceso local a la configuración de contenido del sitio público.'),
+  (N'REST-COMERCIAL', N'OPERAR', 3, 3, N'ENLACE', N'Abrir el sitio público', N'/restaurante/sitio-publico', N'Acceso local a la configuración de contenido del sitio público.'),
 
   (N'RH-ASISTENCIA', N'OPERAR', 3, 1, N'ENLACE', N'Abrir control de asistencia', N'/capital-humano/asistencia', N'Acceso local al calendario de asistencia del equipo ficticio.'),
   (N'RH-ASISTENCIA', N'OPERAR', 3, 2, N'ENLACE', N'Abrir mi equipo', N'/mi-equipo', N'Acceso local a la cola de aprobación del supervisor.'),

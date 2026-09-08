@@ -10,7 +10,12 @@ public interface IBrunoPublicCatalogService
 
   Task<BrunoPublicSiteSettingsDto?> GetSettingsAsync(
     string rfc,
-    int? siteId = null,
+    int siteId,
+    CancellationToken ct = default);
+
+  Task<BrunoPublicSiteSettingsDto?> GetSettingsAsync(
+    string rfc,
+    string siteCode,
     CancellationToken ct = default);
 
   Task<RestaurantCommandResult> SaveSettingsAsync(

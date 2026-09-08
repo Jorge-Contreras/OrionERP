@@ -1,21 +1,28 @@
 using System.Globalization;
 using System.Net;
+using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Infrastructure.Features.Mail;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReservationConfirmationEmailSender
 {
-  private const string ReceptionEmail = "recepcion@bonhomiasuites.com";
-  private static readonly CultureInfo MexicanCulture = CultureInfo.GetCultureInfo("es-MX");
-
   private readonly IMicrosoftGraphMailClient<BonhomiaGraphMailOptions> _mailClient;
+  private readonly BonhomiaGraphMailOptions _mailOptions;
+  private readonly PublicWebsitePresentationDefinition _presentation;
+  private readonly CultureInfo _culture;
 
   public BonhomiaReservationConfirmationEmailSender(
-    IMicrosoftGraphMailClient<BonhomiaGraphMailOptions> mailClient)
+    IMicrosoftGraphMailClient<BonhomiaGraphMailOptions> mailClient,
+    IOptions<BonhomiaGraphMailOptions> mailOptions,
+    PublicWebsitePresentationDefinition presentation)
   {
     _mailClient = mailClient;
+    _mailOptions = mailOptions.Value;
+    _presentation = presentation;
+    _culture = CultureInfo.GetCultureInfo(presentation.Locale);
   }
 
   public Task SendConfirmationAsync(
@@ -27,20 +34,22 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
     ArgumentNullException.ThrowIfNull(confirmation.Customer);
     ArgumentNullException.ThrowIfNull(confirmation.Payment);
 
-    var subject = $"Confirmacion de reservacion Bonhomia #{confirmation.ReservationId:D6}";
+    var subject = $"Confirmacion de reservacion {_presentation.PublicName} #{confirmation.ReservationId:D6}";
     var html = BuildHtml(confirmation);
     return _mailClient.SendEmailAsync(
       new MicrosoftGraphMailMessage
       {
         ToRecipients = [confirmation.Customer.Email],
-        BccRecipients = [ReceptionEmail],
+        BccRecipients = string.IsNullOrWhiteSpace(_mailOptions.SenderAddress)
+          ? []
+          : [_mailOptions.SenderAddress.Trim()],
         Subject = subject,
         Message = html
       },
       ct);
   }
 
-  private static string BuildHtml(BonhomiaReservationConfirmationEmail confirmation)
+  private string BuildHtml(BonhomiaReservationConfirmationEmail confirmation)
   {
     var quote = confirmation.Quote;
     var payment = confirmation.Payment;
@@ -49,16 +58,16 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
     var paymentCaptureId = FirstPresent(payment.CaptureId, "No disponible");
     var confirmedAt = confirmation.ConfirmedAtUtc == default
       ? "No disponible"
-      : confirmation.ConfirmedAtUtc.ToLocalTime().ToString("dddd d 'de' MMMM 'de' yyyy, HH:mm", MexicanCulture);
+      : confirmation.ConfirmedAtUtc.ToLocalTime().ToString("dddd d 'de' MMMM 'de' yyyy, HH:mm", _culture);
 
     return $"""
 <!doctype html>
-<html lang="es">
+<html lang="{Html(_presentation.Locale)}">
   <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.5; margin: 0; padding: 24px; background: #f6f7f8;">
     <main style="max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #d9dee3; padding: 24px;">
-      <h1 style="font-size: 22px; margin: 0 0 16px;">Reservacion confirmada</h1>
+      <h1 style="font-size: 22px; margin: 0 0 16px; color: {Html(_presentation.PrimaryDarkColor)};">Reservacion confirmada</h1>
       <p>Hola {Html(guestName)},</p>
-      <p>Gracias por reservar en Bonhomia Suites. Tu pago fue confirmado y tu reservacion ya quedo registrada.</p>
+      <p>Gracias por reservar en {Html(_presentation.PublicName)}. Tu pago fue confirmado y tu reservacion ya quedo registrada.</p>
 
       <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
         <tbody>
@@ -95,14 +104,14 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
       <p><a href="{Html(confirmation.PdfUrl)}">{Html(confirmation.PdfUrl)}</a></p>
 
       <p style="margin-top: 24px;">Si necesitas ayuda, responde a este correo y con gusto te apoyamos.</p>
-      <p style="margin-bottom: 0;">Bonhomia Suites</p>
+      <p style="margin-bottom: 0; color: {Html(_presentation.PrimaryColor)};">{Html(_presentation.PublicName)}</p>
     </main>
   </body>
 </html>
 """;
   }
 
-  private static string BuildLineRows(BonhomiaQuoteDto quote)
+  private string BuildLineRows(BonhomiaQuoteDto quote)
   {
     if (quote.Lines.Count == 0)
     {
@@ -130,14 +139,14 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
   private static string FirstPresent(params string?[] values)
     => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
-  private static string FormatDate(DateOnly date)
+  private string FormatDate(DateOnly date)
     => date == default
       ? "Sin fecha"
-      : date.ToString("dddd d 'de' MMMM 'de' yyyy", MexicanCulture);
+      : date.ToString("dddd d 'de' MMMM 'de' yyyy", _culture);
 
-  private static string FormatMoney(decimal value, string? currency)
+  private string FormatMoney(decimal value, string? currency)
   {
-    var formattedValue = value.ToString("C", MexicanCulture);
+    var formattedValue = value.ToString("C", _culture);
     return string.IsNullOrWhiteSpace(currency)
       ? formattedValue
       : $"{formattedValue} {currency.Trim().ToUpperInvariant()}";

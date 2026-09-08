@@ -62,7 +62,10 @@
       options?.currency || "MXN",
       options?.locale || "es_MX",
       options?.quoteToken || "",
-      options?.quoteFingerprint || ""
+      options?.quoteFingerprint || "",
+      options?.accepted === true ? "accepted" : "pending",
+      options?.privacyVersion || "",
+      options?.termsVersion || ""
     ].join("|");
 
   const createAttemptId = () => {
@@ -81,7 +84,7 @@
 
     try {
       await notify(dotNetRef, "OnBonhomiaPaymentProcessing");
-      const response = await fetch(`/api/bonhomia/checkout/orders/${encodeURIComponent(orderId)}`, {
+      const response = await fetch(`/api/hospitality/checkout/orders/${encodeURIComponent(orderId)}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -91,6 +94,9 @@
           quoteToken: options.quoteToken,
           quoteFingerprint: options.quoteFingerprint,
           paymentAttemptId,
+          accepted: options.accepted === true,
+          privacyVersion: options.privacyVersion || "",
+          termsVersion: options.termsVersion || "",
           customer: options.customer || null
         })
       });
@@ -146,7 +152,7 @@
             tagline: false
           },
           async createOrder() {
-            const response = await fetch("/api/bonhomia/checkout/orders", {
+            const response = await fetch("/api/hospitality/checkout/orders", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -155,7 +161,10 @@
               body: JSON.stringify({
                 quoteToken: options.quoteToken,
                 quoteFingerprint: options.quoteFingerprint,
-                paymentAttemptId
+                paymentAttemptId,
+                accepted: options.accepted === true,
+                privacyVersion: options.privacyVersion || "",
+                termsVersion: options.termsVersion || ""
               })
             });
 

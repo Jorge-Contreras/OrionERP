@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using OrionERP.Application.Features.Reservaciones;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
-using OrionERP.Application.Features.Reservaciones.OpenClaw;
 
 namespace OrionERP.Application.Features.Reservaciones.Cfdi;
 
@@ -118,7 +118,7 @@ public static class ReservationCfdiLineFactory
   private static ReservationExtraSatMapping ResolveExtraMapping(ReservationCfdiExtraSource extra)
   {
     var rawDescription = FirstNonEmpty(extra.Description, extra.Notes, extra.CatalogName);
-    var normalized = OpenClawReservationNaming.NormalizeLookupKey($"{extra.CatalogName} {rawDescription}");
+    var normalized = ReservationCatalogNaming.NormalizeLookupKey($"{extra.CatalogName} {rawDescription}");
 
     if (normalized.Contains("TRANSPORTE", StringComparison.Ordinal))
     {

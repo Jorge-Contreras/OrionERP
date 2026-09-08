@@ -1,7 +1,5 @@
 (function () {
-  const storageKey = "bonhomia.legalFooterAcknowledgement";
-
-  const readAcknowledgement = () => {
+  const readAcknowledgement = (storageKey) => {
     try {
       const raw = window.localStorage.getItem(storageKey);
       return raw ? JSON.parse(raw) : null;
@@ -10,7 +8,7 @@
     }
   };
 
-  const writeAcknowledgement = (version) => {
+  const writeAcknowledgement = (storageKey, version) => {
     const payload = {
       version,
       acceptedAt: new Date().toISOString()
@@ -41,13 +39,14 @@
   };
 
   window.bonhomiaLegal = {
-    initAcknowledgement(version) {
+    initAcknowledgement(publicSiteKey, version) {
+      const storageKey = `orion.publicWebsite.${publicSiteKey}.legalFooterAcknowledgement`;
       const panels = Array.from(document.querySelectorAll(`[data-bonhomia-legal-ack="${version}"]`));
       if (panels.length === 0) {
         return;
       }
 
-      const acknowledgement = readAcknowledgement();
+      const acknowledgement = readAcknowledgement(storageKey);
       updatePanels(panels, version, acknowledgement);
 
       panels.forEach((panel) => {
@@ -59,7 +58,7 @@
         button.dataset.bonhomiaLegalBound = "true";
         button.addEventListener("click", () => {
           try {
-            const updated = writeAcknowledgement(version);
+            const updated = writeAcknowledgement(storageKey, version);
             updatePanels(panels, version, updated);
           } catch {
             hidePanels(panels);

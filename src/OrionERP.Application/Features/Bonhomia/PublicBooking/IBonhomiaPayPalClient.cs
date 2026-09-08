@@ -12,6 +12,7 @@ public interface IBonhomiaPayPalClient
 
   Task<BonhomiaPayPalCaptureResult> CaptureOrderAsync(
     string orderId,
+    BonhomiaQuoteDto quote,
     string idempotencyKey,
     CancellationToken ct = default);
 }

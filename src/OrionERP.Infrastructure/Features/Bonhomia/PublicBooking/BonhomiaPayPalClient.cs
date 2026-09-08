@@ -48,8 +48,8 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       {
         new
         {
-          reference_id = quote.QuoteId.ToString("N"),
-          description = $"Bonhomia Suites - {quote.RoomName}",
+          reference_id = BonhomiaPayPalOrderPolicy.CreateReferenceId(quote),
+          description = $"{_options.PublicName} - {quote.RoomName}",
           custom_id = quote.Fingerprint,
           amount = new
           {
@@ -79,6 +79,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
 
   public async Task<BonhomiaPayPalCaptureResult> CaptureOrderAsync(
     string orderId,
+    BonhomiaQuoteDto quote,
     string idempotencyKey,
     CancellationToken ct = default)
   {
@@ -87,15 +88,16 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       throw new BonhomiaPublicBookingException("paypal_order_required", "La orden PayPal es obligatoria.");
     }
 
+    ArgumentNullException.ThrowIfNull(quote);
     EnsureConfigured();
 
     var token = await GetAccessTokenAsync(ct);
-    var existingCapture = await GetCapturedOrderAsync(orderId, token, ct);
+    var existingCapture = await GetCapturedOrderAsync(orderId, token, quote, ct);
     if (existingCapture is not null)
     {
       if (!existingCapture.IsCompleted)
       {
-        var refreshed = await WaitForCompletedCaptureAsync(orderId, token, ct);
+        var refreshed = await WaitForCompletedCaptureAsync(orderId, token, quote, ct);
         if (refreshed is not null)
         {
           return refreshed;
@@ -121,7 +123,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     {
       if (IsPayPalAlreadyCapturedResponse(body))
       {
-        var capturedOrder = await GetCapturedOrderAsync(orderId, token, ct);
+        var capturedOrder = await GetCapturedOrderAsync(orderId, token, quote, ct);
         if (capturedOrder is not null)
         {
           _logger.LogInformation(
@@ -138,9 +140,10 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     using var document = JsonDocument.Parse(body);
     if (TryMapCaptureResult(document.RootElement, orderId, out var result))
     {
+      EnsureCaptureResponseIsConsistent(result, quote);
       if (!result.IsCompleted)
       {
-        var refreshed = await WaitForCompletedCaptureAsync(orderId, token, ct);
+        var refreshed = await WaitForCompletedCaptureAsync(orderId, token, quote, ct);
         if (refreshed is not null)
         {
           return refreshed;
@@ -164,6 +167,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
   private async Task<BonhomiaPayPalCaptureResult?> GetCapturedOrderAsync(
     string orderId,
     string token,
+    BonhomiaQuoteDto quote,
     CancellationToken ct)
   {
     using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_options.PayPalBaseUri, $"/v2/checkout/orders/{Uri.EscapeDataString(orderId.Trim())}"));
@@ -174,24 +178,32 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     if (!response.IsSuccessStatusCode)
     {
       _logger.LogWarning("PayPal get order failed for {OrderId} with status {Status}. Body: {Body}", orderId, response.StatusCode, body);
-      return null;
+      throw new BonhomiaPublicBookingException(
+        "paypal_order_validation_failed",
+        "PayPal no permitio verificar que la orden corresponda a esta cotizacion.");
     }
 
     using var document = JsonDocument.Parse(body);
-    return TryMapCaptureResult(document.RootElement, orderId, out var result)
-      ? result
-      : null;
+    EnsureOrderBelongsToQuote(document.RootElement, quote);
+    if (!TryMapCaptureResult(document.RootElement, orderId, out var result))
+    {
+      return null;
+    }
+
+    BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+    return result;
   }
 
   private async Task<BonhomiaPayPalCaptureResult?> WaitForCompletedCaptureAsync(
     string orderId,
     string token,
+    BonhomiaQuoteDto quote,
     CancellationToken ct)
   {
     for (var attempt = 0; attempt < 2; attempt++)
     {
       await Task.Delay(TimeSpan.FromSeconds(attempt + 1), ct);
-      var refreshed = await GetCapturedOrderAsync(orderId, token, ct);
+      var refreshed = await GetCapturedOrderAsync(orderId, token, quote, ct);
       if (refreshed?.IsCompleted == true)
       {
         return refreshed;
@@ -320,6 +332,8 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
         result = new BonhomiaPayPalCaptureResult
         {
           OrderId = root.TryGetProperty("id", out var orderId) ? orderId.GetString() ?? fallbackOrderId : fallbackOrderId,
+          CustomId = purchaseUnit.TryGetProperty("custom_id", out var customId) ? customId.GetString() ?? string.Empty : string.Empty,
+          ReferenceId = purchaseUnit.TryGetProperty("reference_id", out var referenceId) ? referenceId.GetString() ?? string.Empty : string.Empty,
           OrderStatus = root.TryGetProperty("status", out var rootStatus) ? rootStatus.GetString() ?? string.Empty : string.Empty,
           Status = capture.TryGetProperty("status", out var captureStatus)
             ? captureStatus.GetString() ?? string.Empty
@@ -341,6 +355,51 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     }
 
     return false;
+  }
+
+  private static void EnsureOrderBelongsToQuote(JsonElement root, BonhomiaQuoteDto quote)
+  {
+    if (!root.TryGetProperty("purchase_units", out var purchaseUnits)
+        || purchaseUnits.ValueKind != JsonValueKind.Array
+        || purchaseUnits.GetArrayLength() != 1)
+    {
+      BonhomiaPayPalOrderPolicy.EnsureOrderBelongsToQuote(null, null, quote);
+      return;
+    }
+
+    var purchaseUnit = purchaseUnits[0];
+    var customId = purchaseUnit.TryGetProperty("custom_id", out var customIdElement)
+      ? customIdElement.GetString()
+      : null;
+    var referenceId = purchaseUnit.TryGetProperty("reference_id", out var referenceIdElement)
+      ? referenceIdElement.GetString()
+      : null;
+    BonhomiaPayPalOrderPolicy.EnsureOrderBelongsToQuote(customId, referenceId, quote);
+  }
+
+  private static void EnsureCaptureResponseIsConsistent(
+    BonhomiaPayPalCaptureResult result,
+    BonhomiaQuoteDto quote)
+  {
+    var expectedReferenceId = BonhomiaPayPalOrderPolicy.CreateReferenceId(quote);
+    if (!string.IsNullOrWhiteSpace(result.CustomId)
+        && !string.Equals(result.CustomId.Trim(), quote.Fingerprint, StringComparison.Ordinal))
+    {
+      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+    }
+
+    if (!string.IsNullOrWhiteSpace(result.ReferenceId)
+        && !string.Equals(result.ReferenceId.Trim(), expectedReferenceId, StringComparison.OrdinalIgnoreCase))
+    {
+      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+    }
+
+    // Some capture responses omit purchase-unit metadata. The order was
+    // already fetched and verified immediately before capture, so retain that
+    // verified binding for the persistence-layer guard.
+    result.CustomId = quote.Fingerprint;
+    result.ReferenceId = expectedReferenceId;
+    BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
   }
 
   private static string GetCaptureStatusReason(JsonElement capture)

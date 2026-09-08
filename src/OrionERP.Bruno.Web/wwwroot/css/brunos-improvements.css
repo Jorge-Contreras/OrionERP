@@ -1,7 +1,7 @@
-/* Bruno visual surfaces */
+/* Public restaurant visual surfaces */
 .hero {
   isolation: isolate;
-  background-image: url("/Images/Brunos/brunos-food-hero.jpg");
+  background-image: var(--site-home-hero-image);
   background-position: center;
 }
 
@@ -56,14 +56,20 @@
 .page-hero::before {
   background:
     linear-gradient(90deg, #171512f1, #1715127a),
-    url("/Images/Brunos/brunos-real-hero.jpg") center 58% / cover;
+    var(--site-menu-hero-image) center 58% / cover;
   filter: saturate(.88) contrast(1.02);
+}
+
+.page-hero--visit::before {
+  background:
+    linear-gradient(90deg, #171512f1, #1715127a),
+    var(--site-visit-hero-image) center 58% / cover;
 }
 
 .page-hero--club::before {
   background:
     linear-gradient(90deg, #171512f5 0%, #171512b8 46%, #17151250 100%),
-    url("/Images/Brunos/brunos-real-club.jpg") center 58% / cover;
+    var(--site-membership-hero-image) center 58% / cover;
 }
 
 .page-hero--club {
@@ -115,7 +121,7 @@
   overflow: hidden;
   background:
     linear-gradient(90deg, #1d1a1726 0%, #1d1a17cf 100%),
-    url("/Images/Brunos/brunos-real-club.jpg") center 58% / cover;
+    var(--site-membership-hero-image) center 58% / cover;
 }
 
 .account-art::before {
@@ -123,7 +129,7 @@
   position: absolute;
   z-index: 1;
   inset: 8% 4% -2% 18%;
-  background: url("/Images/Brunos/bruno-club-mascot.png") right bottom / contain no-repeat;
+  background: var(--site-membership-decoration-image) right bottom / contain no-repeat;
   filter: drop-shadow(0 20px 24px #00000075);
 }
 
@@ -135,7 +141,7 @@
   left: clamp(2rem, 5vw, 5rem);
   width: clamp(7rem, 13vw, 11rem);
   aspect-ratio: 1;
-  background: url("/Images/Brunos/brunos-logo.png") center / contain no-repeat;
+  background: var(--site-logo-image) center / contain no-repeat;
   filter: drop-shadow(0 12px 20px #00000070);
 }
 
@@ -157,7 +163,7 @@
 
 .hero__authenticity::before {
   content: "●";
-  color: #e8a247;
+  color: var(--amber);
   font-size: .6rem;
 }
 
@@ -175,7 +181,7 @@
   object-fit: cover;
 }
 
-/* Club Bruno conversion path */
+/* Membership conversion path */
 .club-cta {
   position: relative;
   isolation: isolate;
@@ -183,9 +189,9 @@
   gap: .08rem;
   min-width: min(100%, 15rem);
   overflow: hidden;
-  border-color: #f0b15d;
-  background: linear-gradient(135deg, #a73527 0%, #7d2018 64%, #a73527 100%);
-  box-shadow: 0 0 0 1px #f4c77f26, 0 10px 30px #00000035, 0 0 26px #e8a24730;
+  border-color: color-mix(in srgb,var(--amber) 82%,white);
+  background: linear-gradient(135deg, var(--red) 0%, var(--red-dark) 64%, var(--red) 100%);
+  box-shadow: 0 0 0 1px color-mix(in srgb,var(--amber) 15%,transparent), 0 10px 30px #00000035, 0 0 26px color-mix(in srgb,var(--amber) 19%,transparent);
   text-align: center;
   animation: club-pulse 3.2s ease-in-out infinite;
 }
@@ -211,7 +217,7 @@
 }
 
 .club-cta > small {
-  color: #ffe4ba;
+  color: color-mix(in srgb,var(--amber) 38%,white);
   font-size: .66rem;
   font-weight: 800;
   letter-spacing: .1em;
@@ -219,9 +225,9 @@
 }
 
 .club-cta:hover {
-  border-color: #ffd18a;
-  background: linear-gradient(135deg, #bd4030, #8f271c 64%, #bd4030);
-  box-shadow: 0 12px 34px #00000045, 0 0 34px #e8a24752;
+  border-color: color-mix(in srgb,var(--amber) 58%,white);
+  background: linear-gradient(135deg, color-mix(in srgb,var(--red) 78%,white), var(--red) 64%, color-mix(in srgb,var(--red) 78%,white));
+  box-shadow: 0 12px 34px #00000045, 0 0 34px color-mix(in srgb,var(--amber) 32%,transparent);
 }
 
 .site-header nav .account-login-link {
@@ -239,21 +245,21 @@
   min-width: 7.8rem;
   margin-left: .35rem;
   overflow: hidden;
-  border: 1px solid #e5a658;
-  background: linear-gradient(135deg, #a73527, #711b15);
+  border: 1px solid color-mix(in srgb,var(--amber) 84%,white);
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
   color: #fff;
   text-align: center;
-  box-shadow: 0 0 20px #e8a24729;
+  box-shadow: 0 0 20px color-mix(in srgb,var(--amber) 16%,transparent);
 }
 
 .site-header nav .club-join-link:hover {
-  background: linear-gradient(135deg, #bd4030, #852219);
+  background: linear-gradient(135deg, color-mix(in srgb,var(--red) 78%,white), color-mix(in srgb,var(--red-dark) 88%,white));
   color: #fff;
 }
 
 .club-join-link span,
 .club-fab span {
-  color: #ffd79a;
+  color: color-mix(in srgb,var(--amber) 55%,white);
   font-size: .58rem;
   font-weight: 850;
   letter-spacing: .12em;
@@ -278,19 +284,19 @@
   min-width: 9.6rem;
   overflow: hidden;
   padding: .8rem 1rem;
-  border: 1px solid #f1b261;
+  border: 1px solid color-mix(in srgb,var(--amber) 82%,white);
   border-radius: 999px;
-  background: linear-gradient(135deg, #a73527, #681812);
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
   color: #fff;
   text-align: center;
   text-decoration: none;
-  box-shadow: 0 14px 36px #150d0a73, 0 0 28px #e8a24742;
+  box-shadow: 0 14px 36px #150d0a73, 0 0 28px color-mix(in srgb,var(--amber) 26%,transparent);
   animation: club-pulse 3.2s ease-in-out infinite;
 }
 
 .club-fab:hover {
   transform: translateY(-2px);
-  background: linear-gradient(135deg, #bf4332, #812119);
+  background: linear-gradient(135deg, color-mix(in srgb,var(--red) 82%,white), color-mix(in srgb,var(--red-dark) 88%,white));
 }
 
 .club-spotlight {
@@ -299,7 +305,7 @@
   min-height: 33rem;
   margin: clamp(.8rem, 1.4vw, 1.4rem);
   border: clamp(.4rem, .65vw, .65rem) solid #eee1ce;
-  outline: 1px solid #8f271c;
+  outline: 1px solid var(--red);
   background: #191612;
   color: #fff;
   box-shadow: 0 18px 48px #1b120c2e;
@@ -358,12 +364,12 @@
   justify-items: start;
   padding: clamp(2.5rem, 7vw, 6rem);
   background:
-    radial-gradient(circle at 85% 15%, #8f271c2e, transparent 35%),
+    radial-gradient(circle at 85% 15%, color-mix(in srgb,var(--red) 18%,transparent), transparent 35%),
     #191612;
 }
 
 .club-spotlight__content > span {
-  color: #efb266;
+  color: var(--amber);
   font-size: .76rem;
   font-weight: 900;
   letter-spacing: .16em;
@@ -412,7 +418,7 @@
 }
 
 .club-spotlight__actions > a:not(.button) {
-  color: #f1b261;
+  color: color-mix(in srgb,var(--amber) 82%,white);
   font-size: .8rem;
   font-weight: 850;
   text-underline-offset: .22rem;
@@ -453,7 +459,7 @@
 }
 
 .account-form button.club-cta {
-  border: 1px solid #f0b15d;
+  border: 1px solid color-mix(in srgb,var(--amber) 82%,white);
 }
 
 .account-form button.club-cta:disabled,
@@ -467,8 +473,8 @@
 }
 
 @keyframes club-pulse {
-  0%, 100% { box-shadow: 0 10px 30px #00000035, 0 0 20px #e8a24725; }
-  50% { box-shadow: 0 12px 34px #00000045, 0 0 34px #e8a24755; }
+  0%, 100% { box-shadow: 0 10px 30px #00000035, 0 0 20px color-mix(in srgb,var(--amber) 15%,transparent); }
+  50% { box-shadow: 0 12px 34px #00000045, 0 0 34px color-mix(in srgb,var(--amber) 33%,transparent); }
 }
 
 @keyframes club-shimmer {
@@ -670,7 +676,7 @@
   color: #fff !important;
 }
 
-/* Promociones: invitación a registrarse en Club Bruno */
+/* Promotions: membership invitation */
 .promo-join {
   display: flex;
   flex-wrap: wrap;
@@ -746,7 +752,7 @@
 }
 
 .redeem-banner small {
-  color: #8f271c;
+  color: var(--red);
   font-weight: 700;
 }
 

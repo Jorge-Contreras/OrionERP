@@ -1,29 +1,31 @@
 @page "/membresia"
 @inject IBrunoPublicCatalogService CatalogService
-@inject IWebHostEnvironment Environment
+@inject ILoyaltyService LoyaltyService
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
 
-<PageTitle>Club Bruno · Membresía</PageTitle>
+<PageTitle>@MembershipName · @Presentation.PublicName</PageTitle>
 <section class="page-hero page-hero--club">
   <div class="page-hero__brand-visual" aria-hidden="true">
-    <img class="page-hero__logo" src="/Images/Brunos/brunos-logo.png" alt="" />
-    <img class="page-hero__mascot" src="/Images/Brunos/bruno-club-mascot.png" alt="" />
+    <img class="page-hero__logo" src="@Presentation.LogoPath" alt="" />
+    <img class="page-hero__mascot" src="@Presentation.Asset("membership-decoration")" alt="" />
   </div>
-  <span>Tus visitas suman</span><h1>Club Bruno</h1><p>Una membresía sencilla para reconocer cada compra elegible.</p>
+  <span>Tus visitas suman</span><h1>@MembershipName</h1><p>Una membresía sencilla para reconocer cada compra elegible.</p>
   @if (membershipEnabled)
   {
-    <div class="page-hero__actions"><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear mi cuenta gratis</span><small>Únete a Club Bruno</small></a><a class="button button--ghost" href="/cuenta/acceso" target="_top">Ya soy miembro</a></div>
+    <div class="page-hero__actions"><a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Crear mi cuenta gratis</span><small>Únete a @MembershipName</small></a><a class="button button--ghost" href="/cuenta/acceso" target="_top">Ya soy miembro</a></div>
   }
   else
   {
-    <div class="club-status" role="status"><strong>Registro disponible próximamente</strong><span>Estamos terminando de preparar Club Bruno. Aquí anunciaremos cuando puedas crear tu cuenta.</span></div>
+    <div class="club-status" role="status"><strong>Registro disponible próximamente</strong><span>Estamos terminando de preparar @MembershipName. Aquí anunciaremos cuando puedas crear tu cuenta.</span></div>
   }
 </section>
 
 <section class="club-explainer">
   <article><b>01</b><h2>Regístrate</h2><p>Crea tu cuenta con correo y teléfono, y confirma tu correo para activar la membresía.</p></article>
   <article><b>02</b><h2>Identifícate</h2><p>Muestra el QR temporal de Mi cuenta o proporciona tu correo verificado antes de pagar.</p></article>
-  <article><b>03</b><h2>Acumula</h2><p>Recibe 1 punto por cada $10 MXN de mercancía elegible después de descuentos. No se guardan remanentes.</p></article>
-  <article><b>04</b><h2>Canjea</h2><p>Desde 100 puntos, pide en caja la cantidad que quieras usar. Cada punto equivale a $1 MXN de descuento.</p></article>
+  <article><b>03</b><h2>Acumula</h2><p>@AccrualSummary</p></article>
+  <article><b>04</b><h2>Canjea</h2><p>@RedemptionSummary</p></article>
 </section>
 
 <section class="club-details">
@@ -33,7 +35,7 @@
     <li>Propinas y cargos de entrega no generan puntos.</li>
     <li>Debes vincular tu membresía antes de pagar; las compras anteriores no generan puntos retroactivos.</li>
     <li>El canje se aplica después de promociones y descuentos, únicamente sobre mercancía; no cubre entrega, propina ni genera efectivo.</li>
-    <li>Los puntos no son transferibles y tienen una vigencia de 12 meses.</li>
+    <li>@ExpirationSummary</li>
     <li>Las cancelaciones y reembolsos restituyen los puntos canjeados de forma total o proporcional y auditable.</li>
   </ul>
   @if (membershipEnabled)
@@ -47,18 +49,30 @@
 
 @code {
   private bool membershipEnabled;
+  private LoyaltyProgramSettingsDto? program;
+  private string MembershipName => Presentation.MembershipProgramName ?? "Membresía";
+  private string AccrualSummary => program is null
+    ? "Consulta las reglas vigentes de acumulación antes de comprar."
+    : $"Recibe 1 punto por cada {program.PesosPerPoint:C} MXN completos de mercancía elegible después de descuentos. No se guardan remanentes.";
+  private string RedemptionSummary => program is null
+    ? "Consulta el mínimo y valor de canje vigentes antes de comprar."
+    : $"Desde {program.MinimumRedeemPoints:N0} puntos, pide en caja la cantidad que quieras usar. Cada punto equivale a {program.PointValueMxn:C} MXN de descuento.";
+  private string ExpirationSummary => program is null
+    ? "Los puntos no son transferibles; consulta su vigencia antes de comprar."
+    : program.PointsExpire
+      ? $"Los puntos no son transferibles y tienen una vigencia de {program.PointsValidityMonths:N0} meses."
+      : "Los puntos no son transferibles y actualmente no tienen vencimiento programado.";
 
   protected override async Task OnInitializedAsync()
   {
-    if (Environment.IsDevelopment())
-    {
-      membershipEnabled = true;
-      return;
-    }
-
     try
     {
-      membershipEnabled = (await CatalogService.GetSettingsAsync(BrunoSiteConstants.Rfc))?.IsMembershipEnabled == true;
+      var binding = await Website.ResolveRequiredAsync();
+      var settingsTask = CatalogService.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+      var programTask = LoyaltyService.GetProgramSettingsAsync(binding.CompanyRfc);
+      await Task.WhenAll(settingsTask, programTask);
+      membershipEnabled = (await settingsTask)?.IsMembershipEnabled == true;
+      program = await programTask;
     }
     catch
     {

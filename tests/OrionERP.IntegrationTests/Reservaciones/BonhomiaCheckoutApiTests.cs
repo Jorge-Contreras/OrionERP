@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
@@ -18,13 +20,16 @@ namespace OrionERP.IntegrationTests.Reservaciones;
 
 public class BonhomiaCheckoutApiTests
 {
+  private const string CurrentPrivacyVersion = "2026-09-02";
+  private const string CurrentTermsVersion = "2026-09-02";
+
   [Fact]
   public async Task CreateOrder_RejectsMissingQuoteToken()
   {
     await using var app = await CreateAppAsync();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders", new BonhomiaCreatePayPalOrderRequest());
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders", new BonhomiaCreatePayPalOrderRequest());
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
   }
@@ -37,9 +42,9 @@ public class BonhomiaCheckoutApiTests
       .OfType<RouteEndpoint>()
       .ToArray();
 
-    AssertAnonymousRoute(endpoints, "/api/bonhomia/checkout/orders");
-    AssertAnonymousRoute(endpoints, "/api/bonhomia/checkout/orders/{orderId}");
-    AssertAnonymousRoute(endpoints, "/api/bonhomia/checkout/reservations/{reservationId:int}/pdf");
+    AssertAnonymousRoute(endpoints, "/api/hospitality/checkout/orders");
+    AssertAnonymousRoute(endpoints, "/api/hospitality/checkout/orders/{orderId}");
+    AssertAnonymousRoute(endpoints, "/api/hospitality/checkout/reservations/{reservationId:int}/pdf");
   }
 
   [Fact]
@@ -52,10 +57,13 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders", new BonhomiaCreatePayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders", new BonhomiaCreatePayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(original),
-      QuoteFingerprint = original.Fingerprint
+      QuoteFingerprint = original.Fingerprint,
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion
     });
 
     Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -70,15 +78,69 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders", new BonhomiaCreatePayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders", new BonhomiaCreatePayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
-      PaymentAttemptId = "attempt-abc-123"
+      PaymentAttemptId = "attempt-abc-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion
     });
 
     response.EnsureSuccessStatusCode();
-    Assert.Equal("ord-attempt-abc-123", payPal.LastCreateIdempotencyKey);
+    Assert.Equal(ExpectedPayPalRequestId("ord", "attempt-abc-123", quote), payPal.LastCreateIdempotencyKey);
+  }
+
+  [Fact]
+  public async Task CreateOrder_RejectsMissingPrivacyVersion_BeforeCreatingPayPalOrder()
+  {
+    var quote = CreateQuote(1250m);
+    var payPal = new FakePayPalClient();
+    await using var app = await CreateAppAsync(payPalClient: payPal);
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders", new BonhomiaCreatePayPalOrderRequest
+    {
+      QuoteToken = tokenService.CreateToken(quote),
+      QuoteFingerprint = quote.Fingerprint,
+      Accepted = true,
+      PrivacyVersion = string.Empty,
+      TermsVersion = CurrentTermsVersion
+    });
+    var problem = await response.Content.ReadAsStringAsync();
+
+    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    Assert.Contains("legal_consent_required", problem, StringComparison.Ordinal);
+    Assert.Equal(0, payPal.CreateCount);
+  }
+
+  [Fact]
+  public async Task ConfirmOrder_RejectsObsoleteTermsVersion_BeforeCapturingPayPalOrder()
+  {
+    var quote = CreateQuote(1250m);
+    var booking = new FakeBookingService { Quote = quote };
+    var payPal = new FakePayPalClient();
+    await using var app = await CreateAppAsync(booking, payPal);
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-STALE", new BonhomiaConfirmPayPalOrderRequest
+    {
+      QuoteToken = tokenService.CreateToken(quote),
+      QuoteFingerprint = quote.Fingerprint,
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = "2025-01-01",
+      Customer = CreateCustomer()
+    });
+    var problem = await response.Content.ReadAsStringAsync();
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Contains("legal_documents_changed", problem, StringComparison.Ordinal);
+    Assert.Equal(0, payPal.CaptureCount);
+    Assert.Equal(0, booking.PaidReservationCount);
   }
 
   [Fact]
@@ -94,11 +156,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
       PaymentAttemptId = "attempt-confirm-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
       Customer = CreateCustomer()
     });
 
@@ -127,6 +192,8 @@ public class BonhomiaCheckoutApiTests
       CaptureResult = new BonhomiaPayPalCaptureResult
       {
         OrderId = "PAYPAL-1",
+        CustomId = quote.Fingerprint,
+        ReferenceId = quote.QuoteId.ToString("N"),
         OrderStatus = "COMPLETED",
         CaptureId = "CAPTURE-1",
         Status = "COMPLETED",
@@ -142,11 +209,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
-      PaymentAttemptId = "attempt-confirm-123"
+      PaymentAttemptId = "attempt-confirm-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion
     });
 
     response.EnsureSuccessStatusCode();
@@ -167,19 +237,74 @@ public class BonhomiaCheckoutApiTests
     Assert.Equal("CAPTURE-1", payload.PayPalCaptureId);
     Assert.Equal("COMPLETED", payload.PayPalStatus);
     Assert.Equal("payer@example.com", payload.PayPalPayerEmail);
-    Assert.Contains("/api/bonhomia/checkout/reservations/49210/pdf?token=", payload.PdfUrl, StringComparison.Ordinal);
+    Assert.Contains("/api/hospitality/checkout/reservations/49210/pdf?token=", payload.PdfUrl, StringComparison.Ordinal);
     Assert.Equal(1, payPal.CaptureCount);
-    Assert.Equal("cap-attempt-confirm-123", payPal.LastCaptureIdempotencyKey);
+    Assert.Equal(ExpectedPayPalRequestId("cap", "attempt-confirm-123", quote), payPal.LastCaptureIdempotencyKey);
     Assert.Equal(1, booking.PaidReservationCount);
     Assert.NotNull(booking.LastCustomer);
     Assert.Equal("Comprador PayPal", booking.LastCustomer!.FullName);
     Assert.Equal("payer@example.com", booking.LastCustomer.Email);
     Assert.Equal("7491234567", booking.LastCustomer.Phone);
+    Assert.NotNull(booking.LastLegalAcceptance);
+    Assert.Equal(CurrentPrivacyVersion, booking.LastLegalAcceptance!.PrivacyVersion);
+    Assert.Equal(CurrentTermsVersion, booking.LastLegalAcceptance.TermsVersion);
+    Assert.Equal(TimeSpan.Zero, booking.LastLegalAcceptance.AcceptedAtUtc.Offset);
+    Assert.True(booking.LastLegalAcceptance.AcceptedAtUtc <= DateTimeOffset.UtcNow);
     var confirmationEmail = Assert.Single(emailSender.Sent);
     Assert.Equal(49210, confirmationEmail.ReservationId);
     Assert.Equal("payer@example.com", confirmationEmail.Customer.Email);
     Assert.Equal("CAPTURE-1", confirmationEmail.Payment.CaptureId);
-    Assert.Contains("/api/bonhomia/checkout/reservations/49210/pdf?token=", confirmationEmail.PdfUrl, StringComparison.Ordinal);
+    Assert.Contains("/api/hospitality/checkout/reservations/49210/pdf?token=", confirmationEmail.PdfUrl, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task ConfirmOrder_PreservesProtectedQuoteIdentity_WhenLiveQuoteRegeneratesQuoteId()
+  {
+    var protectedQuote = CreateQuote(1250m);
+    var liveQuote = CreateQuote(1250m);
+    var regeneratedLiveQuoteId = liveQuote.QuoteId;
+    Assert.NotEqual(protectedQuote.QuoteId, regeneratedLiveQuoteId);
+    Assert.Equal(protectedQuote.Fingerprint, liveQuote.Fingerprint);
+
+    var booking = new FakeBookingService { Quote = liveQuote };
+    var payPal = new FakePayPalClient
+    {
+      CaptureResult = new BonhomiaPayPalCaptureResult
+      {
+        OrderId = "PAYPAL-RECALCULATED",
+        CustomId = protectedQuote.Fingerprint,
+        ReferenceId = protectedQuote.QuoteId.ToString("N"),
+        OrderStatus = "COMPLETED",
+        CaptureId = "CAPTURE-RECALCULATED",
+        Status = "COMPLETED",
+        Amount = protectedQuote.Total,
+        Currency = protectedQuote.Currency,
+        PayerName = "Cliente Web",
+        PayerEmail = "cliente@example.com"
+      }
+    };
+    await using var app = await CreateAppAsync(booking, payPal);
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync(
+      "/api/hospitality/checkout/orders/PAYPAL-RECALCULATED",
+      new BonhomiaConfirmPayPalOrderRequest
+      {
+        QuoteToken = tokenService.CreateToken(protectedQuote),
+        QuoteFingerprint = protectedQuote.Fingerprint,
+        PaymentAttemptId = "attempt-regenerated-quote-id",
+        Accepted = true,
+        PrivacyVersion = CurrentPrivacyVersion,
+        TermsVersion = CurrentTermsVersion,
+        Customer = CreateCustomer()
+      });
+
+    response.EnsureSuccessStatusCode();
+    Assert.Equal(1, payPal.CaptureCount);
+    Assert.Equal(1, booking.PaidReservationCount);
+    Assert.Equal(protectedQuote.QuoteId, booking.LastPaidReservationQuote?.QuoteId);
+    Assert.NotEqual(regeneratedLiveQuoteId, booking.LastPaidReservationQuote?.QuoteId);
   }
 
   [Fact]
@@ -207,11 +332,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
       PaymentAttemptId = "attempt-confirm-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
       Customer = CreateCustomer()
     });
 
@@ -242,11 +370,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
       PaymentAttemptId = "attempt-confirm-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
       Customer = CreateCustomer()
     });
 
@@ -276,11 +407,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-1", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
       PaymentAttemptId = "attempt-confirm-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
       Customer = CreateCustomer()
     });
 
@@ -288,7 +422,7 @@ public class BonhomiaCheckoutApiTests
     var payload = await response.Content.ReadFromJsonAsync<BonhomiaConfirmPayPalOrderResponse>();
 
     Assert.NotNull(payload);
-    Assert.StartsWith("https://bonhomia.orion.land/api/bonhomia/checkout/reservations/49210/pdf?token=", payload!.PdfUrl, StringComparison.Ordinal);
+    Assert.StartsWith("https://bonhomia.orion.land/api/hospitality/checkout/reservations/49210/pdf?token=", payload!.PdfUrl, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -307,6 +441,8 @@ public class BonhomiaCheckoutApiTests
       CaptureResult = new BonhomiaPayPalCaptureResult
       {
         OrderId = "PAYPAL-PENDING",
+        CustomId = quote.Fingerprint,
+        ReferenceId = quote.QuoteId.ToString("N"),
         CaptureId = "CAPTURE-PENDING",
         Status = "PENDING",
         StatusReason = "RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION",
@@ -320,11 +456,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-PENDING", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-PENDING", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
       PaymentAttemptId = "attempt-pending-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
       Customer = CreateCustomer()
     });
     var problem = await response.Content.ReadAsStringAsync();
@@ -332,6 +471,46 @@ public class BonhomiaCheckoutApiTests
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     Assert.Contains("payment_not_completed", problem);
     Assert.Contains("RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION", problem);
+    Assert.Equal(1, payPal.CaptureCount);
+    Assert.Equal(0, booking.PaidReservationCount);
+  }
+
+  [Fact]
+  public async Task ConfirmOrder_RejectsPayPalOrderBoundToAnotherWebsiteQuote()
+  {
+    var quote = CreateQuote(1250m);
+    var booking = new FakeBookingService { Quote = quote };
+    var payPal = new FakePayPalClient
+    {
+      CaptureResult = new BonhomiaPayPalCaptureResult
+      {
+        OrderId = "PAYPAL-FOREIGN",
+        CustomId = "another-sites-fingerprint",
+        ReferenceId = Guid.NewGuid().ToString("N"),
+        CaptureId = "CAPTURE-FOREIGN",
+        Status = "COMPLETED",
+        Amount = quote.Total,
+        Currency = quote.Currency
+      }
+    };
+    await using var app = await CreateAppAsync(booking, payPal);
+    var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
+    var client = app.GetTestClient();
+
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-FOREIGN", new BonhomiaConfirmPayPalOrderRequest
+    {
+      QuoteToken = tokenService.CreateToken(quote),
+      QuoteFingerprint = quote.Fingerprint,
+      PaymentAttemptId = "attempt-foreign",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
+      Customer = CreateCustomer()
+    });
+    var problem = await response.Content.ReadAsStringAsync();
+
+    Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    Assert.Contains("paypal_quote_mismatch", problem, StringComparison.Ordinal);
     Assert.Equal(1, payPal.CaptureCount);
     Assert.Equal(0, booking.PaidReservationCount);
   }
@@ -350,11 +529,14 @@ public class BonhomiaCheckoutApiTests
     var tokenService = app.Services.GetRequiredService<IBonhomiaQuoteTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.PostAsJsonAsync("/api/bonhomia/checkout/orders/PAYPAL-RECOVERY", new BonhomiaConfirmPayPalOrderRequest
+    var response = await client.PostAsJsonAsync("/api/hospitality/checkout/orders/PAYPAL-RECOVERY", new BonhomiaConfirmPayPalOrderRequest
     {
       QuoteToken = tokenService.CreateToken(quote),
       QuoteFingerprint = quote.Fingerprint,
       PaymentAttemptId = "attempt-recovery-123",
+      Accepted = true,
+      PrivacyVersion = CurrentPrivacyVersion,
+      TermsVersion = CurrentTermsVersion,
       Customer = CreateCustomer()
     });
     var problem = await response.Content.ReadAsStringAsync();
@@ -372,7 +554,7 @@ public class BonhomiaCheckoutApiTests
     await using var app = await CreateAppAsync();
     var client = app.GetTestClient();
 
-    var response = await client.GetAsync("/api/bonhomia/checkout/reservations/49210/pdf?token=invalido");
+    var response = await client.GetAsync("/api/hospitality/checkout/reservations/49210/pdf?token=invalido");
 
     Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
   }
@@ -403,7 +585,7 @@ public class BonhomiaCheckoutApiTests
     var pdfTokenService = app.Services.GetRequiredService<IBonhomiaReservationPdfTokenService>();
     var client = app.GetTestClient();
 
-    var response = await client.GetAsync($"/api/bonhomia/checkout/reservations/49210/pdf?token={pdfTokenService.CreateToken(49210)}");
+    var response = await client.GetAsync($"/api/hospitality/checkout/reservations/49210/pdf?token={pdfTokenService.CreateToken(49210)}");
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
@@ -432,6 +614,7 @@ public class BonhomiaCheckoutApiTests
     });
     builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();
     builder.Services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
+    builder.Services.AddSingleton(CreatePresentation());
     builder.Services.AddSingleton<IBonhomiaPublicBookingService>(bookingService ?? new FakeBookingService { Quote = CreateQuote(1250m) });
     builder.Services.AddSingleton<IBonhomiaPayPalClient>(payPalClient ?? new FakePayPalClient());
     builder.Services.AddSingleton<IBonhomiaReservationConfirmationEmailSender>(confirmationEmailSender ?? new FakeConfirmationEmailSender());
@@ -479,6 +662,19 @@ public class BonhomiaCheckoutApiTests
       "MXN",
       60);
 
+  private static string ExpectedPayPalRequestId(
+    string prefix,
+    string paymentAttemptId,
+    BonhomiaQuoteDto quote)
+  {
+    var safe = new string(paymentAttemptId
+      .Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_')
+      .ToArray());
+    var material = Encoding.UTF8.GetBytes($"{prefix}|{quote.Fingerprint}|{safe}");
+    var digest = Convert.ToHexString(SHA256.HashData(material)).ToLowerInvariant();
+    return $"{prefix}-{digest[..32]}";
+  }
+
   private static BonhomiaCustomerInfo CreateCustomer()
     => new()
     {
@@ -486,6 +682,56 @@ public class BonhomiaCheckoutApiTests
       Email = "cliente@example.com",
       Phone = "7491103026"
     };
+
+  private static PublicWebsitePresentationDefinition CreatePresentation()
+  {
+    var instance = PublicWebsiteInstancePolicy.Create(
+      new PublicWebsiteInstanceOptions
+      {
+        PublicSiteKey = "hospitality-test",
+        ExpectedCompanyRfc = "AAA010101AAA",
+        SiteKey = "hospitality-test-site",
+        ModuleCode = PlatformModuleCodes.Hospitality,
+        CanonicalHost = "hospitality.example.test",
+        LoopbackPort = 5010
+      },
+      PlatformModuleCodes.Hospitality);
+
+    return PublicWebsitePresentationPolicy.Create(
+      new PublicWebsitePresentationOptions
+      {
+        PublicSiteKey = instance.PublicSiteKey,
+        BrandingVersion = 1,
+        ContentVersion = 1,
+        PublicName = "Hospedaje de prueba",
+        ShortName = "Hospedaje",
+        LegalName = "Hospedaje de Prueba, S.A. de C.V.",
+        LocationName = "Ciudad de Prueba",
+        Tagline = "Descanso de prueba.",
+        FooterSummary = "Portal publico de prueba.",
+        SeoDescription = "Portal publico de prueba para checkout.",
+        Locale = "es-MX",
+        PublicEmail = "reservas@example.test",
+        WhatsAppE164 = "+525500000000",
+        WhatsAppDisplay = "+52 55 0000 0000",
+        OperatingAddress = "Domicilio operativo de prueba",
+        FiscalAddress = "Domicilio fiscal de prueba",
+        PrivacyEmail = "privacidad@example.test",
+        PrivacyVersion = CurrentPrivacyVersion,
+        PrivacyUpdatedDisplay = "2 de septiembre de 2026",
+        TermsVersion = CurrentTermsVersion,
+        TermsUpdatedDisplay = "2 de septiembre de 2026",
+        PrimaryColor = "#123456",
+        PrimaryDarkColor = "#102030",
+        AccentColor = "#ABCDEF",
+        Assets = new Dictionary<string, string>
+        {
+          ["logo"] = "/assets/logo.svg",
+          ["favicon"] = "/assets/favicon.png"
+        }
+      },
+      instance);
+  }
 
   private sealed class FakeBookingService : IBonhomiaPublicBookingService
   {
@@ -497,6 +743,8 @@ public class BonhomiaCheckoutApiTests
     public ReservacionDetailDto? ReservationDetail { get; set; }
     public int PaidReservationCount { get; private set; }
     public BonhomiaCustomerInfo? LastCustomer { get; private set; }
+    public BonhomiaLegalAcceptance? LastLegalAcceptance { get; private set; }
+    public BonhomiaQuoteDto? LastPaidReservationQuote { get; private set; }
 
     public Task<BonhomiaAvailabilityDto> GetAvailabilityAsync(DateOnly startDate, DateOnly endDateExclusive, CancellationToken ct = default)
       => Task.FromResult(new BonhomiaAvailabilityDto());
@@ -518,6 +766,7 @@ public class BonhomiaCheckoutApiTests
       BonhomiaQuoteDto quote,
       BonhomiaCustomerInfo customer,
       BonhomiaPayPalCaptureResult payment,
+      BonhomiaLegalAcceptance legalAcceptance,
       CancellationToken ct = default)
     {
       if (CreatePaidReservationException is not null)
@@ -530,8 +779,11 @@ public class BonhomiaCheckoutApiTests
         throw CreatePaidReservationUnexpectedException;
       }
 
+      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(payment, quote);
       PaidReservationCount++;
+      LastPaidReservationQuote = quote;
       LastCustomer = customer;
+      LastLegalAcceptance = legalAcceptance;
       return Task.FromResult(PaidReservation ?? new BonhomiaPaidReservationResult
       {
         ReservationId = 1,
@@ -548,6 +800,7 @@ public class BonhomiaCheckoutApiTests
 
   private sealed class FakePayPalClient : IBonhomiaPayPalClient
   {
+    public int CreateCount { get; private set; }
     public int CaptureCount { get; private set; }
     public string LastCreateIdempotencyKey { get; private set; } = string.Empty;
     public string LastCaptureIdempotencyKey { get; private set; } = string.Empty;
@@ -555,17 +808,24 @@ public class BonhomiaCheckoutApiTests
 
     public Task<BonhomiaPayPalOrderResult> CreateOrderAsync(BonhomiaQuoteDto quote, string idempotencyKey, CancellationToken ct = default)
     {
+      CreateCount++;
       LastCreateIdempotencyKey = idempotencyKey;
       return Task.FromResult(new BonhomiaPayPalOrderResult { OrderId = "PAYPAL-1", Status = "CREATED" });
     }
 
-    public Task<BonhomiaPayPalCaptureResult> CaptureOrderAsync(string orderId, string idempotencyKey, CancellationToken ct = default)
+    public Task<BonhomiaPayPalCaptureResult> CaptureOrderAsync(
+      string orderId,
+      BonhomiaQuoteDto quote,
+      string idempotencyKey,
+      CancellationToken ct = default)
     {
       CaptureCount++;
       LastCaptureIdempotencyKey = idempotencyKey;
       return Task.FromResult(CaptureResult ?? new BonhomiaPayPalCaptureResult
       {
         OrderId = orderId,
+        CustomId = quote.Fingerprint,
+        ReferenceId = quote.QuoteId.ToString("N"),
         OrderStatus = "COMPLETED",
         CaptureId = "CAPTURE-1",
         Status = "COMPLETED",

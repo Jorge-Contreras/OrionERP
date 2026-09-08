@@ -1,13 +1,10 @@
 .bonhomia-site {
   --bonhomia-ink: #172622;
   --bonhomia-muted: #63736b;
-  --bonhomia-teal: #0f4c5c;
-  --bonhomia-teal-dark: #083640;
   --bonhomia-ivory: #f3eedf;
   --bonhomia-warm: #fbfaf6;
   --bonhomia-sage: #5f7d69;
   --bonhomia-clay: #9d5941;
-  --bonhomia-gold: #c99d4a;
   --bonhomia-border: rgba(23, 38, 34, 0.14);
   min-height: 100vh;
   overflow-x: hidden;

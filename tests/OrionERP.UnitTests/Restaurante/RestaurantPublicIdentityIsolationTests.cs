@@ -329,9 +329,28 @@ public sealed class RestaurantPublicIdentityIsolationTests
     Assert.Equal("20260903_restaurant_public_identity_scope_sandbox", migrationId);
     Assert.Equal(Convert.ToHexString(SHA256.HashData(migrationBytes)), configuredChecksum);
     Assert.Contains("OBJECT_ID(N'orion.SchemaMigration',N'U') IS NOT NULL", sql, StringComparison.Ordinal);
-    Assert.Contains("WHERE MigrationId=@RequiredMigrationId", sql, StringComparison.Ordinal);
+    Assert.Contains("WHERE (MigrationId=@RequiredMigrationId", sql, StringComparison.Ordinal);
     Assert.Contains("AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)", sql, StringComparison.Ordinal);
     Assert.Contains("IF @LedgerReady=1", sql, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Readiness_accepts_production_only_with_its_own_exact_migration_checksum()
+  {
+    var sql = ReadReadinessConstant("ReadinessSql");
+    var migrationId = ReadReadinessConstant("RequiredProductionMigrationId");
+    var configuredChecksum = ReadReadinessConstant("RequiredProductionMigrationChecksum");
+    var migrationBytes = File.ReadAllBytes(RepoPath(
+      "database/production/20260908/20260908_production_restaurant_public_identity_scope.sql"));
+
+    Assert.Equal("20260908_production_restaurant_public_identity_scope", migrationId);
+    Assert.Equal(Convert.ToHexString(SHA256.HashData(migrationBytes)), configuredChecksum);
+    Assert.NotEqual(ReadReadinessConstant("RequiredMigrationChecksum"), configuredChecksum);
+    var normalizedSql = System.Text.RegularExpressions.Regex.Replace(sql, @"\s+", " ");
+    Assert.Contains("(MigrationId=@RequiredMigrationId AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum))", normalizedSql, StringComparison.Ordinal);
+    Assert.Contains("OR (MigrationId=@RequiredProductionMigrationId AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum))", normalizedSql, StringComparison.Ordinal);
+    Assert.Contains("IF @LedgerReady=1", sql, StringComparison.Ordinal);
+    Assert.True(HasEveryReadinessDriftGuard(sql));
   }
 
   [Fact]
@@ -382,6 +401,7 @@ public sealed class RestaurantPublicIdentityIsolationTests
 
   [Theory]
   [InlineData("AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)")]
+  [InlineData("AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum)")]
   [InlineData("AND identitySiteColumn.is_nullable=0")]
   [InlineData("AND memberSiteColumn.is_nullable=0")]
   [InlineData("AND indexInfo.is_unique=1 AND indexInfo.is_disabled=0")]
@@ -530,6 +550,7 @@ public sealed class RestaurantPublicIdentityIsolationTests
     string[] requiredGuards =
     [
       "AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)",
+      "AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum)",
       "AND identitySiteColumn.is_nullable=0",
       "AND memberSiteColumn.is_nullable=0",
       "AND indexInfo.is_unique=1 AND indexInfo.is_disabled=0",

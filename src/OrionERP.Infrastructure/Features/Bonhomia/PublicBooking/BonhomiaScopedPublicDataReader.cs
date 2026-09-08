@@ -694,12 +694,12 @@ SELECT CAST(CASE WHEN
   AND EXISTS
   (
     SELECT 1 FROM orion.SchemaMigration
-    WHERE MigrationId = N'20260903_hospitality_public_scope_sandbox'
+    WHERE MigrationId IN (N'20260903_hospitality_public_scope_sandbox', N'20260908_production_hospitality_public_scope')
   )
   AND EXISTS
   (
     SELECT 1 FROM orion.SchemaMigration
-    WHERE MigrationId = N'20260905_hospitality_legal_consent_sandbox'
+    WHERE MigrationId IN (N'20260905_hospitality_legal_consent_sandbox', N'20260908_production_hospitality_legal_consent')
   )
   AND COL_LENGTH(N'dbo.ROOM', N'OrionCompanyId') IS NOT NULL
   AND COL_LENGTH(N'dbo.ROOM', N'OrionSiteId') IS NOT NULL

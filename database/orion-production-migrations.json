@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "migrations": [
+    {
+      "id": "20260908_production_platform_foundation",
+      "path": "database/production/20260908/20260908_production_platform_foundation.sql",
+      "description": "Fundacion productiva aditiva: identidades locales y contrato de adopcion sin inferir TaxRfc.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_public_site_bindings",
+      "path": "database/production/20260908/20260908_production_public_site_bindings.sql",
+      "description": "Bindings productivos Bonhomia y Bruno: solo los dos perfiles existentes revisados.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_hospitality_public_scope",
+      "path": "database/production/20260908/20260908_production_hospitality_public_scope.sql",
+      "description": "Scope publico Hospedaje con preflight de procedencia legacy productiva y FKs compuestas.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_restaurant_public_identity_scope",
+      "path": "database/production/20260908/20260908_production_restaurant_public_identity_scope.sql",
+      "description": "Identity y membresia Restaurante con destino operativo y dominio productivo univocos.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_public_site_presentation_transition",
+      "path": "database/production/20260908/20260908_production_public_site_presentation_transition.sql",
+      "description": "Transicion versionada de presentacion con los dos perfiles productivos comprobados.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_hospitality_legal_consent",
+      "path": "database/production/20260908/20260908_production_hospitality_legal_consent.sql",
+      "description": "Consentimiento legal publico indivisible: sin inventar aceptacion historica.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_hospitality_administration_scope",
+      "path": "database/production/20260908/20260908_production_hospitality_administration_scope.sql",
+      "description": "RLS administrativo Hospedaje sin bypass: conserva y excluye los cruces historicos OHM/BSU.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    }
+  ]
+}

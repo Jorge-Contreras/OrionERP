@@ -12,6 +12,8 @@ internal sealed class MigrationRunner(MigratorOptions options)
   private static readonly IReadOnlySet<string> KnownDatabases = new HashSet<string>(StringComparer.Ordinal)
   {
     "Orion_Sandbox",
+    // Isolated restore of the approved production backup for this cutover.
+    "Orion_CutoverValidation_20260908",
     ProductionDatabase
   };
   private static readonly TimeSpan MaximumPreviewAge = TimeSpan.FromHours(24);

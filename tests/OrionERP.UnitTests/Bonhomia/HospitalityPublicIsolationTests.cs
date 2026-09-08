@@ -136,6 +136,8 @@ public sealed class HospitalityPublicIsolationTests
     Assert.Contains("customerIndex.has_filter = 0", sql, StringComparison.Ordinal);
     Assert.Contains("customerColumn.name = N'ClienteId'", sql, StringComparison.Ordinal);
     Assert.Contains("20260905_hospitality_legal_consent_sandbox", sql, StringComparison.Ordinal);
+    Assert.Contains("WHERE MigrationId IN (N'20260903_hospitality_public_scope_sandbox', N'20260908_production_hospitality_public_scope')", sql, StringComparison.Ordinal);
+    Assert.Contains("WHERE MigrationId IN (N'20260905_hospitality_legal_consent_sandbox', N'20260908_production_hospitality_legal_consent')", sql, StringComparison.Ordinal);
     Assert.Contains("PrivacyVersionAccepted", sql, StringComparison.Ordinal);
     Assert.Contains("TermsVersionAccepted", sql, StringComparison.Ordinal);
     Assert.Contains("LegalAcceptedAtUtc", sql, StringComparison.Ordinal);

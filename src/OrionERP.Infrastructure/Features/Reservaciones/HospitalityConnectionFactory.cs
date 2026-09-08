@@ -37,7 +37,7 @@ public sealed class HospitalityConnectionFactory(IConfiguration configuration, I
         THROW 51902, 'La empresa y sede de Hospedaje no coinciden.', 1;
       IF NOT EXISTS (SELECT 1 FROM sys.security_policies WHERE object_id=OBJECT_ID(N'orion.HospitalityScopePolicy') AND is_enabled = 1 AND is_schema_bound=1)
         OR (SELECT COUNT(*) FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'orion.HospitalityScopePolicy')) < 54
-        OR NOT EXISTS (SELECT 1 FROM orion.SchemaMigration WHERE MigrationId=N'20260908_hospitality_administration_scope_sandbox')
+        OR NOT EXISTS (SELECT 1 FROM orion.SchemaMigration WHERE MigrationId IN (N'20260908_hospitality_administration_scope_sandbox', N'20260908_production_hospitality_administration_scope'))
         THROW 51900, 'Falta la política de aislamiento administrativo de Hospedaje.', 1;
       """, scope, cancellationToken: ct));
   }

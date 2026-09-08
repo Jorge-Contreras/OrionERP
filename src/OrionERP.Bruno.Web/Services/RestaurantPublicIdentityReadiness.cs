@@ -21,6 +21,10 @@ public sealed class RestaurantPublicIdentityReadiness : IRestaurantPublicIdentit
     "20260903_restaurant_public_identity_scope_sandbox";
   private const string RequiredMigrationChecksum =
     "6654D9CFBC3CB09222A98E1A3338141CFB9259078A7780E3D3BBC2FDCC9E09A7";
+  private const string RequiredProductionMigrationId =
+    "20260908_production_restaurant_public_identity_scope";
+  private const string RequiredProductionMigrationChecksum =
+    "7E7B0EAB946AB9F7B722F63D5D955240342FA3FBB40F8B8F6A2CABD8A9F5F55B";
 
   private readonly IDbConnectionFactory _connectionFactory;
 
@@ -45,6 +49,8 @@ public sealed class RestaurantPublicIdentityReadiness : IRestaurantPublicIdentit
       {
         RequiredMigrationId,
         RequiredMigrationChecksum,
+        RequiredProductionMigrationId,
+        RequiredProductionMigrationChecksum,
         scope.PublicSiteId,
         scope.PublicSiteKey,
         scope.CompanyId,
@@ -68,11 +74,13 @@ public sealed class RestaurantPublicIdentityReadiness : IRestaurantPublicIdentit
             (
               SELECT 1
               FROM orion.SchemaMigration
-              WHERE MigrationId=@RequiredMigrationId
-                AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)
+              WHERE (MigrationId=@RequiredMigrationId
+                AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum))
+                OR (MigrationId=@RequiredProductionMigrationId
+                AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum))
             ) THEN 1 ELSE 0 END AS bit);',
-          N'@RequiredMigrationId nvarchar(200),@RequiredMigrationChecksum varchar(128),@Result bit OUTPUT',
-          @RequiredMigrationId,@RequiredMigrationChecksum,@LedgerReady OUTPUT;
+          N'@RequiredMigrationId nvarchar(200),@RequiredMigrationChecksum varchar(128),@RequiredProductionMigrationId nvarchar(200),@RequiredProductionMigrationChecksum varchar(128),@Result bit OUTPUT',
+          @RequiredMigrationId,@RequiredMigrationChecksum,@RequiredProductionMigrationId,@RequiredProductionMigrationChecksum,@LedgerReady OUTPUT;
       END;
 
       IF @LedgerReady=1

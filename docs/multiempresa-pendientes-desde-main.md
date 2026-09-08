@@ -94,7 +94,7 @@ Referencias: [plan y evidencia](public-websites-rebaseline-20260908.md),
 La [matriz contable vigente](multiempresa-accounting-status-20260908.md)
 reconcilia los diez objetivos originales contra código y metadatos de Sandbox.
 No presenta el aislamiento de Hospedaje como cierre contable: identifica RLS
-legacy permisiva sin contexto, el acceso de adjuntos por ID aún sin delimitar,
+legacy permisiva sin contexto, el acceso de adjuntos por ID ahora corregido,
 permisos de servicio pendientes y el ciclo contable formal/bandeja durable que
 faltan. El corte debe declarar los invariantes realmente cubiertos.
 
@@ -108,3 +108,13 @@ y vínculos propios. Recibo local:
 No verifica el orden inverso de adquisición de bloqueos ni representa E2E de
 navegador. No requirió cambios a servicios ni migraciones; no se repitió la suite
 completa. La decisión sobre los 288 vínculos no produjo cambios de datos.
+
+## Incremento contable de adjuntos
+
+`TransactionAttachmentRepository` exige la empresa de sesión antes de SQL y
+comprueba propiedad en la misma consulta que devuelve los bytes. Un adjunto
+de póliza exige su empresa; un XML canónico sin póliza admite emisor/receptor.
+Dos pruebas propias aprobadas (una SQL A/B y otra de rechazo preconexión),
+más 14 unitarias fiscales relacionadas, con build Release sin advertencias ni
+errores. No se añadió RLS ni se modificaron migraciones; la matriz conserva
+como parciales los demás objetivos contables. Evidencia y recibos en la matriz.

@@ -11,9 +11,10 @@ Se leyó el código del checkout principal y los metadatos de `Orion_SandBox`:
 `sys.sql_modules` y `sys.indexes`. Antes de cada conexión se fijó explícitamente
 `Orion_Sandbox` mediante los métodos del connection-string builder; se comprobó
 el catálogo antes de abrir y `DB_NAME()` después, sin distinguir mayúsculas.
-No se consultaron tablas de negocio, producción, secretos ni integraciones.
-No se ejecutaron pruebas funcionales nuevas para esta matriz; las suites del
-checkpoint no se atribuyen como validación de los pendientes siguientes.
+La revisión inicial no consultó tablas de negocio, producción, secretos ni
+integraciones. El incremento posterior de adjuntos ejecutó el fixture descrito
+al final en Sandbox. Las suites del checkpoint no se atribuyen como validación
+de los pendientes siguientes.
 
 ## Matriz contra el objetivo original
 
@@ -21,7 +22,7 @@ checkpoint no se atribuyen como validación de los pendientes siguientes.
 | --- | --- | --- |
 | 1. `CompanyId`, `TaxRfc` y clave legacy separados | **Parcial** | `orion.Company` tiene `CompanyId`, `TaxRfc`, `LegacyTenantKey` y `Rfc`; la fundación no infiere RFC fiscal. `CurrentCompanyContext` todavía identifica la sesión por `CurrentRfc`; `dbo.Transacciones` sólo tiene `RFC` y `Registro_Contable` depende de `TransaccionID`, sin `CompanyId`. Falta trasladar el contrato contable a identidad técnica conservando la compatibilidad legacy y sin convertir `BRUNOS260707L26` en RFC SAT. [Fundación](../src/OrionERP.Infrastructure/Features/Platform/Sql/20260901_platform_foundation.sql), [sesión](../src/OrionERP.Web/State/CurrentCompanyContext.cs). |
 | 2. Autorización transversal y suspensión | **Parcial** | `PlatformAdministrationService` impide suspender/eliminar `ACCOUNTING_CORE`. `PublicSiteResolver` y `HospitalityAdministrationScopeAccessor` comprueban empresa, módulo, vigencia y capacidad; Hospedaje revalida sesión/permisos. `RequireCompanyRoles` exige sesión y roles, sin consultar entitlements; `RestaurantAccountingService.GetDailyPreviewAsync` opera con RFC/sede y configuración contable sin una guarda de `CompanyModule`. Falta extender el contrato de habilitación a los servicios/trabajos pendientes y probar revocación real; no basta ocultar menú o usar `restaurante.Site.IsEnabled`. [Políticas](../src/OrionERP.Web/Identity/CompanyAuthorizationPolicyExtensions.cs), [scope Hospedaje](../src/OrionERP.Infrastructure/Features/Reservaciones/HospitalityAdministrationScopeAccessor.cs), [contabilidad Restaurante](../src/OrionERP.Infrastructure/Features/Restaurante/RestaurantAccountingService.cs). |
-| 3. Eliminar accesos por ID global y conexiones sin contexto | **Parcial** | `TransaccionService` sí ejecuta `EnsureTransactionScopeAsync`, `EnsureAttachmentScopeAsync` y guardas CFDI antes de numerosas consultas por ID: esas consultas no prueban por sí solas un bypass. Caso concreto pendiente: `TransactionAttachmentRepository.GetAttachmentAsync` selecciona `TRANSACTION_ATTACHMENT` sólo por `ID`; `HtmlCfdiService` delega directamente allí y la tabla carece de RLS. La fábrica fija `OrionRfc`, pero no agrega un filtro SQL a esa tabla. Además, las conexiones directas de `TransaccionService` no constituyen una fábrica contable uniforme. Cerrar primero el repositorio de adjuntos y probar acceso cruzado/sin sesión; después migrar consumidores según evidencia, incluidos los externos. [Repositorio de adjuntos](../src/OrionERP.Infrastructure/Features/Cfdi/HtmlCFDI/TransactionAttachmentRepository.cs), [servicio de pólizas](../src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Services/TransaccionService.cs). |
+| 3. Eliminar accesos por ID global y conexiones sin contexto | **Parcial** | `TransaccionService` sí ejecuta `EnsureTransactionScopeAsync`, `EnsureAttachmentScopeAsync` y guardas CFDI antes de numerosas consultas por ID: esas consultas no prueban por sí solas un bypass. **Caso de adjuntos corregido y validado:** `TransactionAttachmentRepository.GetAttachmentAsync` exige empresa antes de abrir SQL y filtra pertenencia en la misma consulta. Un `TranID` propio permite leer; sólo sin `TranID` se acepta el CFDI canónico como emisor/receptor. Se probaron positivos A/B, acceso cruzado, XML compartido, prioridad del vínculo privado y sesión ausente/perdida. La tabla sigue sin RLS; las conexiones directas de `TransaccionService` aún no constituyen una fábrica contable uniforme. El cierre de este repositorio no completa los demás consumidores ni los externos. [Repositorio de adjuntos](../src/OrionERP.Infrastructure/Features/Cfdi/HtmlCFDI/TransactionAttachmentRepository.cs), [servicio de pólizas](../src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Services/TransaccionService.cs). |
 | 4. RLS sin bypass por contexto ausente | **Parcial** | La política nueva de Hospedaje protege 18 tablas con 54 predicados. Las tres funciones legacy `logistica/rh/fiscal.fn_RfcAccessPredicate` conservan `SESSION_CONTEXT(N'OrionRfc') IS NULL OR ...`, comprobado en SQL. `Transacciones`, `Registro_Contable`, `CuentasContables`, `TRANSACTION_ATTACHMENT` y `cfdi.Comprobante` tienen **cero predicados**. La fábrica convierte contexto vacío en `__UNSCOPED__`, defensa útil que no elimina el bypass de una conexión sin inicialización. Falta migración aditiva y adaptación previa de los consumidores afectados, incluida la política de CFDI compartidos. |
 | 5. Identidades SQL mínimas por website y migración | **Pendiente de cierre operativo** | Los perfiles y procesos por instancia están definidos; eso no demuestra permisos SQL mínimos. El expediente productivo todavía pide completar identidades y permisos privados. Esta revisión no inspeccionó logins productivos ni afirma que estén separados. Preparar matriz de permisos y cuentas operativas/migración en Sandbox, comprobar acceso permitido/denegado usando esas identidades y agregar el paquete correspondiente al corte. [Expediente](public-websites-production-cutover-review.md). |
 | 6. CFDI compartidos por emisor/receptor | **Parcial** | `EnsureComprobanteScopeAsync` y adjuntos sin póliza en `TransaccionService` aceptan a la empresa como emisor **o** receptor. Otros lectores mantienen contratos diferentes: `ComprobanteQueryService.GetUnassignedAsync` filtra sólo receptor y considera asignado un comprobante si existe cualquier `Transaccion_Comprobante`. Falta un contrato común de pertenencia fiscal, asociación por empresa y validación SQL con un CFDI legítimamente compartido; no imponer propiedad exclusiva al documento global. [Lectores de CFDI](../src/OrionERP.Infrastructure/Features/Cfdi/CargarXmlSat/Services/ComprobanteQueryService.cs). |
@@ -46,9 +47,9 @@ registros reconciliados, cobertura funcional ni permisos productivos.
 
 ## Orden de cierre acotado
 
-1. Terminar las validaciones focalizadas ya abiertas. Corregir después el acceso
-   concreto a adjuntos por ID con pruebas negativas; no reescribir toda la
-   arquitectura para hacerlo.
+1. Terminar las validaciones focalizadas ya abiertas. El acceso concreto a
+   adjuntos por ID quedó corregido con pruebas negativas; continuar con los
+   consumidores pendientes identificados, sin reiniciar la arquitectura.
 2. Cerrar entitlements de servicios/trabajos pendientes y preparar identidades
    SQL mínimas. Sólo entonces retirar el bypass legacy de contexto ausente con
    migraciones aditivas y pruebas de los consumidores realmente afectados.
@@ -60,3 +61,20 @@ Este documento es diagnóstico acotado y backlog verificable. No modifica
 migraciones aplicadas, no cierra los bloqueos deliberados del checkpoint y no
 es aprobación ni evidencia de ejecución productiva. El paquete de corte debe
 declarar expresamente qué invariantes cubre la versión que se proponga.
+
+## Incremento de adjuntos validado
+
+`TransactionAttachmentScopeTests`: **2/2 aprobadas**, con
+`ORION_RUN_SQL_INTEGRATION=1` para el fixture de datos. Incluye dos empresas de
+Sandbox (`OHM191112Q26` y `BSU210121M77`), cabeceras/adjuntos/CFDI sintéticos
+propios y limpieza por sus IDs. El CFDI compartido es una prueba sintética del
+contrato emisor/receptor; no clasifica ni corrige los 288 errores históricos.
+La prueba sin empresa usa una conexión inalcanzable y acredita rechazo antes
+de abrir SQL. No se ejecutan timbrado, correo ni pagos. Se valida el servicio
+con contextos de prueba, no un login de navegador con dos usuarios reales.
+
+Build Release de IntegrationTests y dependencias: **0 errores, 0 advertencias**.
+Pruebas unitarias relacionadas `HospitalityFiscalScopeTests`: **14/14 aprobadas**.
+Recibos locales: `artifacts/accounting-attachment-scope-20260908/`.
+No se repitieron suites completas ni se aplicó migración; la protección nueva
+es un filtro de acceso en el repositorio, no RLS adicional.

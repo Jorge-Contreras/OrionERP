@@ -1,6 +1,9 @@
 # Corte productivo de websites compartidos — expediente para revisión
 
-**Estado al 2026-09-08: NO EJECUTADO. NO AUTORIZADO PARA PRODUCCIÓN.**
+**Actualización posterior del 2026-09-08: autorizado y ejecutado.** Véase el
+[acta del corte](production-cutover-executed-20260908.md), con el alcance publicado y
+los pendientes que continúan abiertos. El resto de este expediente conserva la revisión
+histórica anterior, cuyo estado era NO EJECUTADO / NO AUTORIZADO PARA PRODUCCIÓN.
 
 Este documento prepara la revisión futura. No acredita consultas, respaldos,
 migraciones, cambios de servicios, túneles, pagos ni correo en producción.

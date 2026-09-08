@@ -1,5 +1,9 @@
 # Paquete de migración productiva — 2026-09-08
 
+**Corte concluido:** las siete migraciones están verificadas en producción y los tres
+servicios publicados. Véase el [acta de ejecución](production-cutover-executed-20260908.md).
+La descripción y el checkpoint siguientes documentan la preparación y el ensayo previos.
+
 Estado de preparación: siete migraciones nuevas en `database/orion-production-migrations.json`.
 La autorización del usuario para publicar sustituye el estado histórico de «producción no autorizada»
 de los expedientes anteriores. Este archivo por sí mismo no acredita aplicación ni despliegue;

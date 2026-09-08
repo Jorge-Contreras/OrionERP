@@ -1,5 +1,11 @@
 # Migraciones SQL de OrionERP
 
+> Actualización posterior del 2026-09-08: el usuario autorizó producción y se ejecutó
+> el manifiesto independiente `database/orion-production-migrations.json` (7 VERIFIED),
+> después de respaldo y ensayo restaurado. Véase el [acta](production-cutover-executed-20260908.md).
+> Las restricciones de los scripts Sandbox siguen vigentes; no se reutilizaron allí
+> cambiando su lista de bases. El estado siguiente describe la entrega anterior.
+
 > Estado de esta entrega: sólo `Orion_Sandbox` está autorizado. No se debe
 > ejecutar `plan`, `preview`, `verify` ni `apply` contra `grupocarpio` hasta la
 > aprobación independiente de la fase productiva y su respaldo.

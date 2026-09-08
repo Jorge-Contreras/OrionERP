@@ -1,5 +1,12 @@
 # Continuidad multiempresa desde main
 
+**Actualización posterior:** el usuario autorizó el corte productivo y se publicaron los
+tres servicios con siete migraciones productivas verificadas y readiness/HTTP público 200.
+Código publicado: `91e2362`. El [acta de ejecución](production-cutover-executed-20260908.md)
+contiene respaldo, ensayo, incidencias resueltas y pendientes reales. Las prohibiciones
+y estados de no ejecución siguientes pertenecen al checkpoint anterior a esa aprobación;
+el incidente inicial se conserva como hecho histórico independiente.
+
 Checkpoint de cierre solicitado por el usuario el 2026-09-08 para evitar dejar
 la arquitectura aislada en un worktree mientras avanza `main`. Continuar los
 siguientes trabajos desde el checkout principal de OrionERP; no es necesario

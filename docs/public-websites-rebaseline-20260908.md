@@ -94,3 +94,138 @@ Los roles públicos y accesos externos sólo necesitan una fase adicional de
 aislamiento si se habilitan. La edición central de textos y carga de logotipos
 desde la consola puede añadirse como mejora: los perfiles ya permiten
 personalizar las instancias. No es necesario crear websites específicos por RFC.
+
+
+## Continuación: aislamiento administrativo de Hospedaje
+
+Trabajo realizado en `codex/public-sites-rebaseline`, desde `f35fd95`, en el
+worktree `d460`. Se conservaron los cambios del checkout principal, que no se
+integraron ni se modificaron en esta fase.
+
+- Nueva conexión de Hospedaje delimitada por empresa/sede. La consola deriva
+  el RFC de su sesión autenticada y exige una sede habilitada; sólo elige
+  automáticamente cuando hay una sola. La página `/reservaciones/sede`
+  permite elegir entre las sedes autorizadas. Los permisos revocables se
+  comprueban nuevamente por operación.
+- CRUD, clientes asociados, experiencias, extras, documentos, totales,
+  arrendadores y lecturas públicas inicializan el alcance SQL. Las acciones por
+  lotes verifican todos los IDs dentro de la transacción; las actividades
+  compartidas con otro calendario no se eliminan.
+- CFDI valida el emisor y los pagos contra la empresa; los perfiles fiscales
+  nuevos tienen asociación exclusiva empresa/sede. Contabilidad general
+  conserva alcance por empresa y los vínculos a reservas exigen la sede.
+- La nueva migración `20260908_hospitality_administration_scope_sandbox`
+  protege 18 tablas con 54 predicados RLS y relaciones compuestas adicionales.
+  Sin contexto no hay acceso operativo. Se aplicó después de preview revisado
+  y recibo SHA-256 `D446C0E3748C155338E5AC6BBDD1A24B1E8E802950ECDF4C6021B89B30538DCA`.
+  Siete migraciones quedaron verificadas. La excepción de `.gitattributes`
+  conserva los bytes exactos del script aplicado.
+- Órdenes de Trabajo valida RFC de sesión y todas las referencias a habitación,
+  celda y reserva; las mutaciones revalidan en la misma transacción. Conserva OT
+  generales de la empresa y bloquea adopciones legacy por nombre sin mapping.
+- Logística resuelve ubicaciones visibles por RFC, habitación y todos sus
+  ancestros, incluido LegacyRoomId. Protege copias de nombres, cantidades,
+  movimientos y adjuntos; las escrituras revalidan dentro de la transacción.
+  Compras y conteos ocultan el documento entero si alguna referencia es ajena.
+  La selección explícita de todas las suites no se convierte en alcance general.
+  Cambiar padre/habitación de una ubicación existente queda bloqueado para
+  conservar el alcance histórico; puede crearse una ubicación nueva.
+- El selector compartido de sede permite volver a Reservaciones, OT o Logística
+  después de elegir; sólo aparece para los roles administrativos habilitados.
+- Outlook/Graph exige identidad, buzón y calendarios configurados para el
+  alcance autorizado; queda deshabilitado por defecto. Los eventos ajenos y
+  legacy sin atribución comprobable no se adoptan ni eliminan.
+
+### Límites que impiden declarar cerrada la fase
+
+1. Existen 288 vínculos de reservas OHM con pagos BSU. Permanecen almacenados,
+   sin reasignación, y excluidos de los recorridos de Hospedaje hasta decidir si
+   representan cobros interempresa válidos o errores históricos. Esto puede
+   cambiar los saldos calculados respecto de la lectura global anterior; no se
+   alteraron pagos ni estados históricos para hacer coincidir las cifras.
+2. Cuatro mapeos de Outlook apuntan a reservas inexistentes. Se conservan y
+   quedan fuera de la sincronización.
+3. `CreateActividadForReservation` y `CreateTransaccionesForRoom` conservan su
+   firma pero fallan antes de escribir: sus plantillas, cuentas y categorías
+   requieren una configuración explícita por sede. No se atribuyeron IDs
+   globales por intuición.
+4. Órdenes de Trabajo y los consumidores principales de Logística ahora
+   autorizan sus documentos y referencias originales. Se conserva el bloqueo
+   de importaciones de plantillas por texto; los textos históricos que perdieron
+   sus IDs no reciben una atribución inferida. El inventario SQL detalla también
+   los consumidores indirectos de inventario dentro de Restaurante, cuyo cierre
+   requiere verificar esa frontera compartida con sus propios flujos.
+5. Las pruebas SQL y de servicios A/B no son E2E de dos websites por rama:
+   utilizan bindings existentes para comprobar el límite de datos. Aún faltan
+   perfiles y fixtures de dos empresas habilitadas por módulo, navegadores,
+   recuperación/cookies, presentación y proveedores externos de prueba.
+6. El expediente de corte es preparación para revisión, no un corte aprobado
+   ni migraciones productivas terminadas. Las migraciones específicas de
+   producción dependen de resolver los límites anteriores.
+
+### Incidente de conexión durante el preflight
+
+La primera sustitución de base mediante una propiedad de PowerShell falló por
+el adaptador de diccionario. El proceso llegó a abrir la conexión heredada a
+producción y ejecutó únicamente la guarda `DB_NAME()`, que lanzó error antes
+la consulta de tablas. No se ejecutaron migraciones, lecturas de tablas ni
+escrituras en producción. Se notificó al usuario durante el trabajo.
+
+Se corrigió el helper para usar `set_InitialCatalog`/`get_ConnectionString`,
+validar el destino **antes** de abrir y comprobar `DB_NAME()` después. La base
+local devuelve `Orion_SandBox`; la comparación segura ignora mayúsculas.
+Las variables se cambiaron sólo dentro de procesos de prueba. La consola
+conserva su precedencia existente de secretos de Development para impedir que
+una variable heredada de producción reemplace accidentalmente el Sandbox local;
+los hosts públicos conservan su contrato explícito de variables de proceso.
+
+Documentos de evidencia:
+
+- [SQL e inventario](hospitality-sql-isolation-20260908.md).
+- [Calendarios](hospitality-calendar-sync-isolation-20260908.md).
+- [Expediente de corte, no ejecutado](public-websites-production-cutover-review.md).
+
+
+### Evidencia de validación de esta continuación
+
+- Suite completa hasta el incremento administrativo: 1,279 pruebas unitarias y
+  67 de integración aprobadas en Release. SQL habilitado explícitamente en
+  Sandbox; exportación opcional de reportes desactivada. Los resultados TRX
+  quedan en `artifacts/test-results` (artefactos locales, no versionados).
+- Incluye 11 pruebas SQL transaccionales de RLS y un recorrido de servicios
+  A/B con limpieza de sus propios fixtures: clientes, reservas, documentos,
+  extras, experiencias, perfiles fiscales, pólizas y bloqueo de cascada sobre
+  un pago vinculado. Contextos A/B explícitos de prueba no habilitan un segundo
+  website de Hospedaje.
+- Navegador local de consola en `127.0.0.1:55221`: login de usuario dedicado,
+  selección OHM/Bonhomia Suites, lista y detalle de reservación cargados. Sin
+  realizar cambios a reservas históricas ni activar botones de integración.
+- Hosts públicos en `127.0.0.1:55010` y `:55020`: inicio y `/readyz` 200 después
+  de RLS; host ajeno 400. PayPal se configuró en modo Sandbox con credenciales
+  ficticias en el proceso y no se invocó checkout. No se hicieron cobros ni
+  envíos. Los procesos temporales se cerraron.
+
+Esta evidencia no sustituye el E2E pendiente con dos empresas habilitadas por
+rama ni verifica integraciones externas reales. Las pruebas de Logística usan
+fixtures propios con limpieza por ID; las cifras finales se registran tras
+terminar la suite completa de esta continuación.
+
+
+## Cierre para integrar en main (2026-09-08)
+
+Por instrucción del usuario se congeló el alcance para integrar el checkpoint
+en `main` y continuar allí. La lista ejecutable de pendientes está en
+[multiempresa-pendientes-desde-main.md](multiempresa-pendientes-desde-main.md).
+La suite final completa aprobó **1,306 unitarias y 71 de integración** con SQL
+Sandbox habilitado y exportación opcional desactivada. La compilación Release
+terminó con **0 advertencias y 0 errores**. Los smokes de navegador anteriores
+no se presentan como una repetición del último incremento.
+
+Se completaron también los filtros de inventario en POS, diagnóstico preventivo
+y diagnóstico persistido, además de movimientos logísticos. Producción de
+Restaurante y prioridades de ubicación recibieron guardas y compilan; falta
+su fixture SQL específico, registrado como primer pendiente de validación.
+En Ajustes, los propietarios se leen sólo a través de habitaciones visibles;
+la edición del maestro global no atribuido está bloqueada. Los proyectos se
+filtran por todos sus vínculos de calendario y su edición genérica vinculada
+se rechaza con validación transaccional.

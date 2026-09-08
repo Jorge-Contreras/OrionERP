@@ -22,6 +22,16 @@ Las dos migraciones de aislamiento `20260903`, la migración de transición
 `20260904` y la migración de consentimiento `20260905` sí quedaron aplicadas y verificadas en Sandbox. Los dos hosts se
 validaron localmente contra ese ambiente.
 
+## Actualización administrativa de 20260908
+
+La continuación añade RLS en Sandbox y alcance administrativo para reservas,
+clientes, documentos, experiencias, CFDI y calendarios. Los hosts públicos
+inicializan también el contexto por conexión. El [plan actualizado](public-websites-rebaseline-20260908.md)
+y el [inventario SQL](hospitality-sql-isolation-20260908.md) describen los
+avances y límites actuales. Permanecen pendientes la reconciliación de pagos,
+procedimientos sin configuración de sede, consumidores auxiliares y el E2E de
+dos empresas por rama. Esto sigue sin autorizar el alta productiva de otro RFC.
+
 ## Límite de seguridad vigente
 
 El estado de aislamiento debe interpretarse por superficie, no por proyecto:

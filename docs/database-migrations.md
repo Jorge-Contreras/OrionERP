@@ -8,7 +8,7 @@ Esta autorización de Sandbox no incluye despliegues, servicios, dominios ni
 túneles Cloudflare. Las migraciones aquí documentadas preparan y validan la
 base; no publican ninguno de los websites.
 
-Estado comprobado el 2026-09-08: las seis migraciones del manifiesto están
+Estado inicial comprobado el 2026-09-08: las seis migraciones previas del manifiesto estaban
 aplicadas y verificadas en la `Orion_Sandbox` local actual. Al retomar el trabajo
 las seis figuraban pendientes en ese entorno; se reconciliaron con su propio
 preview y recibo antes de cada aplicación. La verificación final devolvió seis
@@ -178,3 +178,21 @@ base, modo preview, `XACT_ABORT`, transacción y literales tenant legacy. No los
 incorpora automáticamente al ledger: hacerlo fingiría un historial que la base
 actual no posee. Se incorporarán sólo mediante baselines explícitos y
 reconciliados.
+
+
+## Aislamiento administrativo de Hospedaje de 20260908
+
+La séptima migración `20260908_hospitality_administration_scope_sandbox` fue
+previsualizada, aplicada con su recibo y verificada exclusivamente en Sandbox.
+Añade RLS en 18 tablas, defaults de contexto, relaciones compuestas, asociación
+fiscal y protección de pagos. Su checksum completo y excepciones históricas se
+registran en el [plan actualizado](public-websites-rebaseline-20260908.md).
+Los scripts anteriores conservaron sus checksums.
+
+La migración limita dos procedimientos heredados de escritura hasta disponer
+de configuración por sede; conserva 288 vínculos de pagos contradictorios y
+cuatro mapeos Outlook huérfanos, sin adjudicación automática. Consultar
+[el inventario y los límites operativos](hospitality-sql-isolation-20260908.md)
+antes de probar consumidores heredados. La política requiere contexto en cada
+conexión, incluidos los hosts públicos y los reportes. Esta fase aún no está
+lista para producción.

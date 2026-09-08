@@ -32,6 +32,16 @@ public interface IDeclaracionMensualService
     string rfc, int ejercicio, int periodo, bool regenerar, string usuario,
     CancellationToken cancellationToken = default);
 
+  /// <summary>
+  /// Genera la poliza de provision del pago provisional de ISR del periodo
+  /// (114-01 contra 213-03). Misma semantica que <see cref="GenerarCierreAsync"/>:
+  /// falla si ya existe una, salvo que <paramref name="regenerar"/> sea true, y
+  /// entonces la anterior se cancela con un asiento inverso.
+  /// </summary>
+  Task<(int TransaccionId, IReadOnlyList<DeclaracionCierreRow> Lineas)> GenerarIsrAsync(
+    string rfc, int ejercicio, int periodo, bool regenerar, string usuario,
+    CancellationToken cancellationToken = default);
+
   /// <summary>Lee un acuse del SAT sin guardar nada, para vista previa.</summary>
   DeclaracionImportada LeerAcuse(Stream pdf, string nombreArchivo);
 

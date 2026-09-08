@@ -1,0 +1,121 @@
+@using OrionERP.Application.Features.ReportesFinancieros.Models
+
+@*
+    Provision del pago provisional de ISR del mes: carga a "pagos provisionales
+    de ISR" (activo) contra "ISR por pagar" (pasivo).
+
+    El importe es el de fiscal.fn_Isr_Provisional -el ISR a cargo ya declarado
+    del periodo si existe, y si no el calculado-. El asiento siempre trae sus
+    dos renglones; el boton se habilita solo cuando hay algo que registrar.
+*@
+
+<h3 class="report-panel__title mt-4">Provisión de ISR del mes</h3>
+
+@if (YaGenerado)
+{
+    <div class="alert alert-success">
+        La provisión de ISR de este periodo ya se generó en la póliza <strong>@TransaccionId</strong>.
+    </div>
+}
+else if (Filas.Count == 0)
+{
+    <div class="alert alert-info">No hay asiento de ISR propuesto para este periodo.</div>
+}
+else
+{
+    @if (HayHallazgosAltos)
+    {
+        <div class="alert alert-danger">
+            <strong>Hay hallazgos de severidad alta en este periodo.</strong>
+            El ISR provisional se calcula sobre los ingresos; con un CFDI sin póliza o un ingreso sin CFDI
+            pendiente, ese número va a cambiar. Corrige los hallazgos y vuelve.
+        </div>
+    }
+
+    <div class="table-responsive report-table-shell">
+        <table class="table table-sm table-bordered compact-table report-table">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Cuenta</th>
+                    <th scope="col">Nombre</th>
+                    <th scope="col" class="num">Debe</th>
+                    <th scope="col" class="num">Haber</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var fila in Filas)
+                {
+                    <tr>
+                        <td><code>@fila.Cuenta</code></td>
+                        <td>@fila.NombreCuenta</td>
+                        <td class="num">@Money(fila.Debe)</td>
+                        <td class="num">@Money(fila.Haber)</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot class="table-light">
+                <tr>
+                    <th scope="row" colspan="2">Totales</th>
+                    <td class="num fw-bold">@Money(Filas.Sum(x => x.Debe))</td>
+                    <td class="num fw-bold">@Money(Filas.Sum(x => x.Haber))</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <p class="text-muted">
+        Fecha de la póliza: <strong>@(Filas[0].Fecha.ToString("dd/MM/yyyy"))</strong> ·
+        Concepto: <strong>@Filas[0].Concepto</strong> ·
+        Importe: <strong>@Money(Filas[0].Neto)</strong>
+    </p>
+
+    @if (!string.IsNullOrWhiteSpace(Filas[0].Mensaje))
+    {
+        <p class="report-panel__subtitle">@Filas[0].Mensaje</p>
+    }
+
+    <div class="no-print">
+        @if (!PuedeGenerar && !Confirmando)
+        {
+            <button type="button" class="btn btn-primary" disabled>
+                <i class="bi bi-journal-plus"></i> Generar póliza de ISR
+            </button>
+        }
+        else if (!Confirmando)
+        {
+            <button type="button" class="btn btn-primary" @onclick="OnPedirConfirmacion">
+                <i class="bi bi-journal-plus"></i> Generar póliza de ISR
+            </button>
+        }
+        else
+        {
+            <div class="alert alert-warning">
+                <p class="mb-2">
+                    Se va a registrar esta póliza en la contabilidad de <strong>@Rfc</strong> por
+                    <strong>@Money(Filas[0].Neto)</strong>. Una vez creada no se puede borrar: para deshacerla
+                    habría que cancelarla con un asiento inverso.
+                </p>
+                <button type="button" class="btn btn-danger me-2" @onclick="OnConfirmar">Sí, generar</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="OnCancelar">Cancelar</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DeclaracionCierreRow> Filas { get; set; } = [];
+    [Parameter, EditorRequired] public string Rfc { get; set; } = string.Empty;
+    [Parameter] public bool YaGenerado { get; set; }
+    [Parameter] public int? TransaccionId { get; set; }
+    [Parameter] public bool HayHallazgosAltos { get; set; }
+    [Parameter] public bool PuedeGenerar { get; set; }
+    [Parameter] public bool Confirmando { get; set; }
+    [Parameter] public EventCallback OnPedirConfirmacion { get; set; }
+    [Parameter] public EventCallback OnConfirmar { get; set; }
+    [Parameter] public EventCallback OnCancelar { get; set; }
+
+    private static readonly System.Globalization.CultureInfo Mx =
+        System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    private static string Money(decimal valor) => valor.ToString("N2", Mx);
+}

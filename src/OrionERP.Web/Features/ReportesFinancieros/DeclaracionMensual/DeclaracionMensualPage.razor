@@ -212,6 +212,20 @@
                                  OnPedirConfirmacion="PedirConfirmacionCierre"
                                  OnConfirmar="GenerarCierreAsync"
                                  OnCancelar="CancelarCierre" />
+
+                    @if (cab.EsPersonaMoral)
+                    {
+                        <IsrProvisionalPanel Filas="Reporte.CierreIsr"
+                                             Rfc="@Rfc"
+                                             YaGenerado="IsrYaGenerado"
+                                             TransaccionId="cab.TransaccionIdIsr"
+                                             HayHallazgosAltos="HayHallazgosAltos"
+                                             PuedeGenerar="PuedeGenerarIsr"
+                                             Confirmando="ConfirmandoIsr"
+                                             OnPedirConfirmacion="PedirConfirmacionIsr"
+                                             OnConfirmar="GenerarIsrAsync"
+                                             OnCancelar="CancelarIsr" />
+                    }
                 }
             </div>
         </div>

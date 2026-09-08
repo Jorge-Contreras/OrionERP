@@ -18,8 +18,20 @@ public partial class DeclaracionMensualPage
   private bool CierreYaGenerado =>
     Reporte?.Encabezado?.TransaccionIdCierre is > 0;
 
+  private bool IsrYaGenerado =>
+    Reporte?.Encabezado?.TransaccionIdIsr is > 0;
+
   private bool HayAsientoPropuesto =>
     Reporte?.Cierre.Count > 0;
+
+  /// <summary>
+  /// El asiento de ISR siempre trae sus dos renglones; "hay algo que registrar"
+  /// es que el importe sea positivo y las cuentas destino esten resueltas.
+  /// </summary>
+  private bool HayAsientoIsr =>
+    Reporte?.CierreIsr is { Count: > 0 } filas
+      && filas[0].Neto > 0
+      && !string.IsNullOrEmpty(filas[0].Cuenta);
 
   /// <summary>
   /// El boton se bloquea mientras haya hallazgos de severidad alta. La razon es
@@ -31,9 +43,22 @@ public partial class DeclaracionMensualPage
   private bool PuedeGenerarCierre =>
     !IsWorking && HayAsientoPropuesto && !CierreYaGenerado && !HayHallazgosAltos;
 
+  /// <summary>
+  /// Mismo criterio que el cierre de IVA: los hallazgos de severidad alta
+  /// (CFDI sin poliza, ingreso sin CFDI) mueven los ingresos, y el ISR
+  /// provisional se calcula sobre ellos, asi que registrar la provision con
+  /// hallazgos pendientes fijaria un numero que va a cambiar.
+  /// </summary>
+  private bool PuedeGenerarIsr =>
+    !IsWorking && HayAsientoIsr && !IsrYaGenerado && !HayHallazgosAltos;
+
   private void PedirConfirmacionCierre() => ConfirmandoCierre = true;
 
   private void CancelarCierre() => ConfirmandoCierre = false;
+
+  private void PedirConfirmacionIsr() => ConfirmandoIsr = true;
+
+  private void CancelarIsr() => ConfirmandoIsr = false;
 
   private async Task GenerarCierreAsync()
   {
@@ -49,6 +74,33 @@ public partial class DeclaracionMensualPage
         Rfc, Anio, Mes, regenerar: false, usuario: RfcState.DisplayName ?? "OrionERP");
 
       Aviso = $"Se genero la poliza de cierre {transaccionId}.";
+      await CargarAsync();
+    }
+    catch (Exception ex)
+    {
+      ErrorMessage = ex.Message;
+    }
+    finally
+    {
+      IsWorking = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private async Task GenerarIsrAsync()
+  {
+    ConfirmandoIsr = false;
+    IsWorking = true;
+    ErrorMessage = null;
+    Aviso = null;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var (transaccionId, _) = await Servicio.GenerarIsrAsync(
+        Rfc, Anio, Mes, regenerar: false, usuario: RfcState.DisplayName ?? "OrionERP");
+
+      Aviso = $"Se genero la poliza de ISR provisional {transaccionId}.";
       await CargarAsync();
     }
     catch (Exception ex)

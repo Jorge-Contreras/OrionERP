@@ -78,6 +78,16 @@ RETURN
     EsPue     = CONVERT(bit, CASE WHEN ISNULL(c.MetodoPago, '') <> 'PPD' THEN 1 ELSE 0 END),
     EsBancarizada = CONVERT(bit, CASE WHEN ISNULL(c.FormaPago, '99') NOT IN ('01', '99') THEN 1 ELSE 0 END),
     UsoAcreditable = CONVERT(bit, CASE WHEN r.UsoCFDI IN ('G01', 'G03') THEN 1 ELSE 0 END),
+    -- EsAcreditable codifica la regla legal (no la de precarga del SAT): PUE, uso
+    -- G01/G03 y pago bancarizado o en efectivo hasta $2,000 (art. 27-III LISR,
+    -- art. 5-I LIVA). El SAT no precarga el efectivo, pero <= $2,000 sigue siendo
+    -- acreditable y se captura a mano en el portal; > $2,000 en efectivo no lo es.
+    EsAcreditable = CONVERT(bit, CASE
+      WHEN ISNULL(c.MetodoPago, '') <> 'PPD'
+       AND r.UsoCFDI IN ('G01', 'G03')
+       AND (ISNULL(c.FormaPago, '99') NOT IN ('01', '99')
+            OR (ISNULL(c.FormaPago, '99') = '01' AND ISNULL(c.Total, 0) <= 2000))
+      THEN 1 ELSE 0 END),
     Signo = CONVERT(smallint, CASE WHEN c.TipoDeComprobante = 'E' THEN -1 ELSE 1 END),
     SubTotal     = CAST(ISNULL(c.SubTotal, 0) AS decimal(19,4)),
     Descuento    = CAST(ISNULL(c.Descuento, 0) AS decimal(19,4)),
@@ -379,10 +389,143 @@ RETURN
 GO
 
 /*--------------------------------------------------------------------------
+  fn_Isr_Provisional - la cadena del pago provisional de ISR (persona moral)
+  de un periodo, en las dos bases: la del SAT (precarga estricta, ingresos
+  devengados de CFDI tipo I) y la nuestra (flujo, respetando
+  Incluir_En_Declaracion y Factor_Declaracion, menos notas de credito).
+
+  Es la unica definicion del calculo. Rpt_Declaracion_Mensual la lee para
+  mostrarla renglon por renglon y Generar_Poliza_Isr registra su resultado en
+  la poliza; si divergieran, el asiento no cuadraria contra lo que muestra la
+  pantalla, que es justo el error que este modulo cierra.
+
+  El coeficiente es el de fn_Coeficiente_Vigente a la fecha en que se presento
+  el periodo (o a hoy si aun no se presenta), porque cambia a media año.
+  SinHistorial = 1 cuando el periodo no es enero y faltan las declaraciones
+  anteriores: sin ellas la cadena acumulada del SAT no se puede armar y las
+  columnas *Sat quedan NULL en vez de fingir que no hubo ingresos previos.
+--------------------------------------------------------------------------*/
+CREATE OR ALTER FUNCTION fiscal.fn_Isr_Provisional
+(
+  @Rfc varchar(50),
+  @Ejercicio int,
+  @Periodo tinyint
+)
+RETURNS TABLE
+AS
+RETURN
+(
+  WITH MesCfdi AS
+  (
+    SELECT
+      PeriodoMes,
+      IngTipoI   = CAST(SUM(CASE WHEN EsEmitida = 1 AND EsVigente = 1 AND TipoDeComprobante = 'I'
+                                 THEN SubTotalNeto ELSE 0 END) AS decimal(19,4)),
+      IngTipoE   = CAST(SUM(CASE WHEN EsEmitida = 1 AND EsVigente = 1 AND TipoDeComprobante = 'E'
+                                 THEN SubTotalNeto ELSE 0 END) AS decimal(19,4)),
+      IngNuestro = CAST(SUM(CASE WHEN EsEmitida = 1 AND EsVigente = 1 AND IncluirEnDeclaracion = 1
+                                  AND TipoDeComprobante IN ('I','E')
+                                 THEN Signo * SubTotalNeto * FactorDeclaracion ELSE 0 END) AS decimal(19,4)),
+      IsrRet     = CAST(SUM(CASE WHEN EsEmitida = 1 AND EsVigente = 1
+                                 THEN IsrRetenido ELSE 0 END) AS decimal(19,4))
+    FROM fiscal.fn_Cfdi_Periodo(@Rfc, @Ejercicio, NULL)
+    WHERE PeriodoMes BETWEEN 1 AND 12
+    GROUP BY PeriodoMes
+  ),
+  DeclAnt AS
+  (
+    SELECT
+      IngDeclAnt   = CAST(SUM(d.IngresosNominalesPeriodo) AS decimal(19,4)),
+      PagosProvAnt = CAST(SUM(d.IsrACargo) AS decimal(19,4))
+    FROM fiscal.DeclaracionPresentada AS d
+    WHERE d.Rfc = @Rfc AND d.Ejercicio = @Ejercicio AND d.Periodo < @Periodo
+      AND d.Id = (SELECT MAX(d2.Id) FROM fiscal.DeclaracionPresentada AS d2
+                  WHERE d2.Rfc = d.Rfc AND d2.Ejercicio = d.Ejercicio AND d2.Periodo = d.Periodo)
+  ),
+  DeclMes AS
+  (
+    SELECT TOP (1) IsrACargoDeclarado = CAST(d.IsrACargo AS decimal(19,4))
+    FROM fiscal.DeclaracionPresentada AS d
+    WHERE d.Rfc = @Rfc AND d.Ejercicio = @Ejercicio AND d.Periodo = @Periodo
+    ORDER BY d.TipoDeclaracion DESC, d.NumeroComplementaria DESC, d.Id DESC
+  ),
+  Param AS
+  (
+    SELECT
+      TasaIsr      = ISNULL((SELECT TasaIsr FROM fiscal.PerfilFiscal WHERE Rfc = @Rfc), 0.30),
+      DedInmediata = CAST(ISNULL((SELECT DeduccionInmediata FROM fiscal.EjercicioFiscal WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio), 0) AS decimal(19,4)),
+      Ptu          = CAST(ISNULL((SELECT PtuPagada FROM fiscal.EjercicioFiscal WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio), 0) AS decimal(19,4)),
+      Perdidas     = CAST(ISNULL((SELECT PerdidasFiscalesPorAplicar FROM fiscal.EjercicioFiscal WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio), 0) AS decimal(19,4)),
+      FechaCoef    = ISNULL((SELECT MIN(FechaPresentacion) FROM fiscal.DeclaracionPresentada
+                             WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo),
+                            CAST(SYSDATETIME() AS date))
+  ),
+  Ingresos AS
+  (
+    SELECT
+      IngSatMes     = ISNULL((SELECT IngTipoI   FROM MesCfdi WHERE PeriodoMes = @Periodo), 0),
+      IngTipoEMes   = ISNULL((SELECT IngTipoE   FROM MesCfdi WHERE PeriodoMes = @Periodo), 0),
+      IngNuestroMes = ISNULL((SELECT IngNuestro FROM MesCfdi WHERE PeriodoMes = @Periodo), 0),
+      IngNuestroAnt = ISNULL((SELECT SUM(IngNuestro) FROM MesCfdi WHERE PeriodoMes < @Periodo), 0),
+      IsrRetAcum    = ISNULL((SELECT SUM(IsrRet)     FROM MesCfdi WHERE PeriodoMes <= @Periodo), 0)
+  ),
+  Base0 AS
+  (
+    SELECT
+      i.IngSatMes, i.IngTipoEMes, i.IngNuestroMes, i.IngNuestroAnt, i.IsrRetAcum,
+      da.IngDeclAnt, da.PagosProvAnt, dm.IsrACargoDeclarado,
+      p.TasaIsr, p.DedInmediata, p.Ptu, p.Perdidas,
+      co.Coeficiente, co.EjercicioOrigen AS CoeficienteOrigen,
+      SinHistorial = CONVERT(bit, CASE WHEN @Periodo > 1 AND da.IngDeclAnt IS NULL THEN 1 ELSE 0 END),
+      TotalIngSat     = CAST(i.IngSatMes + ISNULL(da.IngDeclAnt, 0) AS decimal(19,4)),
+      TotalIngNuestro = CAST(i.IngNuestroMes + i.IngNuestroAnt AS decimal(19,4))
+    FROM Ingresos AS i
+    CROSS JOIN DeclAnt AS da
+    CROSS JOIN Param AS p
+    OUTER APPLY (SELECT * FROM DeclMes) AS dm
+    OUTER APPLY fiscal.fn_Coeficiente_Vigente(@Rfc, p.FechaCoef) AS co
+  ),
+  Util AS
+  (
+    SELECT b.*,
+      UtilSat     = CAST(b.TotalIngSat * ISNULL(b.Coeficiente, 0) AS decimal(19,4)),
+      UtilNuestro = CAST(b.TotalIngNuestro * ISNULL(b.Coeficiente, 0) AS decimal(19,4))
+    FROM Base0 AS b
+  ),
+  Grav AS
+  (
+    SELECT u.*,
+      BaseSat     = CAST(CASE WHEN u.UtilSat - u.DedInmediata - u.Ptu - u.Perdidas < 0 THEN 0
+                              ELSE u.UtilSat - u.DedInmediata - u.Ptu - u.Perdidas END AS decimal(19,4)),
+      BaseNuestro = CAST(CASE WHEN u.UtilNuestro - u.DedInmediata - u.Ptu - u.Perdidas < 0 THEN 0
+                              ELSE u.UtilNuestro - u.DedInmediata - u.Ptu - u.Perdidas END AS decimal(19,4))
+    FROM Util AS u
+  ),
+  Caus AS
+  (
+    SELECT g.*,
+      CausadoSat     = CAST(g.BaseSat * g.TasaIsr AS decimal(19,4)),
+      CausadoNuestro = CAST(g.BaseNuestro * g.TasaIsr AS decimal(19,4))
+    FROM Grav AS g
+  )
+  SELECT
+    IngSatMes, IngTipoEMes, IngNuestroMes, IngNuestroAnt,
+    IngDeclAnt, PagosProvAnt, IsrRetAcum, IsrACargoDeclarado,
+    TasaIsr, DedInmediata, Ptu, Perdidas, Coeficiente, CoeficienteOrigen, SinHistorial,
+    TotalIngSat, TotalIngNuestro, UtilSat, UtilNuestro, BaseSat, BaseNuestro,
+    CausadoSat, CausadoNuestro,
+    IsrCargoSat     = CAST(CausadoSat     - ISNULL(PagosProvAnt, 0) - IsrRetAcum AS decimal(19,4)),
+    IsrCargoNuestro = CAST(CausadoNuestro - ISNULL(PagosProvAnt, 0) - IsrRetAcum AS decimal(19,4))
+  FROM Caus
+);
+GO
+
+/*--------------------------------------------------------------------------
   Rpt_Declaracion_Mensual - las cifras del mes, en el orden del formato SAT.
 
-  Devuelve seis conjuntos: encabezado, renglones de ISR, renglones de IVA,
-  conciliacion CFDI/contabilidad/declarado, retenciones y asiento de cierre.
+  Devuelve siete conjuntos: encabezado, renglones de ISR, renglones de IVA,
+  conciliacion CFDI/contabilidad/declarado, retenciones, asiento de cierre de
+  IVA y asiento de provision del pago provisional de ISR.
 
   Cada renglon de ISR e IVA trae tres columnas y esa es la idea entera:
 
@@ -485,6 +628,7 @@ BEGIN
     AcredBase16Comp decimal(19,4) NOT NULL DEFAULT 0,
     AcredIva16Comp decimal(19,4) NOT NULL DEFAULT 0,
     AcredIva16Pue decimal(19,4) NOT NULL DEFAULT 0,
+    AcredIva16Efvo decimal(19,4) NOT NULL DEFAULT 0,
     AcredIva16Todas decimal(19,4) NOT NULL DEFAULT 0,
     AcredIva16TipoE decimal(19,4) NOT NULL DEFAULT 0,
     IsrRetenido decimal(19,4) NOT NULL DEFAULT 0,
@@ -517,8 +661,16 @@ BEGIN
                                  AND EsPue=1 AND EsBancarizada=1 AND UsoAcreditable=1 THEN Iva16 ELSE 0 END),
       AcredBase0Sat  = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='I'
                                  AND EsPue=1 AND EsBancarizada=1 AND UsoAcreditable=1 THEN Base0 ELSE 0 END),
+      -- "Nuestro" acreditable: la regla legal, no la precarga del SAT. Incluye el
+      -- efectivo <= $2,000 (art. 27-III LISR) y excluye el efectivo > $2,000 y el
+      -- uso de CFDI fuera de G01/G03.
       AcredIva16Pue  = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='I'
-                                 AND EsPue=1 AND IncluirEnDeclaracion=1 THEN Iva16 * FactorDeclaracion ELSE 0 END),
+                                 AND EsAcreditable=1 AND IncluirEnDeclaracion=1 THEN Iva16 * FactorDeclaracion ELSE 0 END),
+      -- La parte del renglon anterior que el SAT NO precarga: efectivo acreditable
+      -- por ser <= $2,000. Es lo que hay que capturar a mano en el portal.
+      AcredIva16Efvo = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='I'
+                                 AND EsAcreditable=1 AND EsBancarizada=0 AND IncluirEnDeclaracion=1
+                                 THEN Iva16 * FactorDeclaracion ELSE 0 END),
       AcredIva16Todas = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='I' THEN Iva16 ELSE 0 END),
       AcredIva16TipoE = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='E' THEN Iva16 ELSE 0 END),
       IsrRetenido = SUM(CASE WHEN EsEmitida=1 AND EsVigente=1 THEN IsrRetenido ELSE 0 END),
@@ -536,7 +688,8 @@ BEGIN
     IngresosTipoI = m.IngresosTipoI, IngresosTipoE = m.IngresosTipoE, IngresosNuestro = m.IngresosNuestro,
     TrasBase16 = m.TrasBase16, TrasIva16 = m.TrasIva16, TrasBase0 = m.TrasBase0, TrasBaseExento = m.TrasBaseExento,
     AcredBase16Sat = m.AcredBase16Sat, AcredIva16Sat = m.AcredIva16Sat, AcredBase0Sat = m.AcredBase0Sat,
-    AcredIva16Pue = m.AcredIva16Pue, AcredIva16Todas = m.AcredIva16Todas, AcredIva16TipoE = m.AcredIva16TipoE,
+    AcredIva16Pue = m.AcredIva16Pue, AcredIva16Efvo = m.AcredIva16Efvo,
+    AcredIva16Todas = m.AcredIva16Todas, AcredIva16TipoE = m.AcredIva16TipoE,
     IsrRetenido = m.IsrRetenido, IvaRetenidoEmitidas = m.IvaRetenidoEmitidas,
     IvaRetenidoRecibidas = m.IvaRetenidoRecibidas,
     DocsEmitidasVigentes = m.DocsEmitidasVigentes, DocsEmitidasCanceladas = m.DocsEmitidasCanceladas,
@@ -592,37 +745,40 @@ BEGIN
                 WHERE d2.Rfc = d.Rfc AND d2.Ejercicio = d.Ejercicio AND d2.Periodo = d.Periodo);
 
   /*----------------------------------------------------------------------
-    Cadena de ISR (persona moral). El orden es el del formato del SAT.
+    Cadena de ISR (persona moral). Todo el calculo vive en
+    fiscal.fn_Isr_Provisional; aqui solo se lee para mostrarlo renglon por
+    renglon en el orden del formato del SAT. @IsrRetMes se saca aparte porque
+    la pestana de retenciones lo compara contra 216-03.
   ----------------------------------------------------------------------*/
+  DECLARE @IsrRetMes decimal(19,4) =
+    ISNULL((SELECT IsrRetenido FROM #Agg WHERE Mes = @Periodo), 0);
+
   DECLARE @IngSatMes decimal(19,4), @IngNuestroMes decimal(19,4), @IngTipoEMes decimal(19,4),
-          @IngNuestroAnt decimal(19,4), @IsrRetMes decimal(19,4), @IsrRetAcum decimal(19,4);
+          @IngNuestroAnt decimal(19,4), @IsrRetAcum decimal(19,4), @SinHistorial bit,
+          @TotalIngSat decimal(19,4), @TotalIngNuestro decimal(19,4),
+          @UtilSat decimal(19,4), @UtilNuestro decimal(19,4),
+          @BaseSat decimal(19,4), @BaseNuestro decimal(19,4),
+          @CausadoSat decimal(19,4), @CausadoNuestro decimal(19,4),
+          @IsrCargoSat decimal(19,4), @IsrCargoNuestro decimal(19,4);
 
-  SELECT @IngSatMes = IngresosTipoI, @IngNuestroMes = IngresosNuestro,
-         @IngTipoEMes = IngresosTipoE, @IsrRetMes = IsrRetenido
-  FROM #Agg WHERE Mes = @Periodo;
-
-  SELECT @IngNuestroAnt = ISNULL(SUM(IngresosNuestro), 0),
-         @IsrRetAcum = ISNULL(SUM(IsrRetenido), 0)
-  FROM #Agg WHERE Mes < @Periodo;
-  SET @IsrRetAcum = @IsrRetAcum + ISNULL(@IsrRetMes, 0);
-
-  -- Sin historial de meses anteriores la cadena acumulada del SAT no se puede
-  -- armar. Se deja en NULL en vez de rellenar con cero: un total que finge que
-  -- no hubo ingresos previos es peor que un hueco visible.
-  DECLARE @SinHistorial bit = CASE WHEN @Periodo > 1 AND @IngDeclAnt IS NULL THEN 1 ELSE 0 END;
-
-  DECLARE @TotalIngSat decimal(19,4) = ISNULL(@IngSatMes,0) + ISNULL(@IngDeclAnt,0);
-  DECLARE @TotalIngNuestro decimal(19,4) = ISNULL(@IngNuestroMes,0) + ISNULL(@IngNuestroAnt,0);
-  DECLARE @UtilSat decimal(19,4) = CAST(@TotalIngSat * ISNULL(@Coeficiente,0) AS decimal(19,4));
-  DECLARE @UtilNuestro decimal(19,4) = CAST(@TotalIngNuestro * ISNULL(@Coeficiente,0) AS decimal(19,4));
-  DECLARE @BaseSat decimal(19,4) = @UtilSat - @DedInmediata - @Ptu - @Perdidas;
-  DECLARE @BaseNuestro decimal(19,4) = @UtilNuestro - @DedInmediata - @Ptu - @Perdidas;
-  SET @BaseSat = CASE WHEN @BaseSat < 0 THEN 0 ELSE @BaseSat END;
-  SET @BaseNuestro = CASE WHEN @BaseNuestro < 0 THEN 0 ELSE @BaseNuestro END;
-  DECLARE @CausadoSat decimal(19,4) = CAST(@BaseSat * @TasaIsr AS decimal(19,4));
-  DECLARE @CausadoNuestro decimal(19,4) = CAST(@BaseNuestro * @TasaIsr AS decimal(19,4));
-  DECLARE @IsrCargoSat decimal(19,4) = @CausadoSat - ISNULL(@PagosProvAnt,0) - @IsrRetAcum;
-  DECLARE @IsrCargoNuestro decimal(19,4) = @CausadoNuestro - ISNULL(@PagosProvAnt,0) - @IsrRetAcum;
+  SELECT
+    @IngSatMes       = IngSatMes,
+    @IngNuestroMes   = IngNuestroMes,
+    @IngTipoEMes     = IngTipoEMes,
+    @IngNuestroAnt   = IngNuestroAnt,
+    @IsrRetAcum      = IsrRetAcum,
+    @SinHistorial    = SinHistorial,
+    @TotalIngSat     = TotalIngSat,
+    @TotalIngNuestro = TotalIngNuestro,
+    @UtilSat         = UtilSat,
+    @UtilNuestro     = UtilNuestro,
+    @BaseSat         = BaseSat,
+    @BaseNuestro     = BaseNuestro,
+    @CausadoSat      = CausadoSat,
+    @CausadoNuestro  = CausadoNuestro,
+    @IsrCargoSat     = IsrCargoSat,
+    @IsrCargoNuestro = IsrCargoNuestro
+  FROM fiscal.fn_Isr_Provisional(@Rfc, @Ejercicio, @Periodo);
 
   /*----------------------------------------------------------------------
     Cadena de IVA.
@@ -635,13 +791,15 @@ BEGIN
           @TrasBaseEx decimal(19,4), @TrasBase16C decimal(19,4), @TrasIva16C decimal(19,4),
           @AcredBase16S decimal(19,4), @AcredIva16S decimal(19,4), @AcredBase0S decimal(19,4),
           @AcredBase16C decimal(19,4), @AcredIva16C decimal(19,4), @AcredIva16Pue decimal(19,4),
+          @AcredIva16Efvo decimal(19,4),
           @AcredIva16Todas decimal(19,4), @AcredIva16E decimal(19,4), @IvaRetNos decimal(19,4);
 
   SELECT @TrasBase16 = TrasBase16, @TrasIva16 = TrasIva16, @TrasBase0 = TrasBase0,
          @TrasBaseEx = TrasBaseExento, @TrasBase16C = TrasBase16Comp, @TrasIva16C = TrasIva16Comp,
          @AcredBase16S = AcredBase16Sat, @AcredIva16S = AcredIva16Sat, @AcredBase0S = AcredBase0Sat,
          @AcredBase16C = AcredBase16Comp, @AcredIva16C = AcredIva16Comp,
-         @AcredIva16Pue = AcredIva16Pue, @AcredIva16Todas = AcredIva16Todas,
+         @AcredIva16Pue = AcredIva16Pue, @AcredIva16Efvo = AcredIva16Efvo,
+         @AcredIva16Todas = AcredIva16Todas,
          @AcredIva16E = AcredIva16TipoE, @IvaRetNos = IvaRetenidoEmitidas
   FROM #Agg WHERE Mes = @Periodo;
 
@@ -677,6 +835,8 @@ BEGIN
     TieneHistorialAnterior = CONVERT(bit, CASE WHEN @IngDeclAnt IS NULL AND @Periodo > 1 THEN 0 ELSE 1 END),
     TransaccionIdCierre = (SELECT TransaccionIdCierre FROM fiscal.DeclaracionCierre
                            WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo),
+    TransaccionIdIsr = (SELECT TransaccionIdIsr FROM fiscal.DeclaracionIsrProvisional
+                        WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo),
     IsrACargo = @IsrCargoNuestro,
     IvaSaldoAFavor = CASE WHEN @SaldoNuestro > 0 THEN @SaldoNuestro ELSE 0 END,
     IvaACargo = CASE WHEN @SaldoNuestro < 0 THEN -@SaldoNuestro ELSE 0 END;
@@ -742,6 +902,7 @@ BEGIN
                      CASE WHEN @SaldoSat < 0 THEN -@SaldoSat ELSE 0 END,
                      CASE WHEN @SaldoNuestro < 0 THEN -@SaldoNuestro ELSE 0 END, NULL
     UNION ALL SELECT 20, 'Informativo: IVA 16% de todas las facturas recibidas tipo I (incluye PPD)', 'money', 0, NULL, @AcredIva16Todas, NULL
+    UNION ALL SELECT 21, 'Informativo: IVA de pagos en efectivo <= $2,000 (acreditable, no precargado - agregar en el portal)', 'money', 0, NULL, @AcredIva16Efvo, NULL
   )
   SELECT
     r.Orden, Seccion = 'IVA', r.Concepto, r.Formato, r.EsTotal,
@@ -771,12 +932,56 @@ BEGIN
   FROM fiscal.fn_Saldos_Contables(@Rfc, @Ejercicio)
   WHERE Mes = @Periodo;
 
-  DECLARE @Cont118Debe decimal(19,4) = ISNULL((SELECT SUM(Debe) FROM #Cont WHERE Nivel1='118' AND Nivel2 IN ('1','01')), 0);
-  DECLARE @Cont208Haber decimal(19,4) = ISNULL((SELECT SUM(Haber) FROM #Cont WHERE Nivel1='208' AND Nivel2 IN ('1','01')), 0);
+  /*----------------------------------------------------------------------
+    IVA acreditado y trasladado del mes, SIN las polizas de cierre.
+
+    fn_Saldos_Contables agrega por cuenta y no ve la poliza, asi que para
+    conciliar contra los CFDIs se recalcula aqui el movimiento neto de 118-01
+    y 208-01 (Debe - Haber) excluyendo:
+      - la poliza de cierre registrada en fiscal.DeclaracionCierre, y
+      - cualquier poliza del mes cuyo asiento sea 100% cuentas de impuestos
+        (113/118/119/208/209/213/216): son cierres o reclasificaciones de IVA,
+        se capturen a mano o las genere Generar_Poliza_Cierre.
+    Asi una nota de credito recibida -que abona 118-01 contra el banco o un
+    gasto- SI baja el acreditable, pero el asiento que solo mueve 118 contra
+    208/113 no. Con la base bruta SUM(Debe) anterior, un mes ya cerrado veia el
+    acreditable inflado por el abono de cada nota de credito, y esa diferencia
+    quedaba sin un hallazgo que la explicara.
+  ----------------------------------------------------------------------*/
+  DECLARE @IniMes date = DATEFROMPARTS(@Ejercicio, @Periodo, 1);
+  DECLARE @FinMes date = DATEADD(MONTH, 1, @IniMes);
+
+  CREATE TABLE #PolCierre (TransaccionID int PRIMARY KEY);
+  INSERT INTO #PolCierre (TransaccionID)
+  SELECT t.ID
+  FROM dbo.Transacciones AS t
+  WHERE t.RFC = @Rfc AND t.Fecha >= @IniMes AND t.Fecha < @FinMes
+    AND EXISTS (SELECT 1 FROM dbo.Registro_Contable rc WHERE rc.TransaccionID = t.ID)
+    AND NOT EXISTS (SELECT 1 FROM dbo.Registro_Contable rc
+                    WHERE rc.TransaccionID = t.ID
+                      AND ISNULL(rc.Nivel1, '') NOT IN ('113','118','119','208','209','213','216'))
+  UNION
+  SELECT dc.TransaccionIdCierre
+  FROM fiscal.DeclaracionCierre AS dc
+  WHERE dc.Rfc = @Rfc AND dc.Ejercicio = @Ejercicio AND dc.Periodo = @Periodo
+    AND dc.TransaccionIdCierre IS NOT NULL;
+
+  DECLARE @Cont118Debe decimal(19,4), @Cont208Haber decimal(19,4);
+  SELECT
+    @Cont118Debe  = ISNULL(SUM(CASE WHEN rc.Nivel1 = '118' AND rc.Nivel2 IN ('1','01') THEN rc.Debe - rc.Haber END), 0),
+    @Cont208Haber = ISNULL(SUM(CASE WHEN rc.Nivel1 = '208' AND rc.Nivel2 IN ('1','01') THEN rc.Haber - rc.Debe END), 0)
+  FROM dbo.Registro_Contable AS rc
+  JOIN dbo.Transacciones AS t ON t.ID = rc.TransaccionID
+  WHERE t.RFC = @Rfc AND t.Fecha >= @IniMes AND t.Fecha < @FinMes
+    AND rc.Nivel1 IN ('118', '208')
+    AND NOT EXISTS (SELECT 1 FROM #PolCierre pc WHERE pc.TransaccionID = t.ID);
+
   DECLARE @Cont401 decimal(19,4) = ISNULL((SELECT SUM(Haber - Debe) FROM #Cont WHERE Nivel1='401'), 0);
   DECLARE @Cont402 decimal(19,4) = ISNULL((SELECT SUM(Debe - Haber) FROM #Cont WHERE Nivel1='402'), 0);
   DECLARE @Cont213Iva decimal(19,4) = ISNULL((SELECT SUM(Haber - Debe) FROM #Cont WHERE Nivel1='213' AND Nivel2 IN ('1','01')), 0);
-  DECLARE @Cont213Isr decimal(19,4) = ISNULL((SELECT SUM(Haber - Debe) FROM #Cont WHERE Nivel1='213' AND Nivel2 IN ('3','03')), 0);
+  -- Solo el Haber (la provision de ISR del mes). El neto Haber-Debe incluiria el
+  -- pago de las provisiones de meses anteriores y volveria el renglon incomparable.
+  DECLARE @Cont213IsrProv decimal(19,4) = ISNULL((SELECT SUM(Haber) FROM #Cont WHERE Nivel1='213' AND Nivel2 IN ('3','03')), 0);
   DECLARE @Cont113Iva decimal(19,4) = ISNULL((SELECT SUM(Debe - Haber) FROM #Cont WHERE Nivel1='113' AND Nivel2 IN ('1','01') AND Nivel3 <> '05'), 0);
   DECLARE @Cont113Plataforma decimal(19,4) = ISNULL((SELECT SUM(Debe - Haber) FROM #Cont WHERE Nivel1='113' AND Nivel2 IN ('1','01') AND Nivel3 = '05'), 0);
   DECLARE @Cont114Pagos decimal(19,4) = ISNULL((SELECT SUM(Debe - Haber) FROM #Cont WHERE Nivel1='114' AND Nivel2 IN ('1','01') AND Nivel3 <> '03'), 0);
@@ -796,9 +1001,9 @@ BEGIN
                      CASE WHEN @SaldoNuestro < 0 THEN -@SaldoNuestro ELSE 0 END, @Cont213Iva, NULL, 0
     UNION ALL SELECT 5, 'IVA a favor del periodo', '113-01',
                      CASE WHEN @SaldoNuestro > 0 THEN @SaldoNuestro ELSE 0 END, @Cont113Iva, @DeclSaldoFavor, 0
-    UNION ALL SELECT 6, 'ISR a cargo del periodo', '213-03',
+    UNION ALL SELECT 6, 'ISR del periodo (provision registrada)', '213-03',
                      CASE WHEN @SinHistorial = 1 THEN NULL ELSE @IsrCargoNuestro END,
-                     @Cont213Isr, @DeclIsrACargo, @SinHistorial
+                     @Cont213IsrProv, @DeclIsrACargo, @SinHistorial
     UNION ALL SELECT 7, 'Pagos provisionales de ISR', '114-01', NULL, @Cont114Pagos, NULL, 1
     UNION ALL SELECT 8, 'IVA acreditable pendiente de pago (PPD recibidas)', '119-01', NULL, @Cont119, NULL, 1
     UNION ALL SELECT 9, 'IVA trasladado no cobrado (PPD emitidas)', '209-01', NULL, @Cont209, NULL, 1
@@ -882,8 +1087,80 @@ BEGIN
   WHERE r.Debe <> 0 OR r.Haber <> 0
   ORDER BY r.Orden;
 
+  ------------------------------------------------------------------ 7) ASIENTO DE ISR PROVISIONAL
+  /*
+    Provision del pago provisional de ISR del mes: Debe a "pagos provisionales"
+    (activo, para netear contra el ISR anual) contra Haber "ISR por pagar"
+    (pasivo). El importe es el de fiscal.fn_Isr_Provisional: el ISR a cargo ya
+    declarado del periodo si existe, y si no el calculado (nuestro).
+
+    Las cuentas salen de fiscal.EjercicioFiscal y, cuando estan vacias, de la
+    subcuenta de 114-01 / 213-03 cuya descripcion trae el ejercicio (114-01-02
+    "PAGOS PROVISIONALES DE ISR 2026", 213-03-03 "ISR POR PAGAR 2026").
+
+    Siempre devuelve las dos lineas -aunque el monto sea cero o falten datos-
+    para que la pestana muestre el asiento y el motivo; el boton se habilita
+    solo cuando hay algo que registrar.
+  */
+  DECLARE @CtaPagosProvIsr varchar(20), @CtaIsrPorPagar varchar(20);
+  SELECT @CtaPagosProvIsr = CuentaPagosProvIsr, @CtaIsrPorPagar = CuentaIsrPorPagar
+  FROM fiscal.EjercicioFiscal WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio;
+
+  IF @CtaPagosProvIsr IS NULL
+    SELECT TOP (1) @CtaPagosProvIsr = CONCAT(Nivel1, '-', Nivel2, '-', Nivel3)
+    FROM dbo.CuentasContables
+    WHERE RFC = @Rfc AND Nivel1 = '114' AND Nivel2 IN ('1','01')
+      AND Descripcion LIKE '%' + CONVERT(varchar(4), @Ejercicio) + '%'
+    ORDER BY Nivel3;
+
+  IF @CtaIsrPorPagar IS NULL
+    SELECT TOP (1) @CtaIsrPorPagar = CONCAT(Nivel1, '-', Nivel2, '-', Nivel3)
+    FROM dbo.CuentasContables
+    WHERE RFC = @Rfc AND Nivel1 = '213' AND Nivel2 IN ('3','03')
+      AND Descripcion LIKE '%' + CONVERT(varchar(4), @Ejercicio) + '%'
+    ORDER BY Nivel3;
+
+  DECLARE @IsrPolizaBase varchar(20) =
+    CASE WHEN @DeclIsrACargo IS NOT NULL THEN 'DECLARADO' ELSE 'NUESTRO' END;
+  DECLARE @IsrPolizaMonto decimal(19,4) = CASE
+    WHEN @DeclIsrACargo IS NOT NULL THEN @DeclIsrACargo
+    WHEN @SinHistorial = 1 THEN NULL
+    ELSE @IsrCargoNuestro END;
+  IF @IsrPolizaMonto < 0 SET @IsrPolizaMonto = 0;
+
+  DECLARE @IsrIdGenerado int = (SELECT TransaccionIdIsr FROM fiscal.DeclaracionIsrProvisional
+                                WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo);
+
+  ;WITH r (Orden, Cuenta, NombreCuenta, Debe, Haber, Mensaje) AS
+  (
+    SELECT 1, @CtaPagosProvIsr, CONCAT('PAGOS PROVISIONALES DE ISR ', @Ejercicio),
+           ISNULL(@IsrPolizaMonto, 0), CAST(0 AS decimal(19,4)),
+           CONVERT(nvarchar(200), CASE
+             WHEN @CtaPagosProvIsr IS NULL OR @CtaIsrPorPagar IS NULL
+               THEN N'No se encontro la subcuenta de 114-01 / 213-03 del ejercicio; capturala en fiscal.EjercicioFiscal.'
+             WHEN @IsrIdGenerado IS NOT NULL THEN CONCAT(N'Ya generada en la poliza ', @IsrIdGenerado, N'.')
+             WHEN @IsrPolizaMonto IS NULL THEN N'Faltan las declaraciones de meses anteriores para armar la cadena acumulada.'
+             WHEN @IsrPolizaMonto = 0 THEN N'El pago provisional del periodo es cero.'
+             WHEN @IsrPolizaBase = 'DECLARADO' THEN N'Sobre el ISR a cargo ya declarado del periodo.'
+             ELSE N'Sobre el ISR a cargo calculado; el periodo aun no se declara. Si presentas complementarias de meses anteriores, regenera la poliza.'
+           END)
+    UNION ALL
+    SELECT 2, @CtaIsrPorPagar, CONCAT('ISR POR PAGAR ', @Ejercicio),
+           CAST(0 AS decimal(19,4)), ISNULL(@IsrPolizaMonto, 0), CONVERT(nvarchar(200), NULL)
+  )
+  SELECT
+    r.Orden, r.Cuenta, r.NombreCuenta, r.Debe, r.Haber,
+    Concepto = CONCAT('Pago provisional de ISR ', @NombreMes, ' ', @Ejercicio),
+    Fecha = EOMONTH(DATEFROMPARTS(@Ejercicio, @Periodo, 1)),
+    Neto = ISNULL(@IsrPolizaMonto, 0),
+    EsFavor = CONVERT(bit, 0),
+    r.Mensaje
+  FROM r
+  ORDER BY r.Orden;
+
   DROP TABLE #Cont;
   DROP TABLE #Agg;
+  DROP TABLE #PolCierre;
 END;
 GO
 
@@ -905,6 +1182,8 @@ BEGIN
 
   IF @Periodo NOT BETWEEN 1 AND 12
     THROW 51201, 'El parametro @Periodo debe estar entre 1 y 12.', 1;
+
+  DECLARE @Tol decimal(19,4) = 1.00;
 
   DECLARE @FechaDeclaracion date =
     (SELECT MAX(FechaPresentacion) FROM fiscal.DeclaracionPresentada
@@ -931,35 +1210,80 @@ BEGIN
     RutaDetalle nvarchar(300) NULL
   );
 
-  -- 1) CFDI recibido que el SAT no va a precargar como acreditable.
-  --    Es la causa directa de la diferencia entre la columna SAT y la nuestra.
+  -- 1) CFDI PUE recibido que el SAT no va a precargar como acreditable.
+  --    Nuestra columna cuenta el acreditable segun la ley; la precarga del SAT
+  --    exige ademas forma de pago bancarizada. Se separan dos casos:
+  --      EsAcreditable = 1 -> efectivo <= $2,000 con uso G01/G03: SI es acreditable
+  --        (art. 27-III LISR), solo hay que capturarlo a mano en el portal. Baja.
+  --      EsAcreditable = 0 -> efectivo > $2,000 o uso != G01/G03: NO es acreditable
+  --        ni deducible; hay que revisar el gasto. Media.
+  --    Los PPD no entran aqui: se excluyen por igual de las dos columnas (su IVA
+  --    se acredita hasta el complemento de pago), asi que no explican ninguna
+  --    diferencia. El PPD sin complemento contabilizado lo cubre el hallazgo 2.
   INSERT INTO #H (Severidad, Orden, Tipo, Descripcion, Monto, ComprobanteId, FolioFiscal, Contraparte, Fecha, RutaDetalle)
-  SELECT 'Media', 2, 'IVA acreditable no precargado',
-    CONCAT('El SAT no precarga este CFDI como acreditable: ',
-      CASE WHEN EsPue = 0 THEN 'es PPD y su IVA se acredita hasta el complemento de pago. '
-           ELSE '' END,
-      CASE WHEN EsBancarizada = 0 THEN CONCAT('forma de pago ', ISNULL(FormaPago,'(vacia)'),
-           ' no bancarizada. ') ELSE '' END,
-      CASE WHEN UsoAcreditable = 0 THEN CONCAT('uso de CFDI ', ISNULL(UsoCFDI,'(vacio)'),
-           ' fuera de G01/G03. ') ELSE '' END),
+  SELECT
+    CASE WHEN EsAcreditable = 1 THEN 'Baja' ELSE 'Media' END,
+    2, 'IVA acreditable no precargado',
+    CASE WHEN EsAcreditable = 1 THEN
+      CONCAT('Pago en efectivo de ', FORMAT(Total, 'N2'), ' (<= $2,000): es acreditable, ',
+             'pero el SAT no lo precarga. Agregalo manualmente en el portal (+',
+             FORMAT(Iva16, 'N2'), ' de IVA).')
+    ELSE
+      CONCAT('El SAT no precarga este CFDI y ademas no es acreditable: ',
+        CASE WHEN EsBancarizada = 0 THEN CONCAT('pago en efectivo de ', FORMAT(Total, 'N2'),
+             ' (> $2,000, art. 27-III LISR). ') ELSE '' END,
+        CASE WHEN UsoAcreditable = 0 THEN CONCAT('uso de CFDI ', ISNULL(UsoCFDI,'(vacio)'),
+             ' fuera de G01/G03. ') ELSE '' END)
+    END,
     Iva16, Comprobante_Id, FolioFiscal, CONCAT(RfcEmisor, ' ', NombreEmisor), CAST(Fecha AS date),
     '/cfdi/declaracion-previa'
   FROM #C
   WHERE EsRecibida = 1 AND EsVigente = 1 AND TipoDeComprobante = 'I' AND Iva16 <> 0
-    AND (EsPue = 0 OR EsBancarizada = 0 OR UsoAcreditable = 0);
+    AND EsPue = 1 AND (EsBancarizada = 0 OR UsoAcreditable = 0);
 
-  -- 2) CFDI sin poliza. Sin poliza el importe nunca llega a la balanza, asi
-  --    que la conciliacion contra 118/208 falla por diseno.
+  -- 2) CFDI sin poliza. Sin poliza el importe no llega a la balanza y la
+  --    conciliacion contra 118/208 falla. Un PPD normalmente no tiene poliza
+  --    directa: su gasto e IVA se reconocen conforme se paga, a traves de la
+  --    poliza del complemento de pago (ligada por Transaccion_DoctoRelacionado,
+  --    no por Transaccion_Comprobante). Por eso se mide tambien lo pagado con
+  --    poliza y se gradua la severidad:
+  --      PUE sin ningun amarre     -> Alta  (hueco real en la balanza)
+  --      PPD sin ningun amarre     -> Media (falta la poliza de provision)
+  --      PPD amarrado en parte     -> Baja  (informativo; el resto entra con los REP)
+  --    Un PPD ya liquidado y contabilizado por sus REP no genera hallazgo.
   INSERT INTO #H (Severidad, Orden, Tipo, Descripcion, Monto, ComprobanteId, FolioFiscal, Contraparte, Fecha, RutaDetalle)
-  SELECT 'Alta', 1, 'CFDI sin poliza',
-    N'El CFDI no tiene ninguna poliza ligada, por lo que su importe no aparece en la balanza.',
+  SELECT
+    CASE WHEN c.EsPue = 1 THEN 'Alta'
+         WHEN x.PagadoConPoliza = 0 THEN 'Media'
+         ELSE 'Baja' END,
+    1, 'CFDI sin poliza',
+    CASE
+      WHEN c.EsPue = 1 THEN
+        N'El CFDI no tiene ninguna poliza ligada, por lo que su importe no aparece en la balanza.'
+      WHEN x.PagadoConPoliza = 0 THEN
+        N'CFDI PPD sin poliza de provision: el gasto no esta devengado ni el IVA en 119-01. Su importe llegara a la balanza cuando se registre el complemento de pago.'
+      ELSE
+        CONCAT(N'CFDI PPD contabilizado por sus complementos de pago (',
+               FORMAT(x.PagadoConPoliza, 'N2'), ' de ', FORMAT(c.Total, 'N2'),
+               N' liquidado); el resto entra a la balanza al recibir los REP pendientes.')
+    END,
     c.Total, c.Comprobante_Id, c.FolioFiscal,
     CASE WHEN c.EsEmitida = 1 THEN CONCAT(c.RfcReceptor, ' ', c.NombreReceptor)
          ELSE CONCAT(c.RfcEmisor, ' ', c.NombreEmisor) END,
     CAST(c.Fecha AS date), '/cfdi/declaracion-previa'
   FROM #C AS c
+  CROSS APPLY
+  (
+    SELECT PagadoConPoliza = ISNULL(SUM(v.ImpPagado), 0)
+    FROM cfdi.vw_Pagos20_Resumen AS v
+    WHERE v.UUID_DoctoRelacionado = c.FolioFiscal
+      AND ISNULL(v.Polizas, 0) > 0
+      AND ((c.EsRecibida = 1 AND v.ReceptorRfc = @Rfc)
+        OR (c.EsEmitida = 1 AND v.EmisorRfc = @Rfc))
+  ) AS x
   WHERE c.EsVigente = 1 AND c.TipoDeComprobante IN ('I','E')
-    AND NOT EXISTS (SELECT 1 FROM dbo.Transaccion_Comprobante tc WHERE tc.Comprobante_ID = c.Comprobante_Id);
+    AND NOT EXISTS (SELECT 1 FROM dbo.Transaccion_Comprobante tc WHERE tc.Comprobante_ID = c.Comprobante_Id)
+    AND x.PagadoConPoliza < c.Total - @Tol;
 
   -- 3) El IVA del CFDI no coincide con el que quedo en su poliza.
   INSERT INTO #H (Severidad, Orden, Tipo, Descripcion, Monto, ComprobanteId, FolioFiscal, Contraparte, Fecha, RutaDetalle)
@@ -1042,6 +1366,47 @@ BEGIN
     HAVING COUNT(*) > 1
   ) AS d;
 
+  -- 8) Ingreso contable sin CFDI. Espejo de "CFDI sin poliza": una poliza que
+  --    abona a 401 y no liga ningun CFDI emitido deja la balanza de ingresos por
+  --    encima de lo declarable (IVA trasladado e ISR sub-declarados). Solo se
+  --    levanta cuando el ingreso contable del mes supera al de los CFDI emitidos;
+  --    si el total cuadra, los enlaces sueltos son facturacion global y no una
+  --    diferencia real.
+  DECLARE @Ing401Mes decimal(19,4) = ISNULL((
+    SELECT SUM(CASE WHEN rc.Nivel1 = '401' THEN rc.Haber - rc.Debe ELSE rc.Debe - rc.Haber END)
+    FROM dbo.Registro_Contable AS rc
+    JOIN dbo.Transacciones AS t ON t.ID = rc.TransaccionID
+    WHERE t.RFC = @Rfc AND rc.Nivel1 IN ('401', '402')
+      AND t.Fecha >= DATEFROMPARTS(@Ejercicio, @Periodo, 1)
+      AND t.Fecha <  DATEADD(MONTH, 1, DATEFROMPARTS(@Ejercicio, @Periodo, 1))), 0);
+  DECLARE @IngCfdiMes decimal(19,4) = ISNULL((
+    SELECT SUM(Signo * SubTotalNeto) FROM #C
+    WHERE EsEmitida = 1 AND EsVigente = 1 AND TipoDeComprobante IN ('I', 'E')), 0);
+
+  IF @Ing401Mes - @IngCfdiMes > @Tol
+    INSERT INTO #H (Severidad, Orden, Tipo, Descripcion, Monto, ComprobanteId, FolioFiscal, Contraparte, Fecha, RutaDetalle)
+    SELECT 'Alta', 1, 'Ingreso contable sin CFDI',
+      CONCAT(N'La poliza abona ', FORMAT(x.Ingreso, 'N2'),
+             N' a ingresos (401) sin ningun CFDI emitido ligado. Falta timbrar la factura, ',
+             N'o el ingreso debe quedar en una cuenta de ingresos pendientes de CFDI hasta emitirla.'),
+      x.Ingreso, NULL, NULL, N'Poliza ' + CONVERT(nvarchar(20), t.ID), CAST(t.Fecha AS date),
+      '/contabilidad/registros-contables'
+    FROM dbo.Transacciones AS t
+    CROSS APPLY
+    (
+      SELECT Ingreso = SUM(rc.Haber - rc.Debe)
+      FROM dbo.Registro_Contable AS rc
+      WHERE rc.TransaccionID = t.ID AND rc.Nivel1 = '401'
+    ) AS x
+    WHERE t.RFC = @Rfc
+      AND t.Fecha >= DATEFROMPARTS(@Ejercicio, @Periodo, 1)
+      AND t.Fecha <  DATEADD(MONTH, 1, DATEFROMPARTS(@Ejercicio, @Periodo, 1))
+      AND x.Ingreso > @Tol
+      AND NOT EXISTS (SELECT 1
+                      FROM dbo.Transaccion_Comprobante AS tc
+                      JOIN cfdi.Comprobante AS c ON c.Comprobante_Id = tc.Comprobante_ID
+                      WHERE tc.Transaccion_ID = t.ID AND c.TipoDeComprobante IN ('I', 'E'));
+
   SELECT
     Severidad, Tipo, Descripcion, Monto, ComprobanteId, FolioFiscal, Contraparte, Fecha, RutaDetalle
   FROM #H
@@ -1086,7 +1451,9 @@ BEGIN
       Ingresos = SUM(CASE WHEN EsEmitida=1 AND EsVigente=1 AND IncluirEnDeclaracion=1 AND TipoDeComprobante IN ('I','E')
                           THEN Signo * SubTotalNeto * FactorDeclaracion ELSE 0 END),
       IvaTras = SUM(CASE WHEN EsEmitida=1 AND EsVigente=1 AND TipoDeComprobante='I' AND EsPue=1 THEN Iva16 ELSE 0 END),
-      IvaAcredPue = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='I' AND EsPue=1
+      -- Mismo criterio legal que Rpt_Declaracion_Mensual: EsAcreditable en vez de
+      -- EsPue (incluye efectivo <= $2,000, excluye efectivo > $2,000 y uso != G01/G03).
+      IvaAcredPue = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='I' AND EsAcreditable=1
                              AND IncluirEnDeclaracion=1 THEN Iva16 * FactorDeclaracion ELSE 0 END),
       IvaAcredE = SUM(CASE WHEN EsRecibida=1 AND EsVigente=1 AND TipoDeComprobante='E' THEN Iva16 ELSE 0 END),
       IvaRet = SUM(CASE WHEN EsEmitida=1 AND EsVigente=1 THEN IvaRetenido ELSE 0 END),
@@ -1352,6 +1719,195 @@ BEGIN
     l.NombreCuenta, l.Debe, l.Haber,
     Concepto = @Concepto, Fecha = @FechaPoliza, Neto = @Neto,
     EsFavor = CONVERT(bit, CASE WHEN @Neto > 0 THEN 1 ELSE 0 END),
+    Mensaje = CONVERT(nvarchar(200), CONCAT(N'Poliza ', @TransaccionID, N' generada.'))
+  FROM @Lineas l ORDER BY l.Orden;
+END;
+GO
+
+/*--------------------------------------------------------------------------
+  Generar_Poliza_Isr - registra la provision del pago provisional de ISR.
+
+  Asiento: Debe "pagos provisionales de ISR" (activo, para netear contra el
+  ISR anual) contra Haber "ISR por pagar" (pasivo), por el importe de
+  fiscal.fn_Isr_Provisional: el ISR a cargo ya declarado del periodo si
+  existe, y si no el calculado (nuestro).
+
+  @Aplicar = 0 devuelve el asiento propuesto sin escribir. Rechaza cuando:
+    - ya existe una poliza para el periodo (salvo @Regenerar = 1, que la
+      cancela con asiento inverso -no la borra- y genera otra),
+    - el importe es cero o no se puede armar la cadena (faltan meses),
+    - falta la subcuenta de 114-01 / 213-03 del ejercicio.
+
+  Es gemela de Generar_Poliza_Cierre: mismo patron de revision/aplicacion,
+  misma forma de deshacer (asiento inverso, porque DELETE sobre
+  dbo.Transacciones revienta en esta edicion de SQL Server).
+--------------------------------------------------------------------------*/
+CREATE OR ALTER PROCEDURE fiscal.Generar_Poliza_Isr
+  @Rfc varchar(50),
+  @Ejercicio int,
+  @Periodo tinyint,
+  @Aplicar bit = 0,
+  @Regenerar bit = 0,
+  @Usuario nvarchar(256) = NULL,
+  @TransaccionID int = NULL OUTPUT
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SET XACT_ABORT ON;
+
+  IF @Periodo NOT BETWEEN 1 AND 12
+    THROW 51201, 'El parametro @Periodo debe estar entre 1 y 12.', 1;
+
+  DECLARE @NombreMes varchar(12) = CHOOSE(@Periodo,
+    'ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
+    'JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE');
+  DECLARE @FechaPoliza date = EOMONTH(DATEFROMPARTS(@Ejercicio, @Periodo, 1));
+  DECLARE @Concepto varchar(500) = CONCAT('Pago provisional de ISR ', @NombreMes, ' ', @Ejercicio);
+  DECLARE @Referencia varchar(20) = CONCAT(@Ejercicio, '-', RIGHT('0' + CONVERT(varchar(2), @Periodo), 2));
+
+  DECLARE @Existente int =
+    (SELECT TransaccionIdIsr FROM fiscal.DeclaracionIsrProvisional
+     WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo);
+
+  IF @Existente IS NOT NULL AND @Aplicar = 1 AND @Regenerar = 0
+    THROW 51220, 'Ya existe una poliza de ISR provisional para este periodo. Usa @Regenerar = 1 si de verdad quieres reemplazarla.', 1;
+
+  -- Cuentas destino: mismo criterio que Rpt_Declaracion_Mensual.
+  DECLARE @CtaProv varchar(20), @CtaPagar varchar(20);
+  SELECT @CtaProv = CuentaPagosProvIsr, @CtaPagar = CuentaIsrPorPagar
+  FROM fiscal.EjercicioFiscal WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio;
+
+  IF @CtaProv IS NULL
+    SELECT TOP (1) @CtaProv = CONCAT(Nivel1, '-', Nivel2, '-', Nivel3)
+    FROM dbo.CuentasContables
+    WHERE RFC = @Rfc AND Nivel1 = '114' AND Nivel2 IN ('1','01')
+      AND Descripcion LIKE '%' + CONVERT(varchar(4), @Ejercicio) + '%'
+    ORDER BY Nivel3;
+
+  IF @CtaPagar IS NULL
+    SELECT TOP (1) @CtaPagar = CONCAT(Nivel1, '-', Nivel2, '-', Nivel3)
+    FROM dbo.CuentasContables
+    WHERE RFC = @Rfc AND Nivel1 = '213' AND Nivel2 IN ('3','03')
+      AND Descripcion LIKE '%' + CONVERT(varchar(4), @Ejercicio) + '%'
+    ORDER BY Nivel3;
+
+  -- Importe: el declarado del periodo si existe, si no el calculado (nuestro).
+  DECLARE @DeclIsr decimal(19,4) =
+    (SELECT TOP (1) IsrACargo FROM fiscal.DeclaracionPresentada
+     WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo
+     ORDER BY TipoDeclaracion DESC, NumeroComplementaria DESC, Id DESC);
+
+  DECLARE @IsrNuestro decimal(19,4), @SinHistorial bit;
+  SELECT @IsrNuestro = IsrCargoNuestro, @SinHistorial = SinHistorial
+  FROM fiscal.fn_Isr_Provisional(@Rfc, @Ejercicio, @Periodo);
+
+  DECLARE @Base varchar(20) = CASE WHEN @DeclIsr IS NOT NULL THEN 'DECLARADO' ELSE 'NUESTRO' END;
+  DECLARE @Monto decimal(19,4) = CASE
+    WHEN @DeclIsr IS NOT NULL THEN @DeclIsr
+    WHEN @SinHistorial = 1 THEN NULL
+    ELSE @IsrNuestro END;
+  IF @Monto < 0 SET @Monto = 0;
+
+  DECLARE @Motivo nvarchar(200) = CASE
+    WHEN @CtaProv IS NULL OR @CtaPagar IS NULL
+      THEN N'No se encontro la subcuenta de 114-01 / 213-03 del ejercicio; capturala en fiscal.EjercicioFiscal.'
+    WHEN @Monto IS NULL THEN N'Faltan las declaraciones de meses anteriores para armar la cadena acumulada.'
+    WHEN @Monto = 0 THEN N'El pago provisional del periodo es cero.'
+    WHEN @Base = 'DECLARADO' THEN N'Sobre el ISR a cargo ya declarado del periodo.'
+    ELSE N'Sobre el ISR a cargo calculado; el periodo aun no se declara.' END;
+
+  IF @Aplicar = 0
+  BEGIN
+    ;WITH r (Orden, Cuenta, NombreCuenta, Debe, Haber) AS
+    (
+      SELECT 1, @CtaProv, CONCAT('PAGOS PROVISIONALES DE ISR ', @Ejercicio), ISNULL(@Monto, 0), CAST(0 AS decimal(19,4))
+      UNION ALL SELECT 2, @CtaPagar, CONCAT('ISR POR PAGAR ', @Ejercicio), CAST(0 AS decimal(19,4)), ISNULL(@Monto, 0)
+    )
+    SELECT r.Orden, r.Cuenta, r.NombreCuenta, r.Debe, r.Haber,
+      Concepto = @Concepto, Fecha = @FechaPoliza, Neto = ISNULL(@Monto, 0),
+      EsFavor = CONVERT(bit, 0), Mensaje = @Motivo
+    FROM r ORDER BY r.Orden;
+    RETURN;
+  END;
+
+  IF @CtaProv IS NULL OR @CtaPagar IS NULL
+    THROW 51223, 'No se encontro la subcuenta de 114-01 / 213-03 del ejercicio. Capturala en fiscal.EjercicioFiscal.', 1;
+  IF @Monto IS NULL
+    THROW 51221, 'Faltan las declaraciones de meses anteriores: la cadena acumulada de ISR no se puede armar.', 1;
+  IF @Monto = 0
+    THROW 51222, 'El pago provisional del periodo es cero: no hay nada que registrar.', 1;
+
+  DECLARE @Lineas TABLE
+  (
+    Orden tinyint, Nivel1 varchar(10), Nivel2 varchar(10), Nivel3 varchar(10),
+    NombreCuenta varchar(200), Debe decimal(19,4), Haber decimal(19,4)
+  );
+
+  INSERT INTO @Lineas (Orden, Nivel1, Nivel2, Nivel3, NombreCuenta, Debe, Haber)
+  SELECT 1, PARSENAME(REPLACE(@CtaProv, '-', '.'), 3), PARSENAME(REPLACE(@CtaProv, '-', '.'), 2),
+            PARSENAME(REPLACE(@CtaProv, '-', '.'), 1),
+            CONCAT('PAGOS PROVISIONALES DE ISR ', @Ejercicio), @Monto, 0
+  UNION ALL
+  SELECT 2, PARSENAME(REPLACE(@CtaPagar, '-', '.'), 3), PARSENAME(REPLACE(@CtaPagar, '-', '.'), 2),
+            PARSENAME(REPLACE(@CtaPagar, '-', '.'), 1),
+            CONCAT('ISR POR PAGAR ', @Ejercicio), 0, @Monto;
+
+  BEGIN TRANSACTION;
+
+  IF @Existente IS NOT NULL AND @Regenerar = 1
+  BEGIN
+    DECLARE @ConceptoRev varchar(500) = CONCAT('Cancelacion de ', @Concepto);
+    DECLARE @TxRev int;
+
+    INSERT INTO dbo.Transacciones
+      (Concepto, Fecha, Monto, Facturado, Estatus, Referencia,
+       Cuenta, Memo, EstatusDeAutorizacion, Tipo_Poliza, Forma_Pago, RFC)
+    SELECT @ConceptoRev, @FechaPoliza, t.Monto, 0,
+           'ISR PROVISIONAL CANCELADO', @Referencia,
+           'ISR-PROV', @ConceptoRev, 'AUTOMATICA', 'DIARIO', '99', @Rfc
+    FROM dbo.Transacciones t WHERE t.ID = @Existente;
+
+    SET @TxRev = CONVERT(int, SCOPE_IDENTITY());
+
+    INSERT INTO dbo.Registro_Contable
+      (Nivel1, Nivel2, Nivel3, Nombre_Cuenta, Concepto, Debe, Haber, TransaccionID, Referencia)
+    SELECT rc.Nivel1, rc.Nivel2, rc.Nivel3, rc.Nombre_Cuenta, @ConceptoRev,
+           rc.Haber, rc.Debe, @TxRev, CONCAT('REV-', @Existente)
+    FROM dbo.Registro_Contable rc WHERE rc.TransaccionID = @Existente;
+
+    DELETE FROM fiscal.DeclaracionIsrProvisional
+      WHERE Rfc = @Rfc AND Ejercicio = @Ejercicio AND Periodo = @Periodo;
+  END;
+
+  INSERT INTO dbo.Transacciones
+    (Concepto, Fecha, Monto, Facturado, Estatus, Referencia,
+     Cuenta, Memo, EstatusDeAutorizacion, Tipo_Poliza, Forma_Pago, RFC)
+  VALUES
+    (@Concepto, @FechaPoliza, @Monto, 0,
+     'ISR PROVISIONAL', @Referencia,
+     'ISR-PROV', @Concepto, 'AUTOMATICA', 'DIARIO', '99', @Rfc);
+
+  SET @TransaccionID = CONVERT(int, SCOPE_IDENTITY());
+
+  INSERT INTO dbo.Registro_Contable
+    (Nivel1, Nivel2, Nivel3, Nombre_Cuenta, Concepto, Debe, Haber, TransaccionID, Referencia)
+  SELECT l.Nivel1, l.Nivel2, l.Nivel3, l.NombreCuenta, @Concepto, l.Debe, l.Haber,
+         @TransaccionID, @Referencia
+  FROM @Lineas l ORDER BY l.Orden;
+
+  INSERT INTO fiscal.DeclaracionIsrProvisional
+    (Rfc, Ejercicio, Periodo, TransaccionIdIsr, IsrDelPeriodo, BaseCalculo, GeneradoPor)
+  VALUES
+    (@Rfc, @Ejercicio, @Periodo, @TransaccionID, @Monto, @Base, @Usuario);
+
+  COMMIT TRANSACTION;
+
+  SELECT
+    l.Orden,
+    Cuenta = CONCAT(l.Nivel1, '-', l.Nivel2, '-', l.Nivel3),
+    l.NombreCuenta, l.Debe, l.Haber,
+    Concepto = @Concepto, Fecha = @FechaPoliza, Neto = @Monto,
+    EsFavor = CONVERT(bit, 0),
     Mensaje = CONVERT(nvarchar(200), CONCAT(N'Poliza ', @TransaccionID, N' generada.'))
   FROM @Lineas l ORDER BY l.Orden;
 END;

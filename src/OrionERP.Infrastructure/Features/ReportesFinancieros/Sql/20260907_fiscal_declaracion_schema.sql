@@ -118,6 +118,12 @@ BEGIN
     PerdidasFiscalesPorAplicar money NOT NULL CONSTRAINT DF_fiscal_Ejercicio_Perd DEFAULT (0),
     DeduccionInmediata money NOT NULL CONSTRAINT DF_fiscal_Ejercicio_DedInm DEFAULT (0),
     ProporcionIva decimal(9,4) NOT NULL CONSTRAINT DF_fiscal_Ejercicio_PropIva DEFAULT (1.0000),
+    -- Cuentas destino del asiento de ISR provisional (Generar_Poliza_Isr). Si
+    -- quedan NULL, el SP las resuelve por la subcuenta de 114-01 / 213-03 cuya
+    -- descripcion contiene el ejercicio. Son un override para catalogos que no
+    -- nombran la subcuenta con el año.
+    CuentaPagosProvIsr varchar(20) NULL,
+    CuentaIsrPorPagar varchar(20) NULL,
     ActualizadoEn datetime2(0) NOT NULL CONSTRAINT DF_fiscal_Ejercicio_Act DEFAULT SYSUTCDATETIME(),
     ActualizadoPor nvarchar(256) NULL,
     CONSTRAINT PK_fiscal_EjercicioFiscal PRIMARY KEY (Rfc, Ejercicio),
@@ -125,6 +131,13 @@ BEGIN
     CONSTRAINT CK_fiscal_Ejercicio_PropIva CHECK (ProporcionIva BETWEEN 0 AND 1)
   );
 END;
+
+-- Las dos columnas de cuentas de ISR nacieron despues de la tabla; se agregan
+-- en las bases que ya la tienen.
+IF COL_LENGTH(N'fiscal.EjercicioFiscal', N'CuentaPagosProvIsr') IS NULL
+  ALTER TABLE fiscal.EjercicioFiscal ADD CuentaPagosProvIsr varchar(20) NULL;
+IF COL_LENGTH(N'fiscal.EjercicioFiscal', N'CuentaIsrPorPagar') IS NULL
+  ALTER TABLE fiscal.EjercicioFiscal ADD CuentaIsrPorPagar varchar(20) NULL;
 
 /*--------------------------------------------------------------------------
   DeclaracionPresentada - lo que efectivamente se dijo al SAT.
@@ -243,6 +256,30 @@ BEGIN
 END;
 
 /*--------------------------------------------------------------------------
+  DeclaracionIsrProvisional - la poliza del pago provisional de ISR del mes.
+  Gemela de DeclaracionCierre: guardar el Transaccion_ID hace idempotente el
+  boton y permite regenerar con asiento inverso cuando una complementaria de
+  un mes anterior mueve la cadena acumulada.
+--------------------------------------------------------------------------*/
+IF OBJECT_ID('fiscal.DeclaracionIsrProvisional', 'U') IS NULL
+BEGIN
+  CREATE TABLE fiscal.DeclaracionIsrProvisional
+  (
+    Rfc varchar(50) NOT NULL,
+    Ejercicio int NOT NULL,
+    Periodo tinyint NOT NULL,
+    TransaccionIdIsr int NOT NULL,
+    IsrDelPeriodo money NOT NULL,
+    BaseCalculo varchar(20) NOT NULL,
+    GeneradoEn datetime2(0) NOT NULL CONSTRAINT DF_fiscal_IsrProv_Gen DEFAULT SYSUTCDATETIME(),
+    GeneradoPor nvarchar(256) NULL,
+    CONSTRAINT PK_fiscal_DeclaracionIsrProvisional PRIMARY KEY (Rfc, Ejercicio, Periodo),
+    CONSTRAINT CK_fiscal_IsrProv_Periodo CHECK (Periodo BETWEEN 1 AND 12),
+    CONSTRAINT CK_fiscal_IsrProv_Base CHECK (BaseCalculo IN ('DECLARADO','NUESTRO'))
+  );
+END;
+
+/*--------------------------------------------------------------------------
   Semillas.
 --------------------------------------------------------------------------*/
 MERGE fiscal.PerfilFiscal AS destino
@@ -328,8 +365,28 @@ IF NOT EXISTS (SELECT 1 FROM sys.security_policies
        ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionPresentada AFTER UPDATE,
        ADD FILTER PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionCierre,
        ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionCierre AFTER INSERT,
-       ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionCierre AFTER UPDATE
+       ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionCierre AFTER UPDATE,
+       ADD FILTER PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionIsrProvisional,
+       ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionIsrProvisional AFTER INSERT,
+       ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionIsrProvisional AFTER UPDATE
        WITH (STATE = ON);'
+  );
+
+-- La politica se crea una sola vez; cuando ya existe (bases que corrieron una
+-- version anterior de este script) hay que engancharle la tabla nueva aparte.
+IF EXISTS (SELECT 1 FROM sys.security_policies
+           WHERE [name] = 'RfcSecurityPolicy' AND schema_id = SCHEMA_ID('fiscal'))
+   AND NOT EXISTS (SELECT 1
+                   FROM sys.security_predicates AS sp
+                   JOIN sys.security_policies AS pol ON pol.object_id = sp.object_id
+                   WHERE pol.[name] = 'RfcSecurityPolicy'
+                     AND sp.target_object_id = OBJECT_ID('fiscal.DeclaracionIsrProvisional'))
+  EXEC
+  (
+    'ALTER SECURITY POLICY fiscal.RfcSecurityPolicy
+       ADD FILTER PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionIsrProvisional,
+       ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionIsrProvisional AFTER INSERT,
+       ADD BLOCK PREDICATE fiscal.fn_RfcAccessPredicate(Rfc) ON fiscal.DeclaracionIsrProvisional AFTER UPDATE;'
   );
 
 /*--------------------------------------------------------------------------
@@ -340,6 +397,8 @@ IF OBJECT_ID(N'fiscal.PerfilFiscal', N'U') IS NULL
    OR OBJECT_ID(N'fiscal.EjercicioFiscal', N'U') IS NULL
    OR OBJECT_ID(N'fiscal.DeclaracionPresentada', N'U') IS NULL
    OR OBJECT_ID(N'fiscal.DeclaracionCierre', N'U') IS NULL
+   OR OBJECT_ID(N'fiscal.DeclaracionIsrProvisional', N'U') IS NULL
+   OR COL_LENGTH(N'fiscal.EjercicioFiscal', N'CuentaPagosProvIsr') IS NULL
   THROW 51002, 'La validacion del esquema fiscal no fue satisfactoria.', 1;
 
 IF @ApplyChanges = 1

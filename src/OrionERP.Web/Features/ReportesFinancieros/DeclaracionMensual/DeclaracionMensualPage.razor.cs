@@ -41,6 +41,7 @@ public partial class DeclaracionMensualPage : ComponentBase
   private List<DeclaracionImportada> Previsualizadas { get; } = [];
   private string? ErrorImportacion { get; set; }
   private bool ConfirmandoCierre { get; set; }
+  private bool ConfirmandoIsr { get; set; }
 
   protected override async Task OnInitializedAsync()
   {
@@ -81,6 +82,7 @@ public partial class DeclaracionMensualPage : ComponentBase
   {
     Aviso = null;
     ConfirmandoCierre = false;
+    ConfirmandoIsr = false;
     return CargarAsync();
   }
 

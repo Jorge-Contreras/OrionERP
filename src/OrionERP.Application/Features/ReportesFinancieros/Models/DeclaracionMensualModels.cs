@@ -46,6 +46,10 @@ public class DeclaracionEncabezadoRow
   public bool TieneHistorialAnterior { get; set; }
 
   public int? TransaccionIdCierre { get; set; }
+
+  /// <summary>Poliza de provision del pago provisional de ISR, si ya se genero.</summary>
+  public int? TransaccionIdIsr { get; set; }
+
   public decimal IsrACargo { get; set; }
   public decimal IvaSaldoAFavor { get; set; }
   public decimal IvaACargo { get; set; }
@@ -106,7 +110,10 @@ public class DeclaracionRetencionRow
   public string Estado { get; set; } = "NA";
 }
 
-/// <summary>Un renglon del asiento de cierre que salda 118-01 contra 208-01.</summary>
+/// <summary>
+/// Un renglon de un asiento propuesto: el cierre de IVA que salda 118-01 contra
+/// 208-01, o la provision del pago provisional de ISR (114-01 contra 213-03).
+/// </summary>
 public class DeclaracionCierreRow
 {
   public int Orden { get; set; }
@@ -182,6 +189,9 @@ public class DeclaracionMensualReport
   public IReadOnlyList<DeclaracionConciliacionRow> Conciliacion { get; set; } = Array.Empty<DeclaracionConciliacionRow>();
   public IReadOnlyList<DeclaracionRetencionRow> Retenciones { get; set; } = Array.Empty<DeclaracionRetencionRow>();
   public IReadOnlyList<DeclaracionCierreRow> Cierre { get; set; } = Array.Empty<DeclaracionCierreRow>();
+
+  /// <summary>Asiento propuesto de provision del pago provisional de ISR del mes.</summary>
+  public IReadOnlyList<DeclaracionCierreRow> CierreIsr { get; set; } = Array.Empty<DeclaracionCierreRow>();
   public IReadOnlyList<DeclaracionHallazgoRow> Hallazgos { get; set; } = Array.Empty<DeclaracionHallazgoRow>();
   public DeclaracionHallazgoResumen? HallazgosResumen { get; set; }
 }

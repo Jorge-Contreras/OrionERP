@@ -61,7 +61,8 @@ public class DeclaracionMensualService : IDeclaracionMensualService
       Iva = (await multi.ReadAsync<DeclaracionRenglonRow>().ConfigureAwait(false)).AsList(),
       Conciliacion = (await multi.ReadAsync<DeclaracionConciliacionRow>().ConfigureAwait(false)).AsList(),
       Retenciones = (await multi.ReadAsync<DeclaracionRetencionRow>().ConfigureAwait(false)).AsList(),
-      Cierre = (await multi.ReadAsync<DeclaracionCierreRow>().ConfigureAwait(false)).AsList()
+      Cierre = (await multi.ReadAsync<DeclaracionCierreRow>().ConfigureAwait(false)).AsList(),
+      CierreIsr = (await multi.ReadAsync<DeclaracionCierreRow>().ConfigureAwait(false)).AsList()
     };
 
     using var hallazgos = await connection.QueryMultipleAsync(new CommandDefinition(
@@ -122,6 +123,30 @@ public class DeclaracionMensualService : IDeclaracionMensualService
 
     var filas = await connection.QueryAsync<DeclaracionCierreRow>(new CommandDefinition(
       "fiscal.Generar_Poliza_Cierre", parametros,
+      commandType: CommandType.StoredProcedure, commandTimeout: 60,
+      cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+    return (parametros.Get<int?>("@TransaccionID") ?? 0, filas.AsList());
+  }
+
+  public async Task<(int TransaccionId, IReadOnlyList<DeclaracionCierreRow> Lineas)> GenerarIsrAsync(
+    string rfc, int ejercicio, int periodo, bool regenerar, string usuario,
+    CancellationToken cancellationToken = default)
+  {
+    using var connection = _connectionFactory.Create();
+    await OpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+    var parametros = new DynamicParameters();
+    parametros.Add("@Rfc", rfc);
+    parametros.Add("@Ejercicio", ejercicio);
+    parametros.Add("@Periodo", periodo);
+    parametros.Add("@Aplicar", true);
+    parametros.Add("@Regenerar", regenerar);
+    parametros.Add("@Usuario", usuario);
+    parametros.Add("@TransaccionID", dbType: DbType.Int32, direction: ParameterDirection.InputOutput);
+
+    var filas = await connection.QueryAsync<DeclaracionCierreRow>(new CommandDefinition(
+      "fiscal.Generar_Poliza_Isr", parametros,
       commandType: CommandType.StoredProcedure, commandTimeout: 60,
       cancellationToken: cancellationToken)).ConfigureAwait(false);
 

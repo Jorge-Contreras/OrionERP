@@ -57,7 +57,7 @@ no reinicies producción.
 | --- | --- | --- | --- |
 | [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Entregada en `7c4105e` |
 | [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | Pendiente (apagada) |
-| [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Pendiente |
+| [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada en `b3f036a`; aplicada en Sandbox |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Pendiente (apagada) |
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Pendiente |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Pendiente |
@@ -68,7 +68,12 @@ Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabil
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
 dependen de nada y pueden adelantarse.
 
-Con E1 entregada, el siguiente de la cadena larga es **E3**.
+Con E1 y E3 entregadas, el siguiente de la cadena larga es **E4**.
+
+**Pendiente de autorización.** `20260908_production_accounting_company_identity`
+está escrita, registrada en el manifiesto productivo y validada de sintaxis, pero
+**no se ha ejecutado**. Aplicarla en `grupocarpio` exige respaldo referenciado,
+preview revisado y `--production-approval "APPLY grupocarpio"`.
 
 "Apagada" significa que el mecanismo se implementa y se entrega desactivado: falta
 un dato empresarial o una decisión del usuario para encenderlo, no código.

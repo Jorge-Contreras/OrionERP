@@ -63,6 +63,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260908_production_accounting_company_identity",
+      "path": "database/production/20260908/20260908_production_accounting_company_identity.sql",
+      "description": "CompanyId aditivo y nullable en el agregado contable, con relleno por el vinculo legacy exacto. Preparada; requiere autorizacion explicita para aplicarse.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

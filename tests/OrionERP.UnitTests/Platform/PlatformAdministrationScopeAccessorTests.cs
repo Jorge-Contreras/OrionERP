@@ -94,6 +94,7 @@ public sealed class PlatformAdministrationScopeAccessorTests
       if (!string.Equals(rfc, expectedRfc, StringComparison.OrdinalIgnoreCase))
         throw new UnauthorizedAccessException();
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
   }
 
   private sealed class AllowedAccessValidator : IPlatformAdministrationAccessValidator

@@ -57,6 +57,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260908_accounting_company_identity_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_company_identity_sandbox.sql",
+      "description": "CompanyId aditivo y nullable en el agregado contable, con relleno por el vinculo legacy exacto, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

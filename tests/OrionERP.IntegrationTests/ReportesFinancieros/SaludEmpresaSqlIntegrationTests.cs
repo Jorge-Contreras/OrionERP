@@ -166,6 +166,7 @@ WHERE CHECKIN>='20260801' AND CHECKIN<'20260825';
     public string RequireRfc() => rfc;
     public void EnsureRfc(string value)
     { if (!string.Equals(value, rfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException(); }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
   }
 
   private static async Task<SqlConnection> OpenSandboxAsync()

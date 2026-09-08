@@ -145,5 +145,7 @@ public sealed class TransactionAttachmentScopeTests
       if (!string.Equals(RequireRfc(), requestedRfc, StringComparison.OrdinalIgnoreCase))
         throw new UnauthorizedAccessException("Company mismatch.");
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default)
+    { RequireRfc(); return Task.FromResult(1L); }
   }
 }

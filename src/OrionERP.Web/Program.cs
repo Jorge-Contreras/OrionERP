@@ -349,6 +349,7 @@ static bool IsApiOrBlazorCircuitRequest(HttpRequest request)
   return false;
 }
 
+builder.Services.AddScoped<ICompanyIdentityResolver, CompanyIdentityResolver>();
 builder.Services.AddScoped<CurrentCompanyContext>();
 builder.Services.AddScoped<ICurrentCompanyContext>(services => services.GetRequiredService<CurrentCompanyContext>());
 builder.Services.AddScoped<ICurrentRfcAccessor>(services => services.GetRequiredService<CurrentCompanyContext>());

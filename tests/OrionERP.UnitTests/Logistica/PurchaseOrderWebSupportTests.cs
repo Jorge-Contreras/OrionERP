@@ -324,6 +324,7 @@ public class PurchaseOrderWebSupportTests
       if (!string.Equals(rfc, CurrentRfc, StringComparison.OrdinalIgnoreCase))
         throw new UnauthorizedAccessException();
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(9L);
   }
 
   private sealed class FakeWebHostEnvironment : IWebHostEnvironment

@@ -153,6 +153,7 @@ public sealed class HospitalityAdministrationAuthorizationTests
     {
       if (!string.Equals(rfc, Rfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException();
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
   }
 
   private sealed class MutableAccessValidator : IHospitalityAdministrationAccessValidator

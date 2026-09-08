@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Web.Identity;
+using OrionERP.UnitTests.Common;
 using OrionERP.Web.State;
 
 namespace OrionERP.UnitTests.Auth;
@@ -23,7 +24,7 @@ public sealed class CompanyScopeGuardMiddlewareTests
     });
     var context = AuthenticatedContext("OHM191112Q26", query);
 
-    var companyContext = new CurrentCompanyContext();
+    var companyContext = new CurrentCompanyContext(new StubCompanyIdentityResolver());
     await middleware.InvokeAsync(context, companyContext);
 
     Assert.True(nextCalled);
@@ -43,7 +44,7 @@ public sealed class CompanyScopeGuardMiddlewareTests
     var context = AuthenticatedContext("OHM191112Q26", "?rfc=BRUNOS260707L26");
     context.Response.Body = new MemoryStream();
 
-    await middleware.InvokeAsync(context, new CurrentCompanyContext());
+    await middleware.InvokeAsync(context, new CurrentCompanyContext(new StubCompanyIdentityResolver()));
 
     Assert.False(nextCalled);
     Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
@@ -59,7 +60,7 @@ public sealed class CompanyScopeGuardMiddlewareTests
     var context = AuthenticatedContext("OHM191112Q26");
     context.Request.RouteValues["rfc"] = "BRUNOS260707L26";
 
-    await middleware.InvokeAsync(context, new CurrentCompanyContext());
+    await middleware.InvokeAsync(context, new CurrentCompanyContext(new StubCompanyIdentityResolver()));
 
     Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
   }
@@ -76,7 +77,7 @@ public sealed class CompanyScopeGuardMiddlewareTests
     var context = new DefaultHttpContext();
     context.Request.QueryString = new QueryString("?rfc=BRUNOS260707L26");
 
-    await middleware.InvokeAsync(context, new CurrentCompanyContext());
+    await middleware.InvokeAsync(context, new CurrentCompanyContext(new StubCompanyIdentityResolver()));
 
     Assert.True(nextCalled);
   }
@@ -88,7 +89,7 @@ public sealed class CompanyScopeGuardMiddlewareTests
     var context = AuthenticatedContext("OHM191112Q26");
     ((ClaimsIdentity)context.User.Identity!).AddClaim(new Claim(CompanyClaimTypes.Rfc, "BRUNOS260707L26"));
 
-    await middleware.InvokeAsync(context, new CurrentCompanyContext());
+    await middleware.InvokeAsync(context, new CurrentCompanyContext(new StubCompanyIdentityResolver()));
 
     Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
   }

@@ -117,9 +117,9 @@ WHERE ps.PublicSiteKey IN ('bonhomia-main', 'brunos-main');
       Assert.False((await transactionsA.DeleteTransaccionAsync(transactionAId)).Success);
       Assert.NotNull(await transactionsA.GetHeaderAsync(transactionAId));
 
-      var ordersA = new OrdenTrabajoService(new ConnectionFactory(connectionString), new FixedScope(scopeA), new FixedCompany(scopeA.CompanyRfc));
-      var ordersB = new OrdenTrabajoService(new ConnectionFactory(connectionString), new FixedScope(scopeB), new FixedCompany(scopeB.CompanyRfc));
-      var genericOrders = new OrdenTrabajoService(new ConnectionFactory(connectionString), companyContext: new FixedCompany(scopeA.CompanyRfc));
+      var ordersA = new OrdenTrabajoService(new ConnectionFactory(connectionString), new FixedScope(scopeA), new FixedCompany(scopeA));
+      var ordersB = new OrdenTrabajoService(new ConnectionFactory(connectionString), new FixedScope(scopeB), new FixedCompany(scopeB));
+      var genericOrders = new OrdenTrabajoService(new ConnectionFactory(connectionString), companyContext: new FixedCompany(scopeA));
       var room = (await ordersA.GetRoomOptionsAsync()).First();
       var employeeId = await bootstrap.ExecuteScalarAsync<int>("SELECT TOP (1) ID FROM dbo.Capital_Humano WHERE RFC = @Rfc AND UPPER(LTRIM(RTRIM([Status]))) = 'ACTIVO' ORDER BY ID;", new { Rfc = scopeA.CompanyRfc });
       Assert.True(employeeId > 0);
@@ -195,18 +195,21 @@ DELETE FROM dbo.BusinessPartner WHERE Id = @FiscalId AND PartnerName = @Marker;
 
   private static TransaccionService TransactionService(IConfiguration cfg, HospitalityScope scope)
     => new(cfg, Unused<IFacturamaApiClient>(), Unused<ISatRfcProfileRepository>(), Unused<ICfdiStampingService>(),
-      NullLogger<TransaccionService>.Instance, hospitalityScopeAccessor: new FixedScope(scope), companyContext: new FixedCompany(scope.CompanyRfc));
+      NullLogger<TransaccionService>.Instance, hospitalityScopeAccessor: new FixedScope(scope), companyContext: new FixedCompany(scope));
 
-  private sealed class FixedCompany(string rfc) : ICurrentCompanyContext
+  // La fábrica contable comprueba el par CompanyId/Rfc contra orion.Company, así que
+  // el doble devuelve la identidad real del alcance, no un valor inventado.
+  private sealed class FixedCompany(HospitalityScope scope) : ICurrentCompanyContext
   {
-    public string CurrentRfc => rfc;
-    public string DisplayName => rfc;
+    public string CurrentRfc => scope.CompanyRfc;
+    public string DisplayName => scope.CompanyRfc;
     public int? EmployeeId => null;
-    public string RequireRfc() => rfc;
+    public string RequireRfc() => scope.CompanyRfc;
     public void EnsureRfc(string requestedRfc)
     {
-      if (!string.Equals(rfc, requestedRfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Empresa ajena.");
+      if (!string.Equals(scope.CompanyRfc, requestedRfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Empresa ajena.");
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(scope.CompanyId);
   }
 
   private static ReservationCfdiService FiscalService(IConfiguration cfg, string cs, HospitalityScope scope, IListaReservacionesService reservations)

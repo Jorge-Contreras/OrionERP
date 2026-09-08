@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Web.Identity;
+using OrionERP.UnitTests.Common;
 using OrionERP.Web.State;
 
 namespace OrionERP.UnitTests.Auth;
@@ -11,7 +12,7 @@ public sealed class CurrentCompanyContextTests
   [Fact]
   public void Claims_are_normalized_and_company_metadata_is_hydrated()
   {
-    var context = new CurrentCompanyContext();
+    var context = new CurrentCompanyContext(new StubCompanyIdentityResolver());
 
     context.InitializeFromClaims(Principal(
       new Claim(CompanyClaimTypes.Rfc, " ohm191112q26 "),
@@ -126,7 +127,7 @@ public sealed class CurrentCompanyContextTests
 
   private static CurrentCompanyContext HydratedContext()
   {
-    var context = new CurrentCompanyContext();
+    var context = new CurrentCompanyContext(new StubCompanyIdentityResolver());
     context.InitializeFromClaims(Principal(
       new Claim(CompanyClaimTypes.Rfc, "OHM191112Q26"),
       new Claim(CompanyClaimTypes.CompanyName, "Orion"),

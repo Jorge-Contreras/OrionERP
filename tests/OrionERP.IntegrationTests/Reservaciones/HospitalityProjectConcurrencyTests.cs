@@ -233,5 +233,6 @@ public sealed class HospitalityProjectConcurrencyTests
     public string RequireRfc() => rfc;
     public void EnsureRfc(string requested)
     { if (!string.Equals(rfc, requested, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException(); }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
   }
 }

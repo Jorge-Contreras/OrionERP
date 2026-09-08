@@ -16,6 +16,7 @@ using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Reservaciones;
 using OrionERP.Infrastructure.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Cfdi;
 using OrionERP.Infrastructure.Features.Cfdi.Facturama;
 
 namespace OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
@@ -31,6 +32,7 @@ public sealed class TransaccionService : ITransaccionService
   private readonly ICurrentUserAccessor? _currentUserAccessor;
   private readonly IHospitalityScopeAccessor? _hospitalityScopeAccessor;
   private readonly ICurrentCompanyContext? _companyContext;
+  private AccountingConnectionFactory? _accountingConnections;
 
   public TransaccionService(
       IConfiguration cfg,
@@ -81,7 +83,7 @@ LEFT JOIN dbo.Transaccion_Comprobante tc
   ON tc.Transaccion_ID = t.ID
 WHERE t.ID = @TransaccionId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     return await conn.QueryFirstOrDefaultAsync<TransaccionHeaderDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
   }
@@ -117,7 +119,7 @@ WHERE t.Fecha > DATEADD(DAY, -@DaysBack, @FechaXml)
 GROUP BY t.ID, t.Concepto, t.Fecha, t.Monto, t.Cuenta, c.Comprobante_Id
 ORDER BY t.Fecha, t.OrdenBalance, t.ID;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionListItem>(
         new CommandDefinition(
             sql,
@@ -154,7 +156,7 @@ ORDER BY t.Fecha, t.OrdenBalance, t.ID;";
     parameters.Add("@Tipo", request.Tipo);
     parameters.Add("@Comprobantes_In", string.IsNullOrWhiteSpace(request.ComprobantesCsv) ? null : request.ComprobantesCsv);
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<CfdiCandidateRow>(
         new CommandDefinition(
             "cfdi.CFDIs_Candidatos_Para_Poliza",
@@ -197,7 +199,7 @@ SELECT CAST(TD.DoctoRelacionado_Id AS bigint) AS Id
 FROM dbo.Transaccion_DoctoRelacionado AS TD
 WHERE TD.Transaccion_ID = @Id;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<long>(
         new CommandDefinition(sql, new { Id = transaccionId }, cancellationToken: ct));
 
@@ -208,7 +210,7 @@ WHERE TD.Transaccion_ID = @Id;";
   {
     await EnsureTransactionScopeAsync(transaccionId, ct);
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
         new CommandDefinition(
             "cfdi.Transaccion_CFDI_Vinculados_Resumen",
@@ -269,7 +271,7 @@ WHERE TD.Transaccion_ID = @Id;";
     parameters.Add("@Tipo", string.IsNullOrWhiteSpace(request.Tipo) ? null : request.Tipo);
     parameters.Add("@Renglones", request.Renglones <= 0 ? 50 : request.Renglones);
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var transactionAmount = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
         @"SELECT CAST(ABS(ISNULL(Monto, 0)) AS decimal(19,4))
 FROM dbo.Transacciones
@@ -293,7 +295,7 @@ WHERE ID = @TransaccionId;",
 
     if (cfdiIds.Length > 0)
     {
-      await using var identityConnection = new SqlConnection(_cs);
+      await using var identityConnection = await OpenAccountingConnectionAsync(ct);
       var parties = (await identityConnection.QueryAsync<CfdiPartyRow>(new CommandDefinition(
           @"SELECT
     Comprobante_Id AS ComprobanteId,
@@ -403,7 +405,7 @@ GROUP BY Comprobante_Id;",
 
     filter ??= new TransaccionFilter();
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
         new CommandDefinition(
             "cfdi.CFDI_Poliza_Linking_Workspace",
@@ -433,7 +435,7 @@ GROUP BY Comprobante_Id;",
 
     filter ??= new TransaccionFilter();
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
         new CommandDefinition(
             "cfdi.Pago20_Poliza_Linking_Workspace",
@@ -599,7 +601,7 @@ JOIN cfdi.Pagos20_RetencionDR AS retencion
   ON retencion.DoctoRelacionado_Id = td.DoctoRelacionado_Id
 WHERE td.Transaccion_ID = @TransaccionId;";
 
-    await using var conn = new SqlConnection(_cs);
+    await using var conn = await OpenAccountingConnectionAsync(ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
     var header = await multi.ReadFirstOrDefaultAsync<Pago20AccountingHeaderRow>();
     var documents = (await multi.ReadAsync<Pago20AccountingDocumentRow>()).AsList();
@@ -701,7 +703,7 @@ LEFT JOIN dbo.CuentasContables cuenta
 WHERE rc.TransaccionID = @TransaccionId
 ORDER BY rc.ID;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionMovimientoDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
     return rows.AsList();
@@ -718,7 +720,7 @@ FROM dbo.Actividad a
 WHERE a.RFC = @Rfc
 ORDER BY a.Descripcion ASC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
         new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
     return rows.AsList();
@@ -757,7 +759,7 @@ ORDER BY
   a.Descripcion ASC,
   a.ID ASC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
         new CommandDefinition(
             sql,
@@ -789,7 +791,7 @@ FROM dbo.Actividad a
 WHERE a.RFC = @Rfc
   AND a.ID = @ActividadId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     return await conn.QueryFirstOrDefaultAsync<LookupInt32Dto>(
         new CommandDefinition(
             sql,
@@ -812,7 +814,7 @@ FROM dbo.Compra c
 WHERE c.RFC = @Rfc
 ORDER BY c.Descripcion ASC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
         new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
     return rows.AsList();
@@ -829,7 +831,7 @@ FROM dbo.Servicios s
 WHERE s.RFC = @Rfc
 ORDER BY s.Descripcion ASC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
         new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
     return rows.AsList();
@@ -847,7 +849,7 @@ WHERE ch.RFC = @Rfc
       AND ch.Status='ACTIVO'
 ORDER BY ch.NombreCorto ASC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<LookupInt32Dto>(
         new CommandDefinition(sql, new { Rfc = rfc }, cancellationToken: ct));
     return rows.AsList();
@@ -861,7 +863,7 @@ ORDER BY ch.NombreCorto ASC;";
 FROM dbo.Formas_Pago fp
 ORDER BY fp.Clave ASC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<FormaPagoLookupDto>(
         new CommandDefinition(sql, cancellationToken: ct));
     return rows.AsList();
@@ -871,7 +873,7 @@ ORDER BY fp.Clave ASC;";
   {
     await EnsureTransactionScopeAsync(transaccionId, ct);
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     return await LoadTotalsAsync(conn, transaction: null, transaccionId, ct);
   }
 
@@ -890,7 +892,7 @@ FROM dbo.TRANSACTION_ATTACHMENT ta
 WHERE ta.TranID = @TransaccionId
 ORDER BY ta.ID DESC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionAttachmentDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
     return rows.AsList();
@@ -940,7 +942,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
 FROM dbo.TRANSACTION_ATTACHMENT ta
 WHERE ta.ID = @AttachmentId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var dto = await conn.QueryFirstOrDefaultAsync<TransaccionAttachmentDto>(
       new CommandDefinition(selectSql, new { AttachmentId = newId }, cancellationToken: ct));
 
@@ -961,7 +963,7 @@ WHERE ta.ID = @AttachmentId;";
 FROM dbo.TRANSACTION_ATTACHMENT ta
 WHERE ta.ID = @AttachmentId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var row = await conn.QueryFirstOrDefaultAsync<(string? AttachmentName, string? AttachmentExtension, byte[] Attachment)>(
         new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
 
@@ -992,7 +994,7 @@ WHERE ta.ID = @AttachmentId;";
 
     const string sql = @"DELETE FROM dbo.TRANSACTION_ATTACHMENT WHERE ID = @AttachmentId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     await conn.ExecuteAsync(new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
   }
 
@@ -1004,7 +1006,7 @@ WHERE ta.ID = @AttachmentId;";
 FROM cfdi.comprobante
 WHERE XML_Attachment_ID = @AttachmentId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var comprobanteId = await conn.ExecuteScalarAsync<int?>(
         new CommandDefinition(sql, new { AttachmentId = attachmentId }, cancellationToken: ct));
 
@@ -1021,7 +1023,7 @@ FROM dbo.Transaccion_Comprobante
 WHERE Transaccion_ID = @TransaccionId
   AND Comprobante_ID = @ComprobanteId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var exists = await conn.ExecuteScalarAsync<int?>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId, ComprobanteId = comprobanteId }, cancellationToken: ct));
 
@@ -1037,7 +1039,7 @@ WHERE Transaccion_ID = @TransaccionId
 SET TranID = @TransaccionId
 WHERE ID = @AttachmentId;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     await conn.ExecuteAsync(
         new CommandDefinition(sql, new { AttachmentId = attachmentId, TransaccionId = transaccionId }, cancellationToken: ct));
   }
@@ -1078,10 +1080,23 @@ INNER JOIN cfdi.Comprobante_Detalle AS cd ON tc.Comprobante_ID = cd.Comprobante_
 WHERE tc.Transaccion_ID = @TransaccionId
 ORDER BY cd.Fecha DESC;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionComprobanteDto>(
         new CommandDefinition(sql, new { TransaccionId = transaccionId }, cancellationToken: ct));
     return rows.AsList();
+  }
+
+  /// <summary>
+  /// Toda conexión contable pasa por aquí: fija el RFC legacy y el CompanyId
+  /// técnico de la sesión, y la base comprueba que el par exista. Antes cada método
+  /// abría <c>new SqlConnection(_cs)</c> sin contexto alguno.
+  /// </summary>
+  private Task<SqlConnection> OpenAccountingConnectionAsync(CancellationToken ct)
+  {
+    _accountingConnections ??= new AccountingConnectionFactory(
+        _cfg,
+        _companyContext ?? throw new InvalidOperationException("Selecciona una empresa antes de operar pólizas."));
+    return _accountingConnections.OpenAsync(ct);
   }
 
   private string RequireCompanyRfc(string? requestedRfc = null)
@@ -1096,7 +1111,7 @@ ORDER BY cd.Fecha DESC;";
   private async Task EnsureTransactionScopeAsync(int transaccionId, CancellationToken ct)
   {
     var rfc = RequireCompanyRfc();
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
         "SELECT 1 FROM dbo.Transacciones WHERE ID = @Id AND RFC = @Rfc;",
         new { Id = transaccionId, Rfc = rfc }, cancellationToken: ct));
@@ -1107,17 +1122,16 @@ ORDER BY cd.Fecha DESC;";
   private async Task EnsureAttachmentScopeAsync(int attachmentId, CancellationToken ct)
   {
     var rfc = RequireCompanyRfc();
-    using var conn = new SqlConnection(_cs);
-    var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition("""
+    using var conn = await OpenAccountingConnectionAsync(ct);
+    var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition($"""
 SELECT 1 FROM dbo.TRANSACTION_ATTACHMENT a
 WHERE a.ID = @Id AND
 (
   EXISTS (SELECT 1 FROM dbo.Transacciones t WHERE t.ID = a.TranID AND t.RFC = @Rfc)
   OR (a.TranID IS NULL AND EXISTS (
     SELECT 1 FROM cfdi.Comprobante c
-    WHERE c.XML_Attachment_ID = a.ID AND
-      (EXISTS (SELECT 1 FROM cfdi.Emisor e WHERE e.Comprobante_ID = c.Comprobante_Id AND e.Rfc = @Rfc)
-       OR EXISTS (SELECT 1 FROM cfdi.Receptor r WHERE r.Comprobante_ID = c.Comprobante_Id AND r.Rfc = @Rfc))))
+    WHERE c.XML_Attachment_ID = a.ID
+      AND {CfdiCompanyScope.AccessPredicateSql("c.Comprobante_Id")}))
 );
 """, new { Id = attachmentId, Rfc = rfc }, cancellationToken: ct));
     if (!exists.HasValue)
@@ -1127,11 +1141,10 @@ WHERE a.ID = @Id AND
   private async Task EnsureComprobanteScopeAsync(long comprobanteId, CancellationToken ct)
   {
     var rfc = RequireCompanyRfc();
-    using var conn = new SqlConnection(_cs);
-    var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition("""
-SELECT 1 FROM cfdi.Comprobante c WHERE c.Comprobante_Id = @Id AND
-  (EXISTS (SELECT 1 FROM cfdi.Emisor e WHERE e.Comprobante_ID = c.Comprobante_Id AND e.Rfc = @Rfc)
-   OR EXISTS (SELECT 1 FROM cfdi.Receptor r WHERE r.Comprobante_ID = c.Comprobante_Id AND r.Rfc = @Rfc));
+    using var conn = await OpenAccountingConnectionAsync(ct);
+    var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition($"""
+SELECT 1 FROM cfdi.Comprobante c WHERE c.Comprobante_Id = @Id
+  AND {CfdiCompanyScope.AccessPredicateSql("c.Comprobante_Id")};
 """, new { Id = comprobanteId, Rfc = rfc }, cancellationToken: ct));
     if (!exists.HasValue)
       throw new UnauthorizedAccessException("El CFDI no pertenece a la empresa seleccionada.");
@@ -1140,7 +1153,7 @@ SELECT 1 FROM cfdi.Comprobante c WHERE c.Comprobante_Id = @Id AND
   private async Task EnsureDoctoScopeAsync(int doctoRelacionadoId, CancellationToken ct)
   {
     RequireCompanyRfc();
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var id = await conn.ExecuteScalarAsync<long?>(new CommandDefinition("""
 SELECT p20.Comprobante_Id FROM cfdi.Pagos20_DoctoRelacionado dr
 INNER JOIN cfdi.Pagos20_Pago p ON p.Pago_Id = dr.Pago_Id
@@ -1161,6 +1174,9 @@ WHERE dr.DoctoRelacionado_Id = @Id;
     {
       await conn.OpenAsync(ct);
       await HospitalityConnectionFactory.InitializeAsync(conn, scope, ct);
+      // Los cobros de reservación escriben pólizas: la conexión también declara la
+      // identidad contable, que el alcance de Hospedaje ya trae verificada.
+      await AccountingConnectionFactory.InitializeAsync(conn, scope.CompanyRfc, scope.CompanyId, ct);
       return conn;
     }
     catch
@@ -1510,7 +1526,7 @@ WHERE rt.TransaccionID = @TransaccionId
 
     if (vincular)
     {
-      await using var lookupConnection = new SqlConnection(_cs);
+      await using var lookupConnection = await OpenAccountingConnectionAsync(ct);
       var total = await lookupConnection.ExecuteScalarAsync<decimal?>(new CommandDefinition(
           "SELECT CAST(Total AS decimal(19,4)) FROM cfdi.Comprobante WHERE Comprobante_Id = @ComprobanteId;",
           new { ComprobanteId = comprobanteId },
@@ -1565,8 +1581,7 @@ WHERE rt.TransaccionID = @TransaccionId
     await EnsureTransactionScopeAsync(transaccionId, ct);
     await EnsureDoctoScopeAsync(doctoRelacionadoId, ct);
 
-    using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    using var conn = await OpenAccountingConnectionAsync(ct);
 
     try
     {
@@ -1686,8 +1701,7 @@ WHERE ID = @TransaccionId;";
           attachmentId,
           transaccionId);
 
-      using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+      using var conn = await OpenAccountingConnectionAsync(ct);
       await ProcessSatXmlV2Async(conn, transaction: null, transaccionId, attachmentId, ct);
 
       return TransaccionCommandResult.Ok("El XML del SAT se procesÃ³ correctamente para la transacciÃ³n seleccionada.");
@@ -2025,7 +2039,7 @@ WHERE ID = @MovimientoId
         _ = sqlBuilder.OrderBy(BuildFechaOrderClause("t", descending: true));
       }
 
-      using var conn = new SqlConnection(_cs);
+      using var conn = await OpenAccountingConnectionAsync(ct);
       var rows = await conn.QueryAsync<TransaccionListItemDto>(
           new CommandDefinition(template.RawSql, template.Parameters, cancellationToken: ct)
       );
@@ -2054,7 +2068,7 @@ WHERE TFD.UUID = @Uuid
   AND T.RFC = @ScopeRfc
 ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
         new CommandDefinition(sql, new { Uuid = uuid, ScopeRfc = RequireCompanyRfc() }, cancellationToken: ct));
 
@@ -2080,7 +2094,7 @@ WHERE TC.Comprobante_ID = @ComprobanteId
   AND T.RFC = @ScopeRfc
 ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
         new CommandDefinition(sql, new { ComprobanteId = comprobanteId, ScopeRfc = RequireCompanyRfc() }, cancellationToken: ct));
 
@@ -2108,7 +2122,7 @@ WHERE DR.DoctoRelacionado_Id = @DoctoRelacionadoId
   AND T.RFC = @ScopeRfc
 ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     var rows = await conn.QueryAsync<TransaccionListItemDto>(
       new CommandDefinition(sql, new { DoctoRelacionadoId = doctoRelacionadoId, ScopeRfc = RequireCompanyRfc() }, cancellationToken: ct));
 
@@ -2265,8 +2279,7 @@ WHERE ID = @MovimientoId
 
   private async Task<SqlConnection> OpenConnectionWithAuditContextAsync(CancellationToken ct)
   {
-      var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+      var conn = await OpenAccountingConnectionAsync(ct);
 
       try
       {
@@ -2348,6 +2361,7 @@ EXEC sys.sp_set_session_context @key = N'OrionERP.Application', @value = N'Orion
     public bool CurrentLinkExists { get; set; }
     public bool HasPaymentLinks { get; set; }
     public bool PlaceholderExists { get; set; }
+    public bool CompanyLinkElsewhere { get; set; }
   }
 
   private sealed class Pago20LinkContextRow
@@ -2460,8 +2474,7 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
     if (monto <= 0m)
       return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenAccountingConnectionAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
@@ -2536,12 +2549,26 @@ SELECT
     CAST(CASE WHEN EXISTS (
         SELECT 1 FROM dbo.Transaccion_Comprobante AS placeholder WITH (UPDLOCK, HOLDLOCK)
         WHERE placeholder.Transaccion_ID = 5505 AND placeholder.Comprobante_ID = @ComprobanteId
-    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists
+    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists,
+    CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM dbo.Transaccion_Comprobante AS companyLink WITH (UPDLOCK, HOLDLOCK)
+        JOIN dbo.Transacciones AS companyTransaction ON companyTransaction.ID = companyLink.Transaccion_ID
+        WHERE companyLink.Comprobante_ID = @ComprobanteId
+          AND companyTransaction.RFC = @CompanyRfc
+          AND companyLink.Transaccion_ID <> @TransaccionId
+          AND companyLink.Transaccion_ID <> 5505
+    ) THEN 1 ELSE 0 END AS bit) AS CompanyLinkElsewhere
 FROM dbo.Transaccion_Comprobante AS tc WITH (UPDLOCK, HOLDLOCK)
 WHERE tc.Comprobante_ID = @ComprobanteId;";
       var state = await conn.QuerySingleAsync<RegularCfdiLinkStateRow>(new CommandDefinition(
           stateSql,
-          new { TransaccionId = transaccionId, ComprobanteId = comprobanteId, RelinkPlaceholder = relinkPlaceholder },
+          new
+          {
+            TransaccionId = transaccionId,
+            ComprobanteId = comprobanteId,
+            RelinkPlaceholder = relinkPlaceholder,
+            CompanyRfc = RequireCompanyRfc()
+          },
           tx,
           cancellationToken: ct));
 
@@ -2549,6 +2576,13 @@ WHERE tc.Comprobante_ID = @ComprobanteId;";
       {
         await tx.RollbackAsync(ct);
         return TransaccionCommandResult.Fail("La pÃ³liza ya contiene vÃ­nculos de complementos de pago.");
+      }
+      // El mismo CFDI puede seguir pendiente para la otra empresa, pero dentro de
+      // ésta no se duplica: una sola póliza suya lo lleva.
+      if (!updateExisting && state.CompanyLinkElsewhere)
+      {
+        await tx.RollbackAsync(ct);
+        return TransaccionCommandResult.Fail("Este CFDI ya está ligado a otra póliza de la misma empresa.");
       }
       if (updateExisting != state.CurrentLinkExists)
       {
@@ -2637,8 +2671,7 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);",
     if (monto <= 0m)
       return TransaccionCommandResult.Fail("El monto asignado debe ser mayor que cero.");
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenAccountingConnectionAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
@@ -2782,8 +2815,7 @@ VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);",
     await EnsureTransactionScopeAsync(transaccionId, ct);
     await EnsureComprobanteScopeAsync(comprobanteId, ct);
 
-    await using var conn = new SqlConnection(_cs);
-    await conn.OpenAsync(ct);
+    await using var conn = await OpenAccountingConnectionAsync(ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
 
     try
@@ -2931,7 +2963,7 @@ WHERE ID = @AttachmentId;";
 
   private async Task<int> ExecuteInsertAsync(string sql, object parameters, CancellationToken ct)
   {
-    using var conn = new SqlConnection(_cs);
+    using var conn = await OpenAccountingConnectionAsync(ct);
     return await conn.ExecuteScalarAsync<int>(
       new CommandDefinition(sql, parameters, cancellationToken: ct));
   }

@@ -6,10 +6,15 @@ namespace OrionERP.Web.State;
 
 public sealed class CurrentCompanyContext : ICurrentCompanyContext
 {
+  private readonly ICompanyIdentityResolver _identityResolver;
   private readonly object _gate = new();
   private string? _currentRfc;
   private string? _displayName;
   private int? _employeeId;
+  private long? _companyId;
+
+  public CurrentCompanyContext(ICompanyIdentityResolver identityResolver)
+    => _identityResolver = identityResolver ?? throw new ArgumentNullException(nameof(identityResolver));
 
   public string? CurrentRfc { get { lock (_gate) return _currentRfc; } }
   public string? DisplayName { get { lock (_gate) return _displayName; } }
@@ -53,6 +58,29 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
   public string RequireRfc()
     => CurrentRfc ?? throw new UnauthorizedAccessException("La sesión no tiene una empresa activa. Vuelve a iniciar sesión.");
 
+  /// <summary>
+  /// La empresa de una sesión no cambia sin volver a iniciarla, así que resolverla
+  /// una vez por sesión es correcto; <see cref="Clear"/> descarta el valor.
+  /// </summary>
+  public async Task<long> RequireCompanyIdAsync(CancellationToken ct = default)
+  {
+    var rfc = RequireRfc();
+    lock (_gate)
+    {
+      if (_companyId is { } cached) return cached;
+    }
+
+    var resolved = await _identityResolver.ResolveCompanyIdAsync(rfc, ct)
+      ?? throw new UnauthorizedAccessException(
+        "La empresa de la sesión no está dada de alta en la plataforma o está inactiva.");
+    lock (_gate)
+    {
+      // Otro hilo pudo resolverla mientras tanto; la sesión tiene una sola empresa.
+      _companyId ??= resolved;
+      return _companyId.Value;
+    }
+  }
+
   public void EnsureRfc(string rfc)
   {
     if (!string.Equals(RequireRfc(), Normalize(rfc), StringComparison.OrdinalIgnoreCase))
@@ -66,6 +94,7 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
       _currentRfc = null;
       _displayName = null;
       _employeeId = null;
+      _companyId = null;
     }
   }
 

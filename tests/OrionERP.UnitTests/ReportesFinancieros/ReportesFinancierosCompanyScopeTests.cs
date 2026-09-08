@@ -77,5 +77,6 @@ public sealed class ReportesFinancierosCompanyScopeTests
     {
       if (!string.Equals(rfc, CurrentRfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException();
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
   }
 }

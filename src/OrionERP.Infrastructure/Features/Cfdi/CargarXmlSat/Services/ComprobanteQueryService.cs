@@ -19,13 +19,15 @@ public sealed class ComprobanteQueryService : IComprobanteQueryService
          ?? throw new System.InvalidOperationException("Missing ConnectionStrings:OrionDb");
   }
 
-  // "Pending" area: invoices with no link in Transaccion_Comprobante.
+  // Área de pendientes de ESTA empresa: alcanza el CFDI por emisor o por receptor,
+  // y sigue pendiente mientras ella no lo haya ligado a una póliza suya. Que otra
+  // empresa ya lo tenga asignado no lo resuelve aquí.
   public async Task<IReadOnlyList<ComprobanteListItem>> GetUnassignedAsync(
       string rfc,
       int top = 100,
       CancellationToken ct = default)
   {
-    const string sql = @"
+    var sql = $@"
 SELECT TOP (@Top)
     c.Comprobante_Id             AS ComprobanteId,
     c.Fecha                      AS Fecha,
@@ -38,13 +40,8 @@ FROM cfdi.Comprobante c
 LEFT JOIN cfdi.Emisor e               ON e.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN cfdi.Receptor r             ON r.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN cfdi.TimbreFiscalDigital t  ON t.Comprobante_ID = c.Comprobante_Id
-WHERE r.RFC = @Rfc
-  AND NOT EXISTS
-  (
-    SELECT 1
-    FROM dbo.Transaccion_Comprobante tc
-    WHERE tc.Comprobante_ID = c.Comprobante_Id
-  )
+WHERE {CfdiCompanyScope.AccessPredicateSql("c.Comprobante_Id")}
+  AND NOT {CfdiCompanyScope.AssignedToCompanySql("c.Comprobante_Id")}
 ORDER BY c.Comprobante_Id DESC;";
 
     using var conn = new SqlConnection(_cs);
@@ -64,7 +61,7 @@ ORDER BY c.Comprobante_Id DESC;";
       int top = 100,
       CancellationToken ct = default)
   {
-    const string sql = @"
+    var sql = $@"
 SELECT TOP (@Top)
     c.Comprobante_Id        AS ComprobanteId,
     c.Fecha                 AS Fecha,
@@ -79,7 +76,7 @@ LEFT JOIN cfdi.Receptor r                  ON r.Comprobante_ID = c.Comprobante_I
 LEFT JOIN cfdi.TimbreFiscalDigital t       ON t.Comprobante_ID = c.Comprobante_Id
 LEFT JOIN dbo.Transaccion_Comprobante tc  ON tc.Comprobante_ID = c.Comprobante_Id
 WHERE tc.Transaccion_ID = @TransaccionId
-  AND r.RFC = @Rfc
+  AND {CfdiCompanyScope.AccessPredicateSql("c.Comprobante_Id")}
 ORDER BY c.Comprobante_Id DESC;";
 
     using var conn = new SqlConnection(_cs);

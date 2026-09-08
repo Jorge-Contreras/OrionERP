@@ -164,7 +164,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260903_restaurant_public_identity_scope_sandbox",
       "20260904_public_site_presentation_transition_sandbox",
       "20260905_hospitality_legal_consent_sandbox",
-      "20260908_hospitality_administration_scope_sandbox"
+      "20260908_hospitality_administration_scope_sandbox",
+      "20260908_accounting_company_identity_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -192,6 +193,7 @@ public sealed class DatabaseMigrationManifestTests
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260903_restaurant_public_identity_scope_sandbox.sql"));
 
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260908_hospitality_administration_scope_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_company_identity_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -260,6 +262,21 @@ public sealed class DatabaseMigrationManifestTests
           Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Contains("CREATE SECURITY POLICY orion.HospitalityScopePolicy", sql, StringComparison.Ordinal);
           Assert.Contains("ADD BLOCK PREDICATE", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260908_accounting_company_identity_sandbox":
+          // El vínculo se resuelve contra orion.Company, no contra un RFC escrito a mano.
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // Aditiva y nullable: ni NOT NULL ni RLS antes de acreditar a los escritores.
+          Assert.Contains("ADD CompanyId bigint NULL", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("CompanyId bigint NOT NULL", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("ALTER COLUMN", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("CREATE SECURITY POLICY", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("CREATE INDEX", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ENABLE TRIGGER trg_Transacciones_Audit", sql, StringComparison.Ordinal);
+          Assert.Contains("ENABLE TRIGGER trg_Registro_Contable_Audit", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

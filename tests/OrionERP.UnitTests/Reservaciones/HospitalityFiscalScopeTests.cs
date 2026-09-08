@@ -145,5 +145,6 @@ public class HospitalityFiscalScopeTests
       if (!string.Equals(CurrentRfc, rfc, StringComparison.OrdinalIgnoreCase))
         throw new UnauthorizedAccessException("Foreign company.");
     }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
   }
 }

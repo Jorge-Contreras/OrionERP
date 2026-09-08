@@ -73,5 +73,6 @@ public sealed class HospitalityAdministrationScopeTests
     public int? EmployeeId => null;
     public string RequireRfc() => throw new UnauthorizedAccessException();
     public void EnsureRfc(string rfc) => throw new UnauthorizedAccessException();
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => throw new UnauthorizedAccessException();
   }
 }

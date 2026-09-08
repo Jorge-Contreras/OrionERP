@@ -12,4 +12,6 @@ internal sealed class TestCompanyContext(string rfc = "TEST") : ICurrentCompanyC
   {
     if (!string.Equals(rfc, requestedRfc, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Foreign company.");
   }
+
+  public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
 }

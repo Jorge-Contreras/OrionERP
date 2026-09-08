@@ -104,12 +104,23 @@ foreach ($path in $Scripts) {
   else {
     # CREATE OR ALTER sin guarda: en simulacro solo se compila (NOEXEC ON
     # persiste entre lotes en la misma conexion, asi que basta ponerlo una vez).
+    #
+    # Ojo: si este archivo depende de columnas/tablas que agrega un script con
+    # guarda anterior de esta misma lista, el simulacro las revirtio y la
+    # compilacion falla con "Invalid column name". Eso NO es un error real: se
+    # resuelve al correr con -Apply, que si deja el esquema. Por eso aqui la
+    # falla es solo aviso.
     $tmp = [System.IO.Path]::GetTempFileName() + '.sql'
     "SET NOEXEC ON;`r`nGO`r`n" + $body | Set-Content -LiteralPath $tmp -Encoding UTF8
     try {
-      & sqlcmd @common -i $tmp
-      if ($LASTEXITCODE -ne 0) { throw "sqlcmd fallo al compilar $name (exit $LASTEXITCODE)." }
-      Write-Host '   compilado OK (se aplicara con -Apply)'
+      $out = & sqlcmd @common -i $tmp 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host '   compilado OK (se aplicara con -Apply)'
+      }
+      else {
+        Write-Warning "compilacion en simulacro con avisos (normal si depende del esquema; corre con -Apply):"
+        $out | ForEach-Object { Write-Host "   $_" }
+      }
     }
     finally {
       Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue

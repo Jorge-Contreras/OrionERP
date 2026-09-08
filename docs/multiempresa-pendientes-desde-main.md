@@ -34,8 +34,10 @@ No se repitieron suites completas ni navegador en ese incremento.
    en `765e1a2` (5/5 SQL). Carrera proyecto/calendario cerrada: 4/4 SQL en
    `HospitalityProjectConcurrencyTests`, edición y eliminación esperan un
    bloqueo real observado en SQL; si el vínculo confirma se rechazan y si
-   revierte continúan. Pendiente navegador del selector, OT,
-   ubicaciones/compras/conteos y POS con roles reales.
+   revierte continúan. [Smoke de navegador ejecutado](multiempresa-browser-smoke-20260908.md)
+   con roles reales: selector, OT, ubicaciones, formulario de compras, preview
+   de conteos y carrito POS; cambio de sesión OHM/Bruno y rechazo de OT ajena.
+   Falta matriz de cuentas restringidas, CRUD completo y revocación en navegador.
 2. **Corrección histórica pendiente.** Los 288 vínculos de reservas
    `OHM191112Q26` con pagos `BSU210121M77` permanecen almacenados y ocultos por
    la política. El usuario confirmó el 2026-09-08: **son errores históricos**.

@@ -99,10 +99,10 @@ en `grupocarpio` con respaldo verificado y preview revisado, y el ledger product
 devuelve **11 VERIFIED**. Actas: [E3 y E4](../production-accounting-packages-applied-20260908.md)
 y [E5 y E6](../production-outbox-reports-applied-20260909.md).
 
-**Los binarios productivos preceden a E5 y E6.** Son de las 19:45 del 2026-09-08; E5 se
-registró a las 22:21 y E6 a las 22:34. Nada está roto —el código anterior no invoca la
-bandeja y el parámetro nuevo tiene valor por omisión— pero E5 y E6 no surten efecto
-hasta una publicación más.
+**Los binarios productivos ya incluyen E5 y E6.** La publicación urgente de la
+corrección para crear reservaciones reinició la consola a las 14:15 del 2026-09-09 y
+salió de un `main` que ya contenía ambas entregas. Los cambios posteriores de E7 y
+E8a/E8b/E8d siguen únicamente en código y Sandbox; no forman parte de ese binario.
 
 **Ciclo encendido para un piloto (2026-09-09).** El usuario eligió `BRUNOS260707L26`
 con corte 2026-09-09: sus 337 pólizas previas quedan en modo compatible y el ciclo

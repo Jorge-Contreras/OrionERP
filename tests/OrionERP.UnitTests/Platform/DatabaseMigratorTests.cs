@@ -167,7 +167,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260908_hospitality_administration_scope_sandbox",
       "20260908_accounting_company_identity_sandbox",
       "20260908_accounting_cycle_sandbox",
-      "20260908_accounting_outbox_sandbox"
+      "20260908_accounting_outbox_sandbox",
+      "20260908_published_reports_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -198,6 +199,7 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_company_identity_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_outbox_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260908_published_reports_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -316,6 +318,20 @@ public sealed class DatabaseMigrationManifestTests
           // justamente que no se lee ni se escribe.
           foreach (var statement in new[] { "FROM restaurante.EventOutbox", "JOIN restaurante.EventOutbox", "INSERT restaurante.EventOutbox", "UPDATE restaurante.EventOutbox", "DELETE restaurante.EventOutbox" })
             Assert.DoesNotContain(statement, sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260908_published_reports_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // El reporte vigente conserva su significado: el filtro es condicional.
+          Assert.Contains("@SoloPublicadas BIT = 0", sql, StringComparison.Ordinal);
+          Assert.Contains("@SoloPublicadas = 0 OR t.CycleState IN (''Posted'', ''Reversed'')", sql, StringComparison.Ordinal);
+          // Los dos reportes se adaptan como unidad.
+          Assert.Contains("[Rpt_BalanzaComprobacion]", sql, StringComparison.Ordinal);
+          Assert.Contains("[ESTADO_PERDIDAS_GANANCIAS]", sql, StringComparison.Ordinal);
+          foreach (var fiscalStatement in new[] { "FROM fiscal.", "JOIN fiscal.", "UPDATE fiscal.", "INSERT fiscal.", "DELETE fiscal.", "EXEC fiscal." })
+            Assert.DoesNotContain(fiscalStatement, sql, StringComparison.OrdinalIgnoreCase);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

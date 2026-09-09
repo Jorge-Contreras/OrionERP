@@ -10,15 +10,34 @@ namespace OrionERP.Application.Features.ReportesFinancieros
     {
         Task<HojaTrabajoViewModel> GetHojaTrabajoAsync(int anio, string rfc);
 
+        /// <summary>
+        /// Balanza de comprobación. <paramref name="soloPublicadas"/> en <c>false</c> es
+        /// el reporte vigente, con toda la historia; en <c>true</c> agrega únicamente
+        /// asientos del ciclo formal de E4. Son dos reportes distintos e identificables,
+        /// no uno que cambia de significado en silencio.
+        /// </summary>
         Task<IReadOnlyList<BalanzaComprobacionRow>> GetBalanzaComprobacionAsync(
             int anio,
             int? mes,
-            string? rfc);
+            string? rfc,
+            bool soloPublicadas = false);
 
+        /// <inheritdoc cref="GetBalanzaComprobacionAsync"/>
         Task<IReadOnlyList<EstadoPerdidasGananciasRow>> GetEstadoPerdidasGananciasAsync(
             DateTime startDate,
             DateTime endDate,
-            string? rfc);
+            string? rfc,
+            bool soloPublicadas = false);
+
+        /// <summary>
+        /// Si la variante publicada tiene sentido para la empresa de la sesión, y qué
+        /// falta para adoptarla como oficial. Mientras el ciclo esté apagado devuelve
+        /// no disponible con el motivo, para que la pantalla no ofrezca un reporte que
+        /// sólo puede salir en cero.
+        /// </summary>
+        Task<PublishedReportAvailability> GetPublishedReportAvailabilityAsync(
+            string? rfc,
+            CancellationToken ct = default);
 
         Task<SaludEmpresaReport> GetSaludEmpresaAsync(
             int anioInicio,

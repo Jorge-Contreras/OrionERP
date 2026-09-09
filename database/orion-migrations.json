@@ -81,6 +81,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260908_published_reports_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260908_published_reports_sandbox.sql",
+      "description": "Balanza y resultados versionados con el parametro @SoloPublicadas apagado por omision, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

@@ -50,13 +50,14 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
         public async Task<IReadOnlyList<BalanzaComprobacionRow>> GetBalanzaComprobacionAsync(
             int anio,
             int? mes,
-            string? rfc)
+            string? rfc,
+            bool soloPublicadas = false)
         {
             EnsureCompanyRfc(rfc);
             using var connection = _connectionFactory.Create();
             await OpenConnectionAsync(connection).ConfigureAwait(false);
 
-            var parameters = new { Anio = anio, Mes = mes, Rfc = rfc };
+            var parameters = new { Anio = anio, Mes = mes, Rfc = rfc, SoloPublicadas = soloPublicadas };
 
             var result = await connection.QueryAsync<BalanzaComprobacionRow>(
                 "reporteFinanciero.Rpt_BalanzaComprobacion",
@@ -70,13 +71,14 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
         public async Task<IReadOnlyList<EstadoPerdidasGananciasRow>> GetEstadoPerdidasGananciasAsync(
             DateTime startDate,
             DateTime endDate,
-            string? rfc)
+            string? rfc,
+            bool soloPublicadas = false)
         {
             EnsureCompanyRfc(rfc);
             using var connection = _connectionFactory.Create();
             await OpenConnectionAsync(connection).ConfigureAwait(false);
 
-            var parameters = new { startDate, endDate, RFC = rfc };
+            var parameters = new { startDate, endDate, RFC = rfc, SoloPublicadas = soloPublicadas };
 
             var result = await connection.QueryAsync<EstadoPerdidasGananciasRow>(
                 "reporteFinanciero.ESTADO_PERDIDAS_GANANCIAS",
@@ -85,6 +87,68 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
                 commandTimeout: 30).ConfigureAwait(false);
 
             return result.AsList();
+        }
+
+        /// <summary>
+        /// Lo que falta para adoptar la variante publicada como oficial. No la ofrece
+        /// mientras el ciclo esté apagado: saldría en cero y parecería que la historia
+        /// no existe.
+        /// </summary>
+        public async Task<PublishedReportAvailability> GetPublishedReportAvailabilityAsync(
+            string? rfc,
+            CancellationToken ct = default)
+        {
+            EnsureCompanyRfc(rfc);
+            using var connection = _connectionFactory.Create();
+            await OpenConnectionAsync(connection, ct).ConfigureAwait(false);
+
+            var installed = await connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
+                SELECT CONVERT(bit, CASE
+                  WHEN OBJECT_ID(N'contabilidad.CompanyCycleActivation', N'U') IS NULL
+                    OR COL_LENGTH(N'dbo.Transacciones', N'CycleState') IS NULL
+                  THEN 0 ELSE 1 END);
+                """, cancellationToken: ct)).ConfigureAwait(false);
+            if (!installed)
+            {
+                return new PublishedReportAvailability(false, false, false, 0, 0,
+                    "El ciclo contable formal no está instalado en esta base de datos.");
+            }
+
+            var row = await connection.QuerySingleAsync<AvailabilityRow>(new CommandDefinition("""
+                SELECT
+                  CONVERT(bit, CASE WHEN EXISTS
+                  (
+                    SELECT 1 FROM contabilidad.CompanyCycleActivation activacion
+                    JOIN orion.Company empresa ON empresa.CompanyId = activacion.CompanyId
+                    WHERE empresa.Rfc = @Rfc AND activacion.IsEnabled = 1
+                  ) THEN 1 ELSE 0 END) AS CycleEnabled,
+                  CONVERT(bigint, (SELECT COUNT_BIG(*) FROM dbo.Transacciones
+                                   WHERE RFC = @Rfc AND CycleState IN ('Posted', 'Reversed'))) AS PublishedEntryCount,
+                  CONVERT(bigint, (SELECT COUNT_BIG(*) FROM dbo.Transacciones WHERE RFC = @Rfc)) AS TotalEntryCount;
+                """, new { Rfc = rfc }, cancellationToken: ct)).ConfigureAwait(false);
+
+            var missing = !row.CycleEnabled
+                ? "La empresa no tiene el ciclo contable activado; hay que aprobar su baseline primero."
+                : row.PublishedEntryCount == 0
+                    ? "La empresa tiene el ciclo activado pero ninguna póliza publicada todavía."
+                    : row.PublishedEntryCount < row.TotalEntryCount
+                        ? $"Quedan {row.TotalEntryCount - row.PublishedEntryCount} pólizas fuera del ciclo; el reporte vigente sigue siendo el oficial hasta conciliarlas."
+                        : "Nada: todas las pólizas de la empresa están dentro del ciclo.";
+
+            return new PublishedReportAvailability(
+                row.CycleEnabled && row.PublishedEntryCount > 0,
+                true,
+                row.CycleEnabled,
+                row.PublishedEntryCount,
+                row.TotalEntryCount,
+                missing);
+        }
+
+        private sealed class AvailabilityRow
+        {
+            public bool CycleEnabled { get; set; }
+            public long PublishedEntryCount { get; set; }
+            public long TotalEntryCount { get; set; }
         }
 
         public async Task<SaludEmpresaReport> GetSaludEmpresaAsync(

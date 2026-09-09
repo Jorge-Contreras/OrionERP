@@ -60,7 +60,7 @@ no reinicies producción.
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada en `b3f036a`; aplicada en Sandbox |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en Sandbox **apagada** |
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado; Hospedaje **apagada** por mappings faltantes |
-| [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Pendiente |
+| [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | Pendiente (apagada) |
 | [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | Pendiente |
 
@@ -68,7 +68,16 @@ Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabil
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
 dependen de nada y pueden adelantarse.
 
-Con E1, E3, E4 y E5 entregadas, queda **E6** de la cadena larga.
+Con E1, E3, E4, E5 y E6 entregadas, la cadena larga está completa. Queda **E2**,
+**E7** y **E8**, que no dependen de nada de esto.
+
+**Qué falta para adoptar el reporte publicado como oficial.** La balanza y el estado de
+resultados quedaron versionados con `@SoloPublicadas`, apagado por omisión, así que el
+reporte vigente conserva exactamente su significado. Encenderlo por empresa exige, en
+orden: activar el ciclo de E4 para esa empresa, publicar sus pólizas, y conciliar las
+que queden fuera. `GetPublishedReportAvailabilityAsync` devuelve ese pendiente con
+nombre; mientras haya pólizas fuera del ciclo, el reporte vigente sigue siendo el
+oficial.
 
 **Lo que E5 dejó fuera, con nombre exacto.** El contrato durable cubre sólo la
 contabilización diaria de Restaurante. `GenerateIndividualCfdiPolicyAsync` —órdenes

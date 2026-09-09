@@ -33,6 +33,7 @@ public sealed class TransaccionService : ITransaccionService
   private readonly IHospitalityScopeAccessor? _hospitalityScopeAccessor;
   private readonly ICurrentCompanyContext? _companyContext;
   private AccountingConnectionFactory? _accountingConnections;
+  private bool? _accountingCycleInstalled;
 
   public TransaccionService(
       IConfiguration cfg,
@@ -1099,6 +1100,37 @@ ORDER BY cd.Fecha DESC;";
     return _accountingConnections.OpenAsync(ct);
   }
 
+  /// <summary>
+  /// Ciclo contable de E4. Devuelve <c>null</c> si la escritura procede, o el mensaje
+  /// de negocio si no. Una póliza publicada o reversada es inmutable, y con el ciclo
+  /// encendido ninguna operación se acepta despues del cierre del periodo. Si el ciclo
+  /// no está instalado en esta base, la operación existente no cambia.
+  /// </summary>
+  private async Task<string?> CycleWriteBlockAsync(int transaccionId, CancellationToken ct)
+  {
+    using var conn = await OpenAccountingConnectionAsync(ct);
+    _accountingCycleInstalled ??= await conn.ExecuteScalarAsync<bool>(
+        new CommandDefinition(AccountingCycleSql.InstalledSql, cancellationToken: ct));
+    if (_accountingCycleInstalled is not true) return null;
+
+    var row = await conn.QuerySingleOrDefaultAsync<CycleWriteRow>(new CommandDefinition(
+        AccountingCycleSql.Status(), new { TransaccionId = transaccionId }, cancellationToken: ct));
+    if (row is null) return null;
+    if (AccountingCycleStates.IsImmutable(row.State))
+      return $"La póliza está {row.State} y es inmutable; corrige por reversa.";
+    if (row.CycleEnabled && !row.LegacyCompatible && row.PeriodClosed)
+      return "El periodo contable de esta póliza está cerrado.";
+    return null;
+  }
+
+  private sealed class CycleWriteRow
+  {
+    public string? State { get; set; }
+    public bool CycleEnabled { get; set; }
+    public bool LegacyCompatible { get; set; }
+    public bool PeriodClosed { get; set; }
+  }
+
   private string RequireCompanyRfc(string? requestedRfc = null)
   {
     var context = _companyContext
@@ -1613,6 +1645,8 @@ WHERE Transaccion_ID = @TransaccionId
   {
     ArgumentNullException.ThrowIfNull(request);
     await EnsureTransactionScopeAsync(request.TransaccionId, ct);
+    if (await CycleWriteBlockAsync(request.TransaccionId, ct) is { } cycleBlock)
+      return TransaccionGuardarCerrarResult.Fail(cycleBlock);
 
     using var conn = await OpenConnectionWithAuditContextAsync(ct);
     using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
@@ -1835,6 +1869,9 @@ WHERE ID = @TransaccionId;";
   public async Task DeleteMovimientoAsync(int transaccionId, int movimientoId, CancellationToken ct = default)
   {
     await EnsureTransactionScopeAsync(transaccionId, ct);
+    // Ésta era la vía alterna para vaciar una póliza autorizada; ahora está cerrada.
+    if (await CycleWriteBlockAsync(transaccionId, ct) is { } cycleBlock)
+      throw new InvalidOperationException(cycleBlock);
 
     const string sql = @"DELETE FROM dbo.Registro_Contable
 WHERE ID = @MovimientoId
@@ -1848,6 +1885,8 @@ WHERE ID = @MovimientoId
   public async Task<TransaccionCommandResult> DeleteTransaccionAsync(int transaccionId, CancellationToken ct = default)
   {
     await EnsureTransactionScopeAsync(transaccionId, ct);
+    if (await CycleWriteBlockAsync(transaccionId, ct) is { } cycleBlock)
+      return TransaccionCommandResult.Fail(cycleBlock);
 
       using var conn = await OpenConnectionWithAuditContextAsync(ct);
       using var tx = await conn.BeginTransactionAsync(ct) as SqlTransaction;
@@ -2152,6 +2191,9 @@ ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
 
       if (request is null)
           throw new ArgumentNullException(nameof(request));
+
+      if (await CycleWriteBlockAsync(request.TransaccionId, ct) is { } cycleBlock)
+          return TransaccionCommandResult.Fail(cycleBlock);
 
       var cuadreError = MovimientosCuadreValidator.Validate(request.Movimientos);
       if (cuadreError is not null)

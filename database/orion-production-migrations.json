@@ -72,6 +72,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260908_production_accounting_cycle",
+      "path": "database/production/20260908/20260908_production_accounting_cycle.sql",
+      "description": "Ciclo contable formal apagado: periodos por empresa, Draft/Posted/Reversed, inmutabilidad en SQL y reversa unica. Preparada; requiere autorizacion explicita para aplicarse.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

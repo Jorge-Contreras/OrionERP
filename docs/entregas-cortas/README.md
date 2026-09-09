@@ -58,7 +58,7 @@ no reinicies producción.
 | [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Entregada en `7c4105e` |
 | [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | Pendiente (apagada) |
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada en `b3f036a`; aplicada en Sandbox |
-| [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Pendiente (apagada) |
+| [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en Sandbox **apagada** |
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Pendiente |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Pendiente |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | Pendiente (apagada) |
@@ -68,12 +68,19 @@ Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabil
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
 dependen de nada y pueden adelantarse.
 
-Con E1 y E3 entregadas, el siguiente de la cadena larga es **E4**.
+Con E1, E3 y E4 entregadas, el siguiente de la cadena larga es **E5/E6**.
 
-**Pendiente de autorización.** `20260908_production_accounting_company_identity`
-está escrita, registrada en el manifiesto productivo y validada de sintaxis, pero
-**no se ha ejecutado**. Aplicarla en `grupocarpio` exige respaldo referenciado,
-preview revisado y `--production-approval "APPLY grupocarpio"`.
+**Paquete productivo preparado.** `20260908_production_accounting_company_identity`
+y `20260908_production_accounting_cycle` están escritas, registradas en el manifiesto
+productivo y validadas de sintaxis. Aplicarlas en `grupocarpio` exige respaldo
+referenciado, preview revisado y `--production-approval "APPLY grupocarpio"`, en ese
+orden: la del ciclo comprueba en el ledger que la identidad contable ya esté aplicada.
+
+**Activar el ciclo es otra cosa.** La migración crea la capacidad apagada. Encenderla
+para una empresa es escribir su fila en `contabilidad.CompanyCycleActivation`, y eso
+sólo procede cuando el usuario apruebe el baseline de esa empresa. El baseline vive en
+`src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_baseline.query.sql`
+y es read-only.
 
 "Apagada" significa que el mecanismo se implementa y se entrega desactivado: falta
 un dato empresarial o una decisión del usuario para encenderlo, no código.
@@ -112,6 +119,20 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Dos empresas por rama, procesos, puertos y túneles | Fuera: validación y operación |
 
 ## Hallazgos abiertos
+
+**Índice filtrado en `dbo.Transacciones`.** `UX_Transacciones_ReversalOf` es lo que
+hace que una reversa no se pueda duplicar bajo concurrencia, y por ser filtrado obliga
+a que todo escritor de esa tabla tenga `QUOTED_IDENTIFIER ON`. El controlador .NET lo
+fija por omisión y la base ya tiene 47 índices filtrados —entre ellos en `dbo.ROOM`,
+`dbo.Extra` y `dbo.PlantillaContable`—, así que la exigencia no es nueva en el sistema;
+sí lo es en esta tabla. Una herramienta externa con la opción apagada fallaría al
+escribir pólizas. Comprobado en Sandbox: `sqlcmd` sin `-I` falla, con `-I` pasa.
+
+**Una póliza descuadrada y CFDI multiligados en la historia.** El baseline los reporta:
+`BSU210121M77` tiene una póliza descuadrada en enero 2024 por 9,266.85, y hay
+comprobantes ligados a varias pólizas de la misma empresa —hasta cuatro—. Son historia:
+E3 rechaza duplicar de aquí en adelante y no toca lo existente. Hay que resolverlos
+antes de activar el ciclo en esas empresas.
 
 **El broadcaster de Restaurante no publica nada.** `RestaurantEventBroadcaster`
 corre en un alcance de fondo sin sesión, así que `SqlConnectionFactory` le fija

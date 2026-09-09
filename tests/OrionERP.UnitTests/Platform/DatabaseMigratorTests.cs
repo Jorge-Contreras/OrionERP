@@ -165,7 +165,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260904_public_site_presentation_transition_sandbox",
       "20260905_hospitality_legal_consent_sandbox",
       "20260908_hospitality_administration_scope_sandbox",
-      "20260908_accounting_company_identity_sandbox"
+      "20260908_accounting_company_identity_sandbox",
+      "20260908_accounting_cycle_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -194,6 +195,7 @@ public sealed class DatabaseMigrationManifestTests
 
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260908_hospitality_administration_scope_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_company_identity_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -277,6 +279,26 @@ public sealed class DatabaseMigrationManifestTests
           Assert.DoesNotContain("CREATE INDEX", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Contains("ENABLE TRIGGER trg_Transacciones_Audit", sql, StringComparison.Ordinal);
           Assert.Contains("ENABLE TRIGGER trg_Registro_Contable_Audit", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260908_accounting_cycle_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // Se entrega apagada: nada se activa ni se cierra al aplicar.
+          Assert.Contains("DF_CompanyCycleActivation_IsEnabled DEFAULT (0)", sql, StringComparison.Ordinal);
+          Assert.Contains("El ciclo debe entregarse apagado y sin periodos cerrados.", sql, StringComparison.Ordinal);
+          Assert.Contains("Ninguna poliza historica debe entrar al ciclo al aplicar la migracion.", sql, StringComparison.Ordinal);
+          // Inmutabilidad y reversa unica en SQL, no solo en el servicio.
+          Assert.Contains("CREATE TRIGGER dbo.TR_Transacciones_CycleImmutability", sql, StringComparison.Ordinal);
+          Assert.Contains("CREATE TRIGGER dbo.TR_Registro_Contable_CycleImmutability", sql, StringComparison.Ordinal);
+          Assert.Contains("CREATE UNIQUE INDEX UX_Transacciones_ReversalOf", sql, StringComparison.Ordinal);
+          // El Estatus legacy no se convierte ni se reinterpreta, y el cierre del libro
+          // no se mezcla con el cierre declarativo de impuestos: el guion lo nombra en
+          // un comentario para decir justamente que no lo lee ni lo escribe.
+          Assert.DoesNotContain("UPDATE dbo.Transacciones", sql, StringComparison.Ordinal);
+          foreach (var statement in new[] { "FROM fiscal.", "JOIN fiscal.", "UPDATE fiscal.", "INSERT fiscal.", "DELETE fiscal." })
+            Assert.DoesNotContain(statement, sql, StringComparison.OrdinalIgnoreCase);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

@@ -15,6 +15,7 @@ using OrionERP.Application.Features.Cfdi.HtmlCFDI;
 using OrionERP.Application.Features.CuentasPorPagar.Recurrentes;
 using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Application.Features.Contabilidad.Bancos;
+using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
 using OrionERP.Application.Features.Ajustes;
 using OrionERP.Application.Features.Ajustes.Catalogos;
@@ -34,6 +35,7 @@ using OrionERP.Infrastructure.Features.Cfdi.HtmlCFDI;
 using OrionERP.Infrastructure.Features.CuentasPorPagar.Recurrentes;
 using OrionERP.Infrastructure.Features.Rfcs.Dapper;
 using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 using OrionERP.Infrastructure.Features.Contabilidad.ContabilidadRegistros;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
@@ -197,6 +199,9 @@ public static class ServiceRegistration
     services.AddScoped<IRestaurantReceiptPdfService, RestaurantReceiptPdfService>();
     services.AddSingleton<IRestaurantQzTraySigningService, RestaurantQzTraySigningService>();
 
+    services.AddScoped<AccountingConnectionFactory>();
+    services.AddScoped<AccountingCycleSessionGuard>();
+    services.AddScoped<IAccountingCycleService, AccountingCycleService>();
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
     services.AddHttpClient<IFacturamaApiClient, FacturamaApiClient>();
     services.AddScoped<ICfdiStampingService, CfdiStampingService>();

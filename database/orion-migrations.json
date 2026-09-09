@@ -65,6 +65,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260908_accounting_cycle_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_sandbox.sql",
+      "description": "Ciclo contable formal apagado: periodos por empresa, Draft/Posted/Reversed, inmutabilidad en SQL y reversa unica, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

@@ -84,6 +84,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IRecurrentApService RecurrentApService { get; set; } = default!;
   [Inject] public IAjustesService AjustesService { get; set; } = default!;
   [Inject] public IOperationErrorPresenter Errors { get; set; } = default!;
+  [Inject] public IAccountingCycleService AccountingCycle { get; set; } = default!;
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -130,6 +131,29 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected CuentaContableSelection? MovimientoCuentaSelection { get; private set; }
   protected string? CuentaPickerError { get; private set; }
   protected string CurrentUserName => "OrionERP";
+
+  /// <summary>
+  /// Estado del ciclo formal de E4. Nulo mientras el ciclo no esté instalado o la
+  /// póliza sea de una empresa sin activar: entonces la pantalla se comporta como
+  /// siempre y no muestra transiciones.
+  /// </summary>
+  protected AccountingCycleStatus? CycleStatus { get; private set; }
+  protected bool IsCycleBusy { get; private set; }
+  protected string ReversalReason { get; set; } = string.Empty;
+  protected bool ShowCycle => CycleStatus?.CycleApplies == true;
+  protected string CycleStateLabel => CycleStatus?.State switch
+  {
+    AccountingCycleStates.Posted => "Publicada",
+    AccountingCycleStates.Reversed => "Reversada",
+    AccountingCycleStates.Draft => "Borrador",
+    _ => "Sin publicar"
+  };
+  protected string CycleStateCss => CycleStatus?.State switch
+  {
+    AccountingCycleStates.Posted => "text-bg-success",
+    AccountingCycleStates.Reversed => "text-bg-secondary",
+    _ => "text-bg-warning"
+  };
 
   protected string HeaderStatus => Totals.Balance == 0m ? "Balanceada" : "Desbalanceada";
   protected string HeaderStatusCss => Totals.Balance == 0m ? "text-bg-success" : "text-bg-warning";
@@ -624,6 +648,82 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     await LoadAsync(_loadCts.Token);
   }
 
+  private async Task ReloadCycleStatusAsync(CancellationToken ct = default)
+  {
+    try
+    {
+      CycleStatus = Header is null ? null : await AccountingCycle.GetStatusAsync(Header.Id, ct);
+    }
+    catch (OperationCanceledException) { throw; }
+    catch (Exception ex)
+    {
+      // El ciclo es aditivo: si su lectura falla, la pantalla sigue operando como antes.
+      CycleStatus = null;
+      // ToUserMessage registra la excepción con contexto; aquí no se muestra al usuario.
+      _ = Errors.ToUserMessage(ex, "leer el estado del ciclo contable", new { HeaderId = Header?.Id });
+    }
+  }
+
+  protected async Task PostPolizaAsync()
+  {
+    if (Header is null || IsCycleBusy) return;
+    IsCycleBusy = true;
+    try
+    {
+      var result = await AccountingCycle.PostAsync(new AccountingPostRequest { TransaccionId = Header.Id });
+      if (result.Success) UiMessages.ShowSuccess(result.Message ?? "Póliza publicada.");
+      else UiMessages.ShowError(result.Message ?? "No se pudo publicar la póliza.");
+      await ReloadCycleStatusAsync();
+      await ReloadMovimientosAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "publicar la póliza", new { HeaderId = Header?.Id }));
+    }
+    finally
+    {
+      IsCycleBusy = false;
+    }
+  }
+
+  protected async Task ReversePolizaAsync()
+  {
+    if (Header is null || IsCycleBusy) return;
+    if (string.IsNullOrWhiteSpace(ReversalReason))
+    {
+      UiMessages.ShowWarning("Escribe el motivo de la reversa: sin motivo no es auditable.");
+      return;
+    }
+
+    IsCycleBusy = true;
+    try
+    {
+      var result = await AccountingCycle.ReverseAsync(new AccountingReversalRequest
+      {
+        TransaccionId = Header.Id,
+        Reason = ReversalReason.Trim()
+      });
+      if (result.Success)
+      {
+        ReversalReason = string.Empty;
+        UiMessages.ShowSuccess(result.Message ?? "Reversa generada.");
+      }
+      else
+      {
+        UiMessages.ShowError(result.Message ?? "No se pudo reversar la póliza.");
+      }
+      await ReloadCycleStatusAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "reversar la póliza", new { HeaderId = Header?.Id }));
+    }
+    finally
+    {
+      IsCycleBusy = false;
+    }
+  }
+
   private async Task LoadAsync(CancellationToken ct = default)
   {
     IsLoading = true;
@@ -654,6 +754,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await ReloadReservacionLinksAsync(ct);
       await ReloadApLinksAsync(ct);
       await SearchReservacionesAsync(ct);
+      await ReloadCycleStatusAsync(ct);
     }
     catch (OperationCanceledException)
     {

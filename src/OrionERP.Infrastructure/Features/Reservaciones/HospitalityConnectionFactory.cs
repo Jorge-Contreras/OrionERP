@@ -32,6 +32,8 @@ public sealed class HospitalityConnectionFactory(IConfiguration configuration, I
       EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId', @value=@CompanyId;
       EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId', @value=@SiteId;
       EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityRfc', @value=@CompanyRfc;
+      EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@CompanyRfc;
+      EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=@CompanyId;
       IF NOT EXISTS (SELECT 1 FROM orion.Company c JOIN orion.Site s ON s.CompanyId=c.CompanyId
         WHERE c.CompanyId=@CompanyId AND s.SiteId=@SiteId AND c.Rfc=@CompanyRfc AND c.IsActive=1 AND s.IsActive=1)
         THROW 51902, 'La empresa y sede de Hospedaje no coinciden.', 1;

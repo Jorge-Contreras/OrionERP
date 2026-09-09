@@ -62,15 +62,16 @@ no reinicies producción.
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | **Implementada y aplicada en Sandbox**; 288 vínculos esperan evidencia y no hubo corte productivo |
-| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c aplicada en producción**; a, b y d pendientes |
+| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c aplicada en producción; E8a/E8b/E8d aplicadas en Sandbox** |
 
 Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabilidad.
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
 dependen de nada y pueden adelantarse.
 
-Con E1, E3, E4, E5, E6 y la implementación Sandbox de E7 entregadas, la cadena
-larga está completa. Queda el corte posterior de **E2**, la evidencia de los 288
-vínculos de **E7**, y **E8a/E8b/E8d**.
+Con E1, E3, E4, E5, E6 y las implementaciones Sandbox de E7 y E8 entregadas, la
+cadena larga está completa. Quedan el corte posterior de **E2**, la evidencia de los
+288 vínculos de **E7**, los paquetes productivos de **E7/E8a/E8b/E8d**, y los
+siguientes subagregados RLS documentados en E8.
 
 **Qué falta para adoptar el reporte publicado como oficial.** La balanza y el estado de
 resultados quedaron versionados con `@SoloPublicadas`, apagado por omisión, así que el

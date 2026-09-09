@@ -4,9 +4,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Features.Cfdi.Facturama;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.Facturama;
 
@@ -41,18 +41,16 @@ public sealed class CfdiStampingException : Exception
 
 public sealed class CfdiStampingService : ICfdiStampingService
 {
-  private readonly string _connectionString;
+  private readonly AccountingConnectionFactory _connections;
   private readonly IFacturamaApiClient _facturamaApiClient;
   private readonly ILogger<CfdiStampingService> _logger;
 
   public CfdiStampingService(
-      IConfiguration configuration,
+      AccountingConnectionFactory connections,
       IFacturamaApiClient facturamaApiClient,
       ILogger<CfdiStampingService> logger)
   {
-    ArgumentNullException.ThrowIfNull(configuration);
-    _connectionString = configuration.GetConnectionString("OrionDb")
-        ?? throw new InvalidOperationException("Missing connection string: OrionDb");
+    _connections = connections ?? throw new ArgumentNullException(nameof(connections));
     _facturamaApiClient = facturamaApiClient ?? throw new ArgumentNullException(nameof(facturamaApiClient));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
   }
@@ -86,8 +84,7 @@ public sealed class CfdiStampingService : ICfdiStampingService
           FacturamaIssuedDocumentType.Pdf,
           ct);
 
-      await using var writeConn = new SqlConnection(_connectionString);
-      await writeConn.OpenAsync(ct);
+      await using var writeConn = await _connections.OpenAsync(ct);
       await using var tx = (SqlTransaction)await writeConn.BeginTransactionAsync(ct);
 
       try

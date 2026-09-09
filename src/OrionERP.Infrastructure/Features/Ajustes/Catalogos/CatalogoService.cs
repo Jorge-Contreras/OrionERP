@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Ajustes;
 using OrionERP.Application.Features.Ajustes.Catalogos;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 using OrionERP.Infrastructure.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Ajustes.Catalogos;
@@ -274,11 +275,16 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
     {
       await connection.OpenAsync(ct);
       if (key == CatalogoKey.Proyectos)
+      {
+        var context = _companyContext ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.");
+        var companyRfc = rfc ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.");
+        await AccountingConnectionFactory.InitializeAsync(connection, companyRfc, await context.RequireCompanyIdAsync(ct), ct);
         await connection.ExecuteAsync(new CommandDefinition("""
           EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId',@value=NULL;
           EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId',@value=NULL;
           EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityRfc',@value=NULL;
           """, cancellationToken: ct));
+      }
       return connection;
     }
     catch { await connection.DisposeAsync(); throw; }

@@ -145,6 +145,30 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260909_accounting_rls_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_rls_scope_sandbox.sql",
+      "description": "E8a: RLS fail-closed de Transacciones y Registro_Contable por CompanyId y RFC de sesi\u00f3n, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260909_inventory_core_rls_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Logistica/Sql/20260909_inventory_core_rls_scope_sandbox.sql",
+      "description": "E8b: RLS fail-closed del n\u00facleo de ubicaciones, existencias y movimientos, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260909_fiscal_rls_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260909_fiscal_rls_scope_sandbox.sql",
+      "description": "E8d: RLS fail-closed del agregado fiscal sin imponer propiedad exclusiva a CFDI, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

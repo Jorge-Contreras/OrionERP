@@ -8,15 +8,17 @@ producción sin filas: un predicado mal escrito no da error, simplemente devuelv
 cero registros. Cada migración se aplica y se observa en Sandbox antes de proponerse
 para producción. Eso es escribir la migración, no una suite de pruebas.
 
-## Estado actual
+## Estado actual en Sandbox — 2026-09-09
 
 | Política | Tablas | Predicados | Situación |
 | --- | ---: | ---: | --- |
-| `logistica.RfcSecurityPolicy` | 98 | 294 | `SESSION_CONTEXT(N'OrionRfc') IS NULL OR ...` |
-| `rh.RfcSecurityPolicy` | 22 | 66 | mismo bypass |
-| `fiscal.RfcSecurityPolicy` | 6 | 18 | mismo bypass |
-| `orion.HospitalityScopePolicy` | 18 | 54 | fail-closed |
-| Agregado contable | — | **0** | sin predicados |
+| `contabilidad.AccountingScopePolicy` | 2 | 6 | **fail-closed E8a** |
+| `logistica.InventoryCoreScopePolicy` | 3 | 9 | **fail-closed E8b** |
+| `logistica.RfcSecurityPolicy` | 95 | 285 | conserva el bypass sólo fuera del lote E8b |
+| `rh.WorkforceScopePolicy` | 6 | 18 | **fail-closed E8c** |
+| `rh.RfcSecurityPolicy` | 16 | 48 | conserva el bypass fuera del lote E8c |
+| `fiscal.DeclarationScopePolicy` | 6 | 18 | **fail-closed E8d** |
+| `orion.HospitalityScopePolicy` | 25 | 75 | fail-closed |
 
 `Transacciones`, `Registro_Contable`, `CuentasContables`, `TRANSACTION_ATTACHMENT` y
 `cfdi.Comprobante` no tienen ningún predicado. La fábrica convierte el contexto vacío
@@ -67,3 +69,56 @@ deshabilita RLS para poder recuperar binarios viejos**.
 
 Build Release de lo que cambie en código. La migración se aplica y se observa en
 Sandbox. Sin unitarias: el cambio es SQL.
+
+## Resultado de E8a, E8b y E8d — 2026-09-09
+
+Los tres lotes pendientes se implementaron, previsualizaron, aplicaron y verificaron
+por separado **sólo en `Orion_Sandbox`**. No hubo corte productivo.
+
+**E8a — Contable.** `dbo.Transacciones` y `dbo.Registro_Contable` ahora exigen el
+`CompanyId` técnico y el `OrionRfc` exacto de una empresa activa. Las dos pólizas OHM
+y cuatro movimientos que habían nacido con `CompanyId = NULL` se resolvieron por la
+clave legacy exacta, sin tocar importes ni pólizas, y las columnas quedaron `NOT NULL`
+con FK compuesto movimiento→póliza. Sin contexto ambas tablas devuelven cero; Bruno
+ve 337 pólizas y 660 movimientos, un RFC exacto; un insert ajeno devuelve 33504. Una
+escritura local de prueba recibió el `CompanyId` esperado y el rollback dejó cero
+residuos.
+
+El inventario de consumidores corrigió cinco caminos antes de activar la política:
+
+- la fábrica compartida fija ahora `OrionRfc` y `OrionERP.CompanyId` por el vínculo
+  exacto con `orion.Company`;
+- la fábrica de Hospedaje fija además esos dos contextos para sus cruces contables;
+- registros contables y declaración previa abren con `AccountingConnectionFactory`;
+- el timbrado abre su transacción local con la misma fábrica;
+- el catálogo de proyectos inicializa el alcance contable incluso fuera de una sede
+  de Hospedaje.
+
+Los servicios de Bancos, CxP, Restaurante, Logística, reportes y adjuntos ya comparten
+la primera fábrica; reservaciones usa la segunda; `TransaccionService`, ciclo y outbox
+ya usaban la fábrica contable desde E3–E5. Consumidores externos/VBA no quedan
+declarados como adaptados: por eso este lote todavía no se propone para producción.
+
+**E8b — Logística.** El lote mínimo exacto es `logistica.Location`,
+`logistica.StockBalance` y `logistica.StockTransaction`: ubicaciones, existencia
+consolidada y su diario de movimientos. Sin contexto las tres dan cero; Bruno ve
+22 + 407 + 5,784 filas y un solo RFC; un movimiento OHM intentado desde Bruno devuelve
+33504 y deja cero residuos. `logistica.Material` continuó visible sin contexto durante
+la prueba, evidencia de que las otras 95 tablas no se cerraron accidentalmente.
+La siguiente unidad exacta es `Material`, `MaterialLot` y `LotBalance`; después deben
+seguir conteos, compras/recepciones, transferencias, ajustes y producción, cada uno
+con sus tablas hijas.
+
+**E8d — Fiscal.** Las seis tablas del esquema fiscal quedaron juntas bajo
+`fiscal.DeclarationScopePolicy`; el agregado tenía 16 filas OHM. Sin contexto devuelve
+cero, OHM ve las 16 y Bruno cero. Un alta fiscal OHM intentada desde Bruno devuelve
+33504 y deja cero residuos. `cfdi.Comprobante` conserva cero predicados de este lote y
+sus 16,642 filas siguieron visibles en la comprobación sin contexto: no se impuso
+propietario exclusivo ni se alteró el contrato emisor/receptor, cálculos, cierres o
+timbrado.
+
+Migraciones: `20260909_accounting_rls_scope_sandbox`,
+`20260909_inventory_core_rls_scope_sandbox` y
+`20260909_fiscal_rls_scope_sandbox`. Build de la consola Release: 0 warnings / 0
+errores. El siguiente paso productivo requiere paquete distinto, respaldo, preview y
+autorización explícita de cada corte.

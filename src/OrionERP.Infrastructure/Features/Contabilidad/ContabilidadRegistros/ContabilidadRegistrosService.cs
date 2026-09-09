@@ -1,8 +1,7 @@
 using System.Data;
 using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Contabilidad.ContabilidadRegistros;
 
@@ -10,12 +9,11 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
 {
   private const int TransaccionIdBatchSize = 1000;
 
-  private readonly string _connectionString;
+  private readonly AccountingConnectionFactory _connections;
 
-  public ContabilidadRegistrosService(IConfiguration configuration)
+  public ContabilidadRegistrosService(AccountingConnectionFactory connections)
   {
-    _connectionString = configuration.GetConnectionString("OrionDb")
-        ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
+    _connections = connections ?? throw new ArgumentNullException(nameof(connections));
   }
 
   public async Task<IEnumerable<RegistrosContablesRow>> GetRegistrosAsync(
@@ -46,7 +44,7 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
     parameters.Add("@Nivel2", NormalizeTwoDigits(nivel2), DbType.String);
     parameters.Add("@Nivel3", NormalizeTwoDigits(nivel3), DbType.String);
 
-    using var connection = new SqlConnection(_connectionString);
+    using var connection = await _connections.OpenAsync();
     var registros = (await connection.QueryAsync<RegistrosContablesRow>(
         "contabilidad.REGISTROS_CONTABLES_FECHA_NIVELES",
         parameters,
@@ -71,7 +69,7 @@ public sealed class ContabilidadRegistrosService : IContabilidadRegistrosService
   }
 
   private static async Task<IReadOnlyDictionary<int, int>> GetCfdiCountsAsync(
-    SqlConnection connection,
+    Microsoft.Data.SqlClient.SqlConnection connection,
     IEnumerable<int> transaccionIds)
   {
     const string sql = @"WITH LinkedCfdis AS
@@ -131,8 +129,7 @@ GROUP BY TransaccionId;";
       throw new ArgumentException("Transacción inválida para reordenar.");
     }
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync();
+    using var connection = await _connections.OpenAsync();
     using var transaction = connection.BeginTransaction();
 
     try

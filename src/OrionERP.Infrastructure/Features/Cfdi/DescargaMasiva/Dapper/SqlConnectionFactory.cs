@@ -29,7 +29,17 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
 
       connection.StateChange -= handler;
       using var command = connection.CreateCommand();
-      command.CommandText = "EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@Rfc, @read_only=0;";
+      command.CommandText = """
+        DECLARE @CompanyId bigint =
+        (
+          SELECT CompanyId FROM orion.Company
+          WHERE Rfc=@Rfc AND IsActive=1
+        );
+        IF @Rfc<>N'__UNSCOPED__' AND @CompanyId IS NULL
+          THROW 52240,'El RFC de la conexión no corresponde a una empresa activa.',1;
+        EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@Rfc, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=@CompanyId, @read_only=0;
+        """;
       command.Parameters.AddWithValue("@Rfc", NormalizeRfc(_rfcAccessor.CurrentRfc));
       command.ExecuteNonQuery();
     };

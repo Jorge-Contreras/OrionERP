@@ -2,9 +2,9 @@ using System.Data;
 using System.Security.Claims;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Cfdi.Facturama;
 using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.DeclaracionPrevia;
 
@@ -16,14 +16,13 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
     (7, "JULIO"), (8, "AGOSTO"), (9, "SEPTIEMBRE"), (10, "OCTUBRE"), (11, "NOVIEMBRE"), (12, "DICIEMBRE")
   ];
 
-  private readonly string _connectionString;
+  private readonly AccountingConnectionFactory _connections;
   private readonly IFacturamaApiClient _facturamaApiClient;
 
-  public DeclaracionPreviaService(IConfiguration configuration, IFacturamaApiClient facturamaApiClient)
+  public DeclaracionPreviaService(AccountingConnectionFactory connections, IFacturamaApiClient facturamaApiClient)
   {
+    _connections = connections ?? throw new ArgumentNullException(nameof(connections));
     _facturamaApiClient = facturamaApiClient ?? throw new ArgumentNullException(nameof(facturamaApiClient));
-    _connectionString = configuration.GetConnectionString("OrionDb")
-      ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
   }
 
   public Task<IReadOnlyList<string>> GetAvailableRfcsAsync(ClaimsPrincipal user)
@@ -39,8 +38,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
   public async Task<DeclaracionPreviaData> GetDeclaracionAsync(DeclaracionPreviaRequest request)
   {
-    using var conn = new SqlConnection(_connectionString);
-    await conn.OpenAsync();
+    using var conn = await _connections.OpenAsync();
 
     var common = new
     {
@@ -212,7 +210,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
   public async Task ToggleInclusionAsync(int comprobanteId)
   {
     const string sql = "UPDATE Comprobante SET Incluir_En_Declaracion = CASE WHEN Incluir_En_Declaracion = 1 THEN 0 ELSE 1 END WHERE Comprobante_Id = @Id";
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     await conn.ExecuteAsync(sql, new { Id = comprobanteId });
   }
 
@@ -230,13 +228,13 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
                       AND C.Fecha >= @StartDate
                       AND C.Fecha < @EndDate";
 
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     return await conn.ExecuteAsync(sql, new { RFC = rfc, StartDate = startDate, EndDate = endDate });
   }
 
   public async Task<IReadOnlyList<PagoComplementoResumen>> GetComplementosAsync(Guid uuid)
   {
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     var resultados = await conn.QueryAsync<PagoComplementoResumen>(
       "EXEC cfdi.Complemento_Resumen_By_UUID @UUID_DoctoRelacionado",
       new { UUID_DoctoRelacionado = uuid });
@@ -246,7 +244,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
   public async Task<int> GenerarPolizaDesdeComprobanteAsync(int comprobanteId, string rfc)
   {
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     var parameters = new DynamicParameters();
     parameters.Add("@Comprobante_Id", comprobanteId);
     parameters.Add("@RFC", rfc);
@@ -267,7 +265,7 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
     await _facturamaApiClient.CancelIssuedCfdiAsync(cfdiId);
 
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     await conn.ExecuteAsync("""
 UPDATE Comprobante
 SET Incluir_En_Declaracion = 0,
@@ -279,7 +277,7 @@ WHERE Comprobante_Id = @Id
 
   public async Task<IReadOnlyList<string>> GenerateDiotAsync(string rfc, int year, int month)
   {
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     var lines = await conn.QueryAsync<string>("EXEC cfdi.GenerateDIOTTXT @Year, @Month, @receptor",
       new { Year = year, Month = month, receptor = rfc });
 
@@ -288,7 +286,7 @@ WHERE Comprobante_Id = @Id
 
   public async Task<long?> GetLinkedTransactionIdAsync(int comprobanteId)
   {
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     return await conn.ExecuteScalarAsync<long?>(
       @"SELECT TOP (1) tc.Transaccion_ID
 FROM dbo.Transaccion_Comprobante tc
@@ -321,7 +319,7 @@ SELECT TOP (1)
 FROM [cfdi].[Comprobante_Detalle]
 WHERE Comprobante_Id = @Comprobante_Id;";
 
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     return await conn.QueryFirstOrDefaultAsync<ComprobanteDetalleDto>(
       sql,
       new { Comprobante_Id = comprobanteId });
@@ -356,7 +354,7 @@ SELECT TOP (1)
 FROM cfdi.vw_Pagos20_Resumen
 WHERE DoctoRelacionado_Id = @DoctoRelacionado_Id;";
 
-    using var conn = new SqlConnection(_connectionString);
+    using var conn = await _connections.OpenAsync();
     return await conn.QueryFirstOrDefaultAsync<Pago20ResumenDetalleDto>(
       sql,
       new { DoctoRelacionado_Id = doctoRelacionadoId });

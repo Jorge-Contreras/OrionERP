@@ -62,7 +62,7 @@ no reinicies producción.
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | Pendiente (apagada) |
-| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c entregada y observada en Sandbox**; a, b y d pendientes |
+| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c aplicada en producción**; a, b y d pendientes |
 
 Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabilidad.
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
@@ -213,15 +213,23 @@ El lote son **seis tablas exactas**: `rh.TimeEvent`, `rh.AttendanceDay`,
 `rh.AuditEvent`. Sus 18 predicados salieron de `rh.RfcSecurityPolicy`, que conserva los
 otros 48 sobre las dieciséis tablas restantes.
 
-**El orden en producción importa y no es simétrico.** Primero los binarios, después la
-migración. Si la migración entra antes que el código, el job de retención viejo borra el
-contexto, no ve nada y **purga cero evidencias sin reportar error** — exactamente la
-falla silenciosa que E8 advierte. Al revés es inocuo: fijar un RFC concreto funciona
-igual bajo la política vieja.
+**Aplicada en producción el 2026-09-09**, respetando el orden: el ejecutable de la
+consola quedó en 01:54 y el código de E8c es de 01:37. En un intento previo, a las 01:52,
+el ejecutable era de las 01:22 y la migración **no** se aplicó. Ver
+[acta](../production-workforce-rls-applied-20260909.md).
+
+Observado en producción: sin contexto y con `__UNSCOPED__` el lote da 0 filas mientras las
+tablas de fuera siguen visibles; BRUNOS ve 75 y COCJ 5, de un solo RFC cada una; escribir
+para empresa ajena da 33504 y actualizar sus filas afecta 0; y el recorrido del job alcanza
+61 + 5 = 66, el total exacto de evidencia GPS.
 
 Límite conocido: la retención enumera empresas desde `orion.Company`. Una fila de RH con
 un RFC que no sea empresa activa no sería recorrida. La migración comprueba que hoy no
 existe ninguna y falla si aparece.
+
+**Para el siguiente lote de RH:** las otras dieciséis tablas conservan el bypass. Atención
+a `rh.KioskDevice`, que tiene columna `Rfc` pero **ningún predicado**, así que hoy no está
+delimitada por nadie.
 
 ## Hallazgos abiertos
 

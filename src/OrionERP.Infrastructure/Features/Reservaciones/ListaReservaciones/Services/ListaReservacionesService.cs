@@ -27,15 +27,18 @@ public sealed class ListaReservacionesService : IListaReservacionesService
   private readonly ILogger<ListaReservacionesService> _logger;
 
   private readonly HospitalityConnectionFactory? _hospitalityConnections;
+  private readonly IHospitalityViewerScope? _viewerScope;
   private Task<SqlConnection> OpenScopedAsync(CancellationToken ct)
     => (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance autorizado de Hospedaje.")).OpenAsync(ct);
 
-  public ListaReservacionesService(IConfiguration cfg, ILogger<ListaReservacionesService> logger, HospitalityConnectionFactory? hospitalityConnections = null)
+  public ListaReservacionesService(IConfiguration cfg, ILogger<ListaReservacionesService> logger,
+    HospitalityConnectionFactory? hospitalityConnections = null, IHospitalityViewerScope? viewerScope = null)
   {
     _cs = cfg.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing connection string: OrionDb");
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     _hospitalityConnections = hospitalityConnections;
+    _viewerScope = viewerScope;
   }
 
   public async Task<IReadOnlyList<ListaReservacionItemDto>> GetListaAsync(
@@ -1203,6 +1206,13 @@ ORDER BY e.[Name], e.ExtraID;";
     if (endDateExclusive <= startDate)
       throw new ArgumentException("EndDateExclusive must be after StartDate.", nameof(filter));
 
+    /* El dueño no viene del filtro: lo resuelve la identidad de la sesión. Si viniera de la
+       pantalla, cualquier pantalla podría olvidarlo y el arrendador vería el hotel entero.
+       Sin resolvedor no se consulta: null aquí sería "sin filtro". */
+    var ownerProveedorId = await (_viewerScope
+      ?? throw new UnauthorizedAccessException("Falta el alcance del arrendador para el calendario."))
+      .ResolveOwnerProveedorIdAsync(ct);
+
     await using var conn = await OpenScopedAsync(ct);
     using var multi = await conn.QueryMultipleAsync(
       new CommandDefinition(
@@ -1211,7 +1221,8 @@ ORDER BY e.[Name], e.ExtraID;";
         {
           StartDate = startDate,
           EndDateExclusive = endDateExclusive,
-          RoomType = string.IsNullOrWhiteSpace(filter.RoomType) ? null : filter.RoomType.Trim()
+          RoomType = string.IsNullOrWhiteSpace(filter.RoomType) ? null : filter.RoomType.Trim(),
+          OwnerId = ownerProveedorId
         },
         commandType: CommandType.StoredProcedure,
         cancellationToken: ct));

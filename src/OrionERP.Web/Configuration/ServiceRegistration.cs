@@ -109,6 +109,7 @@ public static class ServiceRegistration
     services.AddScoped<HospitalityAdministrationScopeAccessor>();
     services.AddScoped<IHospitalityScopeAccessor>(sp => sp.GetRequiredService<HospitalityAdministrationScopeAccessor>());
     services.AddScoped<HospitalityConnectionFactory>();
+    services.AddScoped<IHospitalityViewerScope, HospitalityViewerScopeResolver>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();
@@ -216,6 +217,7 @@ public static class ServiceRegistration
     services.AddScoped<HospitalityAdministrationScopeAccessor>();
     services.AddScoped<IHospitalityScopeAccessor>(sp => sp.GetRequiredService<HospitalityAdministrationScopeAccessor>());
     services.AddScoped<HospitalityConnectionFactory>();
+    services.AddScoped<IHospitalityViewerScope, HospitalityViewerScopeResolver>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();

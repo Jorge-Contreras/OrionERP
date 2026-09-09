@@ -113,6 +113,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260909_calendar_owner_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Sql/20260909_calendar_owner_scope_sandbox.sql",
+      "description": "El calendario de reservaciones acotado al arrendador de la sesi\u00f3n, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

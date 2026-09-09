@@ -631,7 +631,9 @@ public partial class CalendarioReservacionesPage : ComponentBase
 
   private async Task LoadCalendarWorkOrderBadgesAsync()
   {
-    if (VisibleDates.Count == 0)
+    // Las órdenes de trabajo son de quien opera. Su servicio exige alcance administrativo,
+    // así que pedirlas para un arrendador rompería la carga entera del calendario.
+    if (!CanUseCalendarActions || VisibleDates.Count == 0)
     {
       WorkOrderBadgesByRoomCalendar.Clear();
       return;

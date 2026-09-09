@@ -18,9 +18,14 @@ public sealed class HospitalityAdministrationSessionGuard(
     var state = await authenticationStateProvider.GetAuthenticationStateAsync();
     ct.ThrowIfCancellationRequested();
     var user = state.User;
+    /* Dos niveles, no uno: quien administra Hospedaje y quien sólo puede consultarlo. La ruta
+       de cada página decide a cuál se expone, y el calendario acota al arrendador de la sesión
+       a sus propias habitaciones. Exigir aquí el rol de administración dejaba fuera a los roles
+       que las rutas sí autorizan, que es como los arrendadores perdieron el calendario. */
     if (user.Identity?.IsAuthenticated != true ||
-        !(user.IsInRole("Administrador") || user.IsInRole("SatOperator")))
-      throw new UnauthorizedAccessException("La sesión no tiene permiso para administrar Hospedaje.");
+        !(HospitalitySessionRoles.Administration.Any(user.IsInRole)
+          || HospitalitySessionRoles.ReadOnly.Any(user.IsInRole)))
+      throw new UnauthorizedAccessException("La sesión no tiene permiso para consultar Hospedaje.");
 
     var actorId = user.FindFirstValue(ClaimTypes.NameIdentifier);
     var rfcs = user.FindAll(CompanyClaimTypes.Rfc).Select(claim => claim.Value.Trim().ToUpperInvariant()).ToArray();

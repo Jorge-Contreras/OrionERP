@@ -171,7 +171,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260908_published_reports_sandbox",
       "20260909_accounting_cycle_activation_sandbox",
       "20260909_bsu_opening_balance_counterpart_sandbox",
-      "20260909_workforce_attendance_scope_sandbox"
+      "20260909_workforce_attendance_scope_sandbox",
+      "20260909_calendar_owner_scope_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -206,6 +207,7 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_cycle_activation_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_bsu_opening_balance_counterpart_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/Sql/20260909_workforce_attendance_scope_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Sql/20260909_calendar_owner_scope_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -379,6 +381,21 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("Una tabla del lote sigue en la politica heredada.", sql, StringComparison.Ordinal);
           // No toca reglas laborales, nómina, expedientes ni biométricos.
           foreach (var write in new[] { "INSERT rh.", "UPDATE rh.", "DELETE rh.", "INSERT INTO rh." })
+            Assert.DoesNotContain(write, sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_calendar_owner_scope_sandbox":
+          // No nombra empresas: al dueño lo resuelve la identidad de la sesión, no el script.
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // El calendario de hoy no cambia: el parámetro nace opcional y el filtro es condicional.
+          Assert.Contains("@OwnerId int = NULL", sql, StringComparison.Ordinal);
+          Assert.Contains("(@OwnerId IS NULL OR r.OWNER_ID = @OwnerId)", sql, StringComparison.Ordinal);
+          // Y acota los tres conjuntos de resultados, no sólo la lista de habitaciones.
+          Assert.Contains("Los resultados dejaron de derivarse de #Resources", sql, StringComparison.Ordinal);
+          // Versiona un procedimiento: no toca datos ni políticas de seguridad.
+          foreach (var write in new[] { "INSERT dbo.", "UPDATE dbo.", "DELETE dbo.", "ALTER SECURITY POLICY" })
             Assert.DoesNotContain(write, sql, StringComparison.OrdinalIgnoreCase);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;

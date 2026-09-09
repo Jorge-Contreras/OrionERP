@@ -13,10 +13,17 @@ public sealed class HospitalityAdministrationAuthorizationTests
 {
   private const string Rfc = "TEST010101AAA";
 
+  /// <summary>
+  /// Los cuatro roles que las rutas de Hospedaje autorizan pasan el guard, y los cuatro se
+  /// revalidan en cada operación. Exigir aquí sólo los de administración dejaba fuera a los
+  /// arrendadores y al operador de órdenes, que sí tienen calendario.
+  /// </summary>
   [Theory]
   [InlineData("Administrador")]
   [InlineData("SatOperator")]
-  public async Task GuardAcceptsBothOperationalRolesAndRevalidatesEachOperation(string role)
+  [InlineData("Arrendadores")]
+  [InlineData("OrdenTrabajoOperador")]
+  public async Task GuardAcceptsEveryHospitalityRoleAndRevalidatesEachOperation(string role)
   {
     var validator = new MutableAccessValidator();
     var guard = new HospitalityAdministrationSessionGuard(new TestAuthentication(User(role)), new TestCompany(), validator);
@@ -28,8 +35,7 @@ public sealed class HospitalityAdministrationAuthorizationTests
 
   [Theory]
   [InlineData("Lectura")]
-  [InlineData("Arrendadores")]
-  [InlineData("OrdenTrabajoOperador")]
+  [InlineData("Contabilidad")]
   public async Task GuardRejectsOtherRolesBeforeAuthoritativeLookup(string role)
   {
     var validator = new MutableAccessValidator();
@@ -66,6 +72,8 @@ public sealed class HospitalityAdministrationAuthorizationTests
   [InlineData("Administrador", false)]
   [InlineData("SatOperator", true)]
   [InlineData("SatOperator", false)]
+  [InlineData("Arrendadores", true)]
+  [InlineData("OrdenTrabajoOperador", false)]
   public async Task ValidatorAcceptsAuthorizedGlobalOrSameCompanyRole(string role, bool global)
   {
     var options = CreateOptions();

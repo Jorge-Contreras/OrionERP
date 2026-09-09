@@ -26,11 +26,13 @@ public sealed class HospitalityAdministrationAccessValidator(
     await using var db = new OrionIdentityDbContext(options);
 
     var globalRoles = db.Roles.AsNoTracking()
-      .Where(role => (role.NormalizedName == "ADMINISTRADOR" || role.NormalizedName == "SATOPERATOR")
+      .Where(role => role.NormalizedName != null
+        && HospitalitySessionRoles.NormalizedAll.Contains(role.NormalizedName)
         && EF.Property<string>(role, "Scope") == IdentityRoleScopes.Global)
       .Select(role => role.Id);
     var companyRoles = db.Roles.AsNoTracking()
-      .Where(role => (role.NormalizedName == "ADMINISTRADOR" || role.NormalizedName == "SATOPERATOR")
+      .Where(role => role.NormalizedName != null
+        && HospitalitySessionRoles.NormalizedAll.Contains(role.NormalizedName)
         && EF.Property<string>(role, "Scope") == IdentityRoleScopes.Company)
       .Select(role => role.Id);
 

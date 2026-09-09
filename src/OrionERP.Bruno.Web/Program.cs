@@ -380,9 +380,13 @@ app.MapGet("/media/productos/{productId:long}", async (
   CancellationToken ct) =>
 {
   var binding = await website.ResolveRequiredAsync(ct);
+  // The binding carries the platform site id (orion.Site), a different id space
+  // than restaurante.Site.Id, so it must never scope this query. Scope by
+  // SiteKey/SiteCode, as the catalog behind these pages does, so the rendered
+  // menu and the images it points at resolve to the same restaurant site.
   var image = await catalogService.GetProductImageAsync(
     binding.CompanyRfc,
-    binding.SiteId,
+    binding.SiteKey,
     productId,
     thumbnail ?? true,
     ct);

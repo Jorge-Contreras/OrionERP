@@ -694,7 +694,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     long productId,
     bool thumbnail,
     CancellationToken ct = default)
-    => GetProductImageCoreAsync(rfc, null, productId, thumbnail, ct);
+    => GetProductImageCoreAsync(rfc, null, null, productId, thumbnail, ct);
 
   public Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
     string rfc,
@@ -705,12 +705,25 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
   {
     if (siteId <= 0)
       throw new ArgumentOutOfRangeException(nameof(siteId));
-    return GetProductImageCoreAsync(rfc, siteId, productId, thumbnail, ct);
+    return GetProductImageCoreAsync(rfc, siteId, null, productId, thumbnail, ct);
+  }
+
+  public Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
+    string rfc,
+    string siteCode,
+    long productId,
+    bool thumbnail,
+    CancellationToken ct = default)
+  {
+    if (string.IsNullOrWhiteSpace(siteCode))
+      throw new ArgumentException("SiteCode is required.", nameof(siteCode));
+    return GetProductImageCoreAsync(rfc, null, siteCode.Trim(), productId, thumbnail, ct);
   }
 
   private async Task<(byte[] Bytes, string ContentType)?> GetProductImageCoreAsync(
     string rfc,
     long? siteId,
+    string? siteCode,
     long productId,
     bool thumbnail,
     CancellationToken ct)
@@ -726,20 +739,26 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       JOIN restaurante.ProductCard card ON card.Rfc = product.Rfc AND card.Id = product.ProductCardId
       LEFT JOIN logistica.Material material ON material.Rfc = product.Rfc AND material.Id = product.MaterialId
       LEFT JOIN restaurante.KitchenStation station ON station.Rfc = product.Rfc AND station.Id = product.KitchenStationId
+      OUTER APPLY
+      (
+        SELECT TOP (1) siteInfo.Id
+        FROM restaurante.Site siteInfo
+        WHERE siteInfo.Rfc = product.Rfc AND siteInfo.IsEnabled = 1
+          AND
+          (
+            (@SiteId IS NOT NULL AND siteInfo.Id = @SiteId)
+            OR (@SiteCode IS NOT NULL AND siteInfo.SiteCode = @SiteCode)
+          )
+      ) scopedSite
       WHERE product.Rfc = @Rfc AND product.Id = @ProductId
         AND
         (
-          @SiteId IS NULL
+          (@SiteId IS NULL AND @SiteCode IS NULL)
           OR
           (
-            product.IsActive = 1
-            AND (product.KitchenStationId IS NULL OR station.SiteId = @SiteId)
-            AND EXISTS
-            (
-              SELECT 1
-              FROM restaurante.Site siteInfo
-              WHERE siteInfo.Rfc = product.Rfc AND siteInfo.Id = @SiteId AND siteInfo.IsEnabled = 1
-            )
+            scopedSite.Id IS NOT NULL
+            AND product.IsActive = 1
+            AND (product.KitchenStationId IS NULL OR station.SiteId = scopedSite.Id)
           )
         );
       """;
@@ -748,6 +767,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     {
       Rfc = LogisticsRfc.Require(rfc),
       SiteId = siteId,
+      SiteCode = siteCode,
       ProductId = productId,
       Thumbnail = thumbnail
     }, cancellationToken: ct));

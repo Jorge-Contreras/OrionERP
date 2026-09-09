@@ -10,6 +10,12 @@ public interface IRestaurantCatalogService
   Task<RestaurantPosCatalogDto> GetPublicCatalogAsync(string rfc, int siteId, DateTimeOffset at, CancellationToken ct = default);
   Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, long productId, bool thumbnail, CancellationToken ct = default);
   Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, long siteId, long productId, bool thumbnail, CancellationToken ct = default);
+  /// <summary>
+  /// Scopes the image to a restaurant site addressed by its SiteCode. Public
+  /// websites bind to a platform site id that lives in a different id space
+  /// than restaurante.Site.Id, so they must scope by code, never by that id.
+  /// </summary>
+  Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(string rfc, string siteCode, long productId, bool thumbnail, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantMenuAdminDto>> GetMenusAsync(string rfc, CancellationToken ct = default);
   Task<RestaurantCommandResult> SaveMenuAsync(RestaurantMenuSaveRequest request, CancellationToken ct = default);
   Task<IReadOnlyList<RestaurantComboAdminDto>> GetCombosAsync(string rfc, CancellationToken ct = default);

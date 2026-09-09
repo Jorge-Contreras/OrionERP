@@ -107,12 +107,18 @@ con corte 2026-09-09: sus 337 pólizas previas quedan en modo compatible y el ci
 gobierna de esa fecha en adelante. Registrado por migración con ledger, no como
 escritura suelta: `20260909_production_accounting_cycle_activation`.
 
-`OHM191112Q26` y `BSU210121M77` quedaron **fuera**, y al mirar el detalle resultó que
-casi nada de lo que las bloqueaba era un problema real:
+`OHM191112Q26` y `BSU210121M77` quedaron **fuera del ciclo**, que no es lo mismo que
+apagadas: las dos operan con normalidad, facturan, registran pólizas y sacan reportes.
+Lo único que no tienen es el ciclo formal, una capacidad que no existía hasta ayer. Al
+mirar el detalle resultó que casi nada de lo que las bloqueaba era un problema real, y
+lo que sí lo era ya se resolvió:
 
-- De las 15 pólizas descuadradas, **14 son de un centavo** (±0.01, sobre la tolerancia de
-  0.005 del validador). La única de fondo es la `27047` de BSU, `SALDO INICIAL DE ENERO
-  2024`, con un solo renglón de 9,266.85 al debe y ningún abono.
+- De las 15 pólizas descuadradas, **14 eran de un centavo** (±0.01, sobre la tolerancia
+  de 0.005 del validador). El usuario decidió el 2026-09-09 subir la tolerancia a 0.01,
+  que es el piso que las admite. La única de fondo era la `27047` de BSU, `SALDO INICIAL
+  DE ENERO 2024`, con un solo renglón de 9,266.85 al debe y ningún abono; el usuario
+  indicó abonarla a `401.25.01`, y quedó cuadrada por migración.
+  **Hoy no queda ninguna póliza descuadrada en ninguna de las ocho empresas.**
 - Los **35 CFDI con varios vínculos NO eran duplicados**: 34 son repartos cuyos importes
   suman exactamente el total del CFDI, y uno está 5.00 por debajo. Repartir un CFDI entre
   varias pólizas es una función diseñada —`Transaccion_Comprobante.Monto`— y práctica

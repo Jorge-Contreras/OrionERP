@@ -108,6 +108,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260909_production_bsu_opening_balance_counterpart",
+      "path": "database/production/20260909/20260909_production_bsu_opening_balance_counterpart.sql",
+      "description": "Agrega la contrapartida 401.25.01 al saldo inicial 27047 de BSU, indicada por el usuario.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

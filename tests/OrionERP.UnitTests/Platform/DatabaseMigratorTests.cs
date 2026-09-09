@@ -169,7 +169,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260908_accounting_cycle_sandbox",
       "20260908_accounting_outbox_sandbox",
       "20260908_published_reports_sandbox",
-      "20260909_accounting_cycle_activation_sandbox"
+      "20260909_accounting_cycle_activation_sandbox",
+      "20260909_bsu_opening_balance_counterpart_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -202,6 +203,7 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_outbox_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260908_published_reports_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_cycle_activation_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_bsu_opening_balance_counterpart_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -346,6 +348,21 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("Ninguna poliza historica debe entrar al ciclo por esta activacion.", sql, StringComparison.Ordinal);
           Assert.Contains("Esta migracion no cierra periodos.", sql, StringComparison.Ordinal);
           Assert.DoesNotContain("UPDATE dbo.Transacciones", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_bsu_opening_balance_counterpart_sandbox":
+          // Nombra a BSU porque corrige una de sus pólizas, identificada por ID.
+          Assert.Contains("BSU210121M77", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // Aditiva: agrega un renglón y no modifica ni borra ninguno.
+          Assert.Contains("INSERT dbo.Registro_Contable", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("UPDATE dbo.Registro_Contable", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("DELETE dbo.Registro_Contable", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("UPDATE dbo.Transacciones", sql, StringComparison.Ordinal);
+          // Comprueba la forma antes de escribir y vuelve a leerla bajo candado.
+          Assert.Contains("La poliza cambio despues del preview; no se aplica a ciegas.", sql, StringComparison.Ordinal);
+          Assert.Contains("Esta correccion no mete la poliza al ciclo.", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

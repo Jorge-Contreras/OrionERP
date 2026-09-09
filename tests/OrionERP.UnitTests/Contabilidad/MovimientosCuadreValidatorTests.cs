@@ -49,6 +49,24 @@ public sealed class MovimientosCuadreValidatorTests
   }
 
   [Fact]
+  public void Validate_ToleratesExactlyOneCent()
+  {
+    // Las catorce pólizas de OHM difieren exactamente 0.01 por redondeo de IVA.
+    Assert.Null(MovimientosCuadreValidator.Validate([Row(108.00m, 0m), Row(0m, 107.99m)]));
+    Assert.Null(MovimientosCuadreValidator.Validate([Row(5366.21m, 0m), Row(0m, 5366.20m)]));
+  }
+
+  [Fact]
+  public void Validate_StillRejectsTwoCents()
+  {
+    // Un centavo es el piso, no una puerta abierta.
+    var error = MovimientosCuadreValidator.Validate([Row(100.00m, 0m), Row(0m, 99.98m)]);
+
+    Assert.NotNull(error);
+    Assert.Contains("no cuadra", error);
+  }
+
+  [Fact]
   public void Validate_RejectsNegativeAmounts()
   {
     var movimientos = new List<TransaccionMovimientoUpdateItem> { Row(-50m, 0m), Row(0m, -50m) };

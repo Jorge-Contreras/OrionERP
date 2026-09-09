@@ -97,6 +97,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260909_bsu_opening_balance_counterpart_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_bsu_opening_balance_counterpart_sandbox.sql",
+      "description": "Agrega la contrapartida 401.25.01 al saldo inicial 27047 de BSU, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

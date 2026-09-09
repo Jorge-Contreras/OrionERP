@@ -57,9 +57,9 @@ no reinicies producción.
 | --- | --- | --- | --- |
 | [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Entregada en `7c4105e` |
 | [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | Pendiente (apagada) |
-| [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada en `b3f036a`; aplicada en Sandbox |
-| [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en Sandbox **apagada** |
-| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada** por mappings faltantes |
+| [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada; aplicada en producción |
+| [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en producción, encendida sólo para el piloto Bruno |
+| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | Pendiente (apagada) |
 | [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | Pendiente |

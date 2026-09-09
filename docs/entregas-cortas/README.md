@@ -70,11 +70,11 @@ dependen de nada y pueden adelantarse.
 
 Con E1, E3 y E4 entregadas, el siguiente de la cadena larga es **E5/E6**.
 
-**Paquete productivo preparado.** `20260908_production_accounting_company_identity`
-y `20260908_production_accounting_cycle` están escritas, registradas en el manifiesto
-productivo y validadas de sintaxis. Aplicarlas en `grupocarpio` exige respaldo
-referenciado, preview revisado y `--production-approval "APPLY grupocarpio"`, en ese
-orden: la del ciclo comprueba en el ledger que la identidad contable ya esté aplicada.
+**Aplicadas en producción el 2026-09-08.** `20260908_production_accounting_company_identity`
+y `20260908_production_accounting_cycle` están aplicadas en `grupocarpio` con respaldo
+verificado y preview revisado; el ledger productivo devuelve **9 VERIFIED**. Los
+binarios **no** se desplegaron: el push sigue bloqueado. Ver
+[acta](../production-accounting-packages-applied-20260908.md).
 
 **Activar el ciclo es otra cosa.** La migración crea la capacidad apagada. Encenderla
 para una empresa es escribir su fila en `contabilidad.CompanyCycleActivation`, y eso
@@ -119,6 +119,14 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Dos empresas por rama, procesos, puertos y túneles | Fuera: validación y operación |
 
 ## Hallazgos abiertos
+
+**La consola productiva no tiene sus DLL en disco.** `GitHubs\Production\OrionERP`
+conserva sólo `.pdb`, el `.exe` y su configuración; la publicación es
+`--self-contained false`, así que faltan ensamblados obligatorios. El proceso sigue en
+pie porque los cargó antes de que desaparecieran, el login devuelve 500 y un reinicio
+no arrancaría. Bonhomía sí conserva los suyos y responde 200. Es anterior e
+independiente de las migraciones contables; se repara volviendo a publicar, lo que
+exige el push pendiente.
 
 **Índice filtrado en `dbo.Transacciones`.** `UX_Transacciones_ReversalOf` es lo que
 hace que una reversa no se pueda duplicar bajo concurrencia, y por ser filtrado obliga

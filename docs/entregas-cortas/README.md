@@ -73,7 +73,8 @@ Con E1, E3 y E4 entregadas, el siguiente de la cadena larga es **E5/E6**.
 **Aplicadas en producción el 2026-09-08.** `20260908_production_accounting_company_identity`
 y `20260908_production_accounting_cycle` están aplicadas en `grupocarpio` con respaldo
 verificado y preview revisado; el ledger productivo devuelve **9 VERIFIED**. Los
-binarios **no** se desplegaron: el push sigue bloqueado. Ver
+binarios **todavía no se despliegan**; el push ya está hecho, así que
+`Publish-All-prod.ps1` ya cumple su precondición y sólo falta ejecutarlo. Ver
 [acta](../production-accounting-packages-applied-20260908.md).
 
 **Activar el ciclo es otra cosa.** La migración crea la capacidad apagada. Encenderla

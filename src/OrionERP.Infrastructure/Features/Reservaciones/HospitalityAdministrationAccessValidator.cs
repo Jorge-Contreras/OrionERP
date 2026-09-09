@@ -4,8 +4,14 @@ using OrionERP.Infrastructure.Auth;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones;
 
+/// <summary>
+/// Abre su propio <see cref="OrionIdentityDbContext"/> en cada validación en vez
+/// de compartir el del circuito: el guard corre al abrir cada conexión de
+/// Logística y una página puede pedir varias a la vez, cosa que un DbContext
+/// compartido no tolera. La revalidación sigue siendo por operación.
+/// </summary>
 public sealed class HospitalityAdministrationAccessValidator(
-  OrionIdentityDbContext db,
+  DbContextOptions<OrionIdentityDbContext> options,
   TimeProvider timeProvider) : IHospitalityAdministrationAccessValidator
 {
   public async Task EnsureAuthorizedAsync(string actorUserId, string companyRfc, CancellationToken ct = default)
@@ -16,6 +22,8 @@ public sealed class HospitalityAdministrationAccessValidator(
     if (string.IsNullOrWhiteSpace(actor) || string.IsNullOrWhiteSpace(rfc))
       throw new UnauthorizedAccessException(denied);
     var now = timeProvider.GetUtcNow();
+
+    await using var db = new OrionIdentityDbContext(options);
 
     var globalRoles = db.Roles.AsNoTracking()
       .Where(role => (role.NormalizedName == "ADMINISTRADOR" || role.NormalizedName == "SATOPERATOR")

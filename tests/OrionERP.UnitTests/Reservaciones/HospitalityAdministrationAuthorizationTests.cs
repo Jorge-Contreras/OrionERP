@@ -68,9 +68,10 @@ public sealed class HospitalityAdministrationAuthorizationTests
   [InlineData("SatOperator", false)]
   public async Task ValidatorAcceptsAuthorizedGlobalOrSameCompanyRole(string role, bool global)
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAsync(db, role, global);
-    await new HospitalityAdministrationAccessValidator(db, TimeProvider.System).EnsureAuthorizedAsync("actor", Rfc);
+    await new HospitalityAdministrationAccessValidator(options, TimeProvider.System).EnsureAuthorizedAsync("actor", Rfc);
   }
 
   [Theory]
@@ -80,9 +81,10 @@ public sealed class HospitalityAdministrationAuthorizationTests
   [InlineData("lockout")]
   public async Task ValidatorRejectsRevocationWithoutRefreshingClaims(string revokedFact)
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAsync(db, "SatOperator", false);
-    var validator = new HospitalityAdministrationAccessValidator(db, TimeProvider.System);
+    var validator = new HospitalityAdministrationAccessValidator(options, TimeProvider.System);
     await validator.EnsureAuthorizedAsync("actor", Rfc);
     switch (revokedFact)
     {
@@ -103,7 +105,8 @@ public sealed class HospitalityAdministrationAuthorizationTests
   [Fact]
   public async Task ValidatorRejectsRoleAssignedOnlyInAnotherCompany()
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAsync(db, "SatOperator", false);
     var role = await db.UserCompanyRoles.SingleAsync();
     db.UserCompanyRoles.Remove(role);
@@ -112,11 +115,28 @@ public sealed class HospitalityAdministrationAuthorizationTests
     await db.SaveChangesAsync();
     db.ChangeTracker.Clear();
     await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-      new HospitalityAdministrationAccessValidator(db, TimeProvider.System).EnsureAuthorizedAsync("actor", Rfc));
+      new HospitalityAdministrationAccessValidator(options, TimeProvider.System).EnsureAuthorizedAsync("actor", Rfc));
   }
 
-  private static OrionIdentityDbContext CreateContext() => new(new DbContextOptionsBuilder<OrionIdentityDbContext>()
-    .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
+  /// <summary>
+  /// Logistica abre varias conexiones a la vez en una misma pagina y cada una
+  /// revalida el acceso. Un DbContext prestado por el circuito reventaba ahi con
+  /// "A second operation was started on this context instance".
+  /// </summary>
+  [Fact]
+  public async Task ValidatorRevalidatesConcurrentOperationsWithItsOwnContext()
+  {
+    var options = CreateOptions();
+    await using (var seed = new OrionIdentityDbContext(options))
+      await SeedAsync(seed, "SatOperator", false);
+
+    var validator = new HospitalityAdministrationAccessValidator(options, TimeProvider.System);
+    await Task.WhenAll(Enumerable.Range(0, 8)
+      .Select(_ => validator.EnsureAuthorizedAsync("actor", Rfc)));
+  }
+
+  private static DbContextOptions<OrionIdentityDbContext> CreateOptions() => new DbContextOptionsBuilder<OrionIdentityDbContext>()
+    .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
 
   private static async Task SeedAsync(OrionIdentityDbContext db, string roleName, bool global)
   {

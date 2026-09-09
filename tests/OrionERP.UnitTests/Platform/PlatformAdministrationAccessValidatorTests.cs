@@ -13,9 +13,10 @@ public sealed class PlatformAdministrationAccessValidatorTests
   [Fact]
   public async Task EnsureAuthorized_AllowsActiveMemberWithGlobalAdministratorRole()
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAuthorizedAdministratorAsync(db);
-    var validator = CreateValidator(db);
+    var validator = CreateValidator(options);
 
     await validator.EnsureAuthorizedAsync("user-17", "ohm191112q26");
   }
@@ -23,13 +24,14 @@ public sealed class PlatformAdministrationAccessValidatorTests
   [Fact]
   public async Task EnsureAuthorized_RejectsRevokedMembership()
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAuthorizedAdministratorAsync(db);
     var membership = await db.UserCompanies.SingleAsync();
     membership.IsActive = false;
     await db.SaveChangesAsync();
     db.ChangeTracker.Clear();
-    var validator = CreateValidator(db);
+    var validator = CreateValidator(options);
 
     await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
       validator.EnsureAuthorizedAsync("user-17", "OHM191112Q26"));
@@ -38,12 +40,13 @@ public sealed class PlatformAdministrationAccessValidatorTests
   [Fact]
   public async Task EnsureAuthorized_RejectsRevokedAdministratorRole()
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAuthorizedAdministratorAsync(db);
     db.UserRoles.Remove(await db.UserRoles.SingleAsync());
     await db.SaveChangesAsync();
     db.ChangeTracker.Clear();
-    var validator = CreateValidator(db);
+    var validator = CreateValidator(options);
 
     await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
       validator.EnsureAuthorizedAsync("user-17", "OHM191112Q26"));
@@ -52,30 +55,45 @@ public sealed class PlatformAdministrationAccessValidatorTests
   [Fact]
   public async Task EnsureAuthorized_RejectsCurrentlyLockedUser()
   {
-    await using var db = CreateContext();
+    var options = CreateOptions();
+    await using var db = new OrionIdentityDbContext(options);
     await SeedAuthorizedAdministratorAsync(db);
     var user = await db.Users.SingleAsync();
     user.LockoutEnabled = true;
     user.LockoutEnd = Now.AddMinutes(15);
     await db.SaveChangesAsync();
     db.ChangeTracker.Clear();
-    var validator = CreateValidator(db);
+    var validator = CreateValidator(options);
 
     await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
       validator.EnsureAuthorizedAsync("user-17", "OHM191112Q26"));
   }
 
-  private static OrionIdentityDbContext CreateContext()
+  /// <summary>
+  /// El porton corre en cada operacion y una pagina puede lanzar varias a la vez.
+  /// Un DbContext prestado por el circuito reventaba ahi con "A second operation
+  /// was started on this context instance", y quedaba inservible al cerrarse.
+  /// </summary>
+  [Fact]
+  public async Task EnsureAuthorized_RevalidatesConcurrentOperationsWithItsOwnContext()
   {
-    var options = new DbContextOptionsBuilder<OrionIdentityDbContext>()
-      .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
-      .Options;
-    return new OrionIdentityDbContext(options);
+    var options = CreateOptions();
+    await using (var seed = new OrionIdentityDbContext(options))
+      await SeedAuthorizedAdministratorAsync(seed);
+
+    var validator = CreateValidator(options);
+    await Task.WhenAll(Enumerable.Range(0, 8)
+      .Select(_ => validator.EnsureAuthorizedAsync("user-17", "OHM191112Q26")));
   }
 
+  private static DbContextOptions<OrionIdentityDbContext> CreateOptions()
+    => new DbContextOptionsBuilder<OrionIdentityDbContext>()
+      .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+      .Options;
+
   private static PlatformAdministrationAccessValidator CreateValidator(
-    OrionIdentityDbContext db)
-    => new(db, new FixedTimeProvider());
+    DbContextOptions<OrionIdentityDbContext> options)
+    => new(options, new FixedTimeProvider());
 
   private static async Task SeedAuthorizedAdministratorAsync(
     OrionIdentityDbContext db)

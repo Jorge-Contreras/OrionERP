@@ -121,6 +121,30 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260909_hospitality_legacy_mechanisms_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_legacy_mechanisms_sandbox.sql",
+      "description": "E7: asociaciones de arrendadores, mappings expl\u00edcitos de actividad, corrector auditable de pagos y reparaci\u00f3n/cuarentena local de Outlook, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260909_hospitality_legacy_transaction_guards_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_legacy_transaction_guards_sandbox.sql",
+      "description": "E7: garantiza rollback de los dos mecanismos heredados ante evidencia inv\u00e1lida, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260909_hospitality_payment_policy_switch_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_policy_switch_sandbox.sql",
+      "description": "E7: separa las transiciones de predicados RLS del corrector de pagos para validaci\u00f3n y restauraci\u00f3n transaccional, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

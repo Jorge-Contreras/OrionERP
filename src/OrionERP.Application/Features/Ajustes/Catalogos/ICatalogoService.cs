@@ -53,4 +53,21 @@ public interface ICatalogoService
   Task<AjustesCommandResult> SaveCuentaAsync(CuentaContableSaveRequest request, CancellationToken ct = default);
 
   Task<AjustesCommandResult> DeleteCuentaAsync(string rfc, int id, CancellationToken ct = default);
+
+  Task<HospitalityLegacyConfigurationDto> GetHospitalityLegacyConfigurationAsync(
+      string? ownerSearch,
+      CancellationToken ct = default);
+
+  Task<AjustesCommandResult> AssociateHospitalityOwnerAsync(int proveedorId, CancellationToken ct = default);
+
+  Task<AjustesCommandResult> RemoveHospitalityOwnerAssociationAsync(int proveedorId, CancellationToken ct = default);
+
+  Task<AjustesCommandResult> SaveHospitalityActivityMappingAsync(
+      HospitalityActivityMappingSaveRequest request,
+      CancellationToken ct = default);
+
+  Task<AjustesCommandResult> DeleteHospitalityActivityMappingAsync(
+      int roomId,
+      string activityType,
+      CancellationToken ct = default);
 }

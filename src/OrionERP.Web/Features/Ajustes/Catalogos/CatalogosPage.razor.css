@@ -125,6 +125,36 @@
   outline-offset: -2px;
 }
 
+.legacy-config-list {
+  max-height: 19rem;
+  overflow: auto;
+  border: 1px solid var(--orion-color-border);
+  border-radius: 0.5rem;
+  scrollbar-width: thin;
+}
+
+.legacy-config-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--orion-color-surface-alt);
+}
+
+.legacy-config-list tbody tr[role="button"] {
+  cursor: pointer;
+}
+
+.legacy-config-list tbody tr[role="button"]:focus-visible {
+  outline: 2px solid var(--orion-color-primary);
+  outline-offset: -2px;
+}
+
+.owner-candidates {
+  max-height: 13rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 /* ---------- Chart of accounts ---------- */
 
 /*

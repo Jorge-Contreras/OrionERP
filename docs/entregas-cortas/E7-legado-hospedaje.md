@@ -1,4 +1,4 @@
-# E7 — Legado de Hospedaje: mecanismos preparados
+# E7 — Legado de Hospedaje: implementada en Sandbox
 
 Lee primero las [reglas permanentes](README.md#reglas-permanentes). Depende de: nada.
 Superficie: consola. **Se entrega apagada**: los cuatro mecanismos son aditivos y
@@ -60,3 +60,45 @@ empresariales, se entrega la configuración funcional y el bloqueo se conserva
 
 Build Release. Sin unitarias: nada de esto toca importes. El preview del corrector
 es la salvaguarda del punto 1.
+
+## Estado ejecutado — 2026-09-09
+
+Implementación terminada y aplicada **sólo en `Orion_Sandbox`** mediante tres
+migraciones aditivas con ledger y checksum:
+
+- `20260909_hospitality_legacy_mechanisms_sandbox` crea las asociaciones y
+  auditorías, reemplaza el bloqueo global de actividades por validación exacta y
+  agrega el corrector de pagos por manifiesto.
+- `20260909_hospitality_legacy_transaction_guards_sandbox` conserva inmutables los
+  bytes ya aplicados y garantiza rollback cuando cualquiera de los dos mecanismos
+  rechaza evidencia.
+- `20260909_hospitality_payment_policy_switch_sandbox` separa las transiciones de
+  metadatos RLS para que SQL Server las compile contra el estado correcto.
+
+Resultado por frente:
+
+1. **288 vínculos:** el mecanismo está listo, pero no se cambió ninguno. El
+   manifiesto exige relación propuesta, RFC e importe esperado de ambos pagos,
+   evidencia, motivo y aprobación; limita cada lote a 25 y enlaza `apply` con el
+   checksum del preview. Sólo cambia `TransaccionID`. Una segunda ejecución queda
+   registrada como ya aplicada. Sigue faltando evidencia empresarial por relación.
+2. **Outlook:** `105 → 24222` y `107 → 24228` quedaron reparados; `18` y `61`
+   quedaron fuera de la tabla viva y preservados íntegros en cuarentena. Hay dos
+   filas de auditoría de reparación y dos de cuarentena. La identidad remota se
+   fijó por SHA-256; Microsoft Graph no se invocó y continúa deshabilitado.
+3. **Arrendadores:** quedaron asociadas por evidencia de `ROOM.OWNER_ID` las tres
+   personas de Bonhomía (34 + 1 + 1 habitaciones), con FK compuesto. La pestaña
+   existente de Arrendadores ahora administra sólo asociaciones de la sede; no
+   edita ni elimina `dbo.Proveedores`.
+4. **Actividades:** la misma pestaña permite elegir habitación, plantilla
+   estructural, responsable activo, cuenta SAT y tipo de orden. La creación exige
+   coincidencia exacta dentro de la transacción, copia los ocho pasos de la
+   plantilla probada y registra calendario/reserva/idempotencia. Sin mapping exacto
+   sigue bloqueada; no se precargó ninguno por semejanza de nombres.
+
+Evidencia de validación: build completo Release con **0 warnings / 0 errores**;
+RLS fail-closed sin contexto; 75 predicados activos; el rechazo de actividad y el
+del corrector dejan `@@TRANCOUNT = 0`; una actividad completa se generó dentro de
+una transacción de prueba (8 pasos, 1 vínculo de calendario, 1 de reserva) y el
+rollback dejó cero residuos. Los tres checksums verifican. No hubo cambios en
+producción.

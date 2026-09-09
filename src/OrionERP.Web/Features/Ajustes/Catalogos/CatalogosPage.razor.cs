@@ -32,26 +32,33 @@ public partial class CatalogosPage : ComponentBase
   private IReadOnlyList<CatalogoDescriptorDto> Descriptors { get; set; } = Array.Empty<CatalogoDescriptorDto>();
   private List<CatalogoItemDto> Items { get; } = [];
   private List<CuentaContableNodeDto> Cuentas { get; } = [];
+  private HospitalityLegacyConfigurationDto HospitalityConfig { get; set; } = new();
 
   private CatalogoItemEditorModel ItemEditor { get; set; } = new();
   private CuentaEditorModel CuentaEditor { get; set; } = new();
+  private HospitalityActivityMappingEditorModel ActivityMappingEditor { get; set; } = new();
 
   private string tab = string.Empty;
   private string? selectedItemId;
   private int? selectedCuentaId;
   private string? searchText;
   private string? cuentaSearchText;
+  private string? ownerSearch;
   private bool includeInactive;
   private bool isLoading;
   private bool isSaving;
   private bool isNewItem = true;
   private bool isNewCuenta = true;
+  private bool isNewActivityMapping = true;
 
   private CatalogoDescriptorDto? ActiveDescriptor
     => Descriptors.FirstOrDefault(descriptor => TabKey(descriptor.Key) == tab);
 
   private CatalogoItemDto? SelectedItem
     => Items.FirstOrDefault(item => item.Id == selectedItemId);
+
+  private HospitalityActivityMappingDto? SelectedActivityMapping
+    => HospitalityConfig.ActivityMappings.FirstOrDefault(IsSelectedActivityMapping);
 
   protected override async Task OnInitializedAsync()
   {
@@ -80,8 +87,10 @@ public partial class CatalogosPage : ComponentBase
     searchText = null;
     cuentaSearchText = null;
     includeInactive = false;
+    ownerSearch = null;
     NewItem();
     NewCuenta();
+    NewActivityMapping();
 
     Navigation.NavigateTo(
       Navigation.GetUriWithQueryParameter("tab", value),
@@ -92,7 +101,11 @@ public partial class CatalogosPage : ComponentBase
   }
 
   private Task LoadActiveTabAsync()
-    => tab == CuentasTab ? LoadCuentasAsync() : LoadItemsAsync();
+    => tab == CuentasTab
+      ? LoadCuentasAsync()
+      : ActiveDescriptor?.Key == CatalogoKey.Arrendadores
+        ? LoadHospitalityConfigurationAsync()
+        : LoadItemsAsync();
 
   private async Task LoadItemsAsync()
   {
@@ -131,6 +144,130 @@ public partial class CatalogosPage : ComponentBase
 
   private Task OnCatalogSearchKeyUpAsync(KeyboardEventArgs args)
     => args.Key == "Enter" ? LoadItemsAsync() : Task.CompletedTask;
+
+  private async Task LoadHospitalityConfigurationAsync()
+  {
+    isLoading = true;
+    try
+    {
+      HospitalityConfig = await CatalogoService.GetHospitalityLegacyConfigurationAsync(ownerSearch);
+      if (!isNewActivityMapping && SelectedActivityMapping is null)
+        NewActivityMapping();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError($"No se pudo cargar la configuración de hospedaje: {ex.Message}");
+    }
+    finally
+    {
+      isLoading = false;
+      StateHasChanged();
+    }
+  }
+
+  private Task OnOwnerSearchKeyUpAsync(KeyboardEventArgs args)
+    => args.Key == "Enter" ? LoadHospitalityConfigurationAsync() : Task.CompletedTask;
+
+  private async Task AssociateHospitalityOwnerAsync(int proveedorId)
+  {
+    isSaving = true;
+    try
+    {
+      var result = await CatalogoService.AssociateHospitalityOwnerAsync(proveedorId);
+      if (!result.Success) { UiMessages.ShowWarning(result.Message); return; }
+      UiMessages.ShowSuccess(result.Message);
+      ownerSearch = null;
+      await LoadHospitalityConfigurationAsync();
+    }
+    catch (Exception ex) { UiMessages.ShowError($"No se pudo asociar el arrendador: {ex.Message}"); }
+    finally { isSaving = false; StateHasChanged(); }
+  }
+
+  private async Task RemoveHospitalityOwnerAsync(HospitalityOwnerAssociationDto owner)
+  {
+    if (!await ConfirmAsync($"Se quitará la asociación de \"{owner.Nombre}\" únicamente para esta sede. El proveedor maestro no se modificará. ¿Continuar?"))
+      return;
+    isSaving = true;
+    try
+    {
+      var result = await CatalogoService.RemoveHospitalityOwnerAssociationAsync(owner.ProveedorId);
+      if (!result.Success) { UiMessages.ShowWarning(result.Message); return; }
+      UiMessages.ShowSuccess(result.Message);
+      await LoadHospitalityConfigurationAsync();
+    }
+    catch (Exception ex) { UiMessages.ShowError($"No se pudo quitar la asociación: {ex.Message}"); }
+    finally { isSaving = false; StateHasChanged(); }
+  }
+
+  private void NewActivityMapping()
+  {
+    isNewActivityMapping = true;
+    ActivityMappingEditor = new HospitalityActivityMappingEditorModel { IsEnabled = true };
+  }
+
+  private bool IsSelectedActivityMapping(HospitalityActivityMappingDto mapping)
+    => !isNewActivityMapping
+       && mapping.RoomId == ActivityMappingEditor.RoomId
+       && string.Equals(mapping.ActivityType, ActivityMappingEditor.ActivityType, StringComparison.OrdinalIgnoreCase);
+
+  private void SelectActivityMapping(HospitalityActivityMappingDto mapping)
+  {
+    isNewActivityMapping = false;
+    ActivityMappingEditor = new HospitalityActivityMappingEditorModel
+    {
+      RoomId = mapping.RoomId,
+      ActivityType = mapping.ActivityType,
+      TemplateActivityId = mapping.TemplateActivityId,
+      AssigneeEmployeeId = mapping.AssigneeEmployeeId,
+      CuentaSatId = mapping.CuentaSatId,
+      IsEnabled = mapping.IsEnabled
+    };
+  }
+
+  private async Task SaveActivityMappingAsync()
+  {
+    isSaving = true;
+    try
+    {
+      var result = await CatalogoService.SaveHospitalityActivityMappingAsync(new HospitalityActivityMappingSaveRequest
+      {
+        RoomId = ActivityMappingEditor.RoomId,
+        ActivityType = ActivityMappingEditor.ActivityType,
+        TemplateActivityId = ActivityMappingEditor.TemplateActivityId,
+        AssigneeEmployeeId = ActivityMappingEditor.AssigneeEmployeeId,
+        CuentaSatId = ActivityMappingEditor.CuentaSatId,
+        IsEnabled = ActivityMappingEditor.IsEnabled
+      });
+      if (!result.Success) { UiMessages.ShowWarning(result.Message); return; }
+      UiMessages.ShowSuccess(result.Message);
+      var roomId = ActivityMappingEditor.RoomId;
+      var activityType = ActivityMappingEditor.ActivityType;
+      await LoadHospitalityConfigurationAsync();
+      var saved = HospitalityConfig.ActivityMappings.FirstOrDefault(item =>
+        item.RoomId == roomId && string.Equals(item.ActivityType, activityType, StringComparison.OrdinalIgnoreCase));
+      if (saved is not null) SelectActivityMapping(saved); else NewActivityMapping();
+    }
+    catch (Exception ex) { UiMessages.ShowError($"No se pudo guardar la configuración: {ex.Message}"); }
+    finally { isSaving = false; StateHasChanged(); }
+  }
+
+  private async Task DeleteActivityMappingAsync()
+  {
+    var mapping = SelectedActivityMapping;
+    if (mapping is null || !await ConfirmAsync($"Se eliminará la configuración {mapping.RoomName} / {mapping.ActivityType}. ¿Continuar?"))
+      return;
+    isSaving = true;
+    try
+    {
+      var result = await CatalogoService.DeleteHospitalityActivityMappingAsync(mapping.RoomId, mapping.ActivityType);
+      if (!result.Success) { UiMessages.ShowWarning(result.Message); return; }
+      UiMessages.ShowSuccess(result.Message);
+      NewActivityMapping();
+      await LoadHospitalityConfigurationAsync();
+    }
+    catch (Exception ex) { UiMessages.ShowError($"No se pudo eliminar la configuración: {ex.Message}"); }
+    finally { isSaving = false; StateHasChanged(); }
+  }
 
   private async Task LoadCuentasAsync()
   {
@@ -436,5 +573,26 @@ public partial class CatalogosPage : ComponentBase
     [Required(ErrorMessage = "La descripción es obligatoria.")]
     [StringLength(400, ErrorMessage = "La descripción no puede exceder 400 caracteres.")]
     public string Descripcion { get; set; } = string.Empty;
+  }
+
+  private sealed class HospitalityActivityMappingEditorModel
+  {
+    [Range(1, int.MaxValue, ErrorMessage = "Selecciona una habitación.")]
+    public int RoomId { get; set; }
+
+    [Required(ErrorMessage = "El tipo de orden es obligatorio.")]
+    [StringLength(200, ErrorMessage = "El tipo de orden no puede exceder 200 caracteres.")]
+    public string ActivityType { get; set; } = string.Empty;
+
+    [Range(1, int.MaxValue, ErrorMessage = "Selecciona una plantilla.")]
+    public int TemplateActivityId { get; set; }
+
+    [Range(1, int.MaxValue, ErrorMessage = "Selecciona un responsable.")]
+    public int AssigneeEmployeeId { get; set; }
+
+    [Range(1, int.MaxValue, ErrorMessage = "Captura una cuenta SAT válida.")]
+    public int CuentaSatId { get; set; }
+
+    public bool IsEnabled { get; set; } = true;
   }
 }

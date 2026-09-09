@@ -162,6 +162,163 @@
       </div>
     </section>
   }
+  else if (ActiveDescriptor is { Key: CatalogoKey.Arrendadores })
+  {
+    <section class="catalogos-section">
+      <div class="row g-3">
+        <div class="col-12 col-xxl-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h2 class="h5 mb-1">Arrendadores autorizados</h2>
+              <p class="text-muted mb-3">
+                Son asociaciones de la empresa y sede actuales. El proveedor maestro sigue siendo global y aquí no se modifica.
+              </p>
+
+              <div class="table-responsive legacy-config-list mb-3">
+                <table class="table table-sm align-middle mb-0 compact-table">
+                  <thead class="table-light"><tr><th>Arrendador</th><th class="text-end">Habitaciones</th><th></th></tr></thead>
+                  <tbody>
+                    @if (isLoading && HospitalityConfig.Owners.Count == 0)
+                    {
+                      <tr><td colspan="3" class="text-center text-muted py-4">Cargando asociaciones...</td></tr>
+                    }
+                    else if (HospitalityConfig.Owners.Count == 0)
+                    {
+                      <tr><td colspan="3" class="text-center text-muted py-4">No hay arrendadores asociados.</td></tr>
+                    }
+                    else
+                    {
+                      @foreach (var owner in HospitalityConfig.Owners)
+                      {
+                        <tr>
+                          <td><span class="fw-semibold">@owner.Nombre</span><span class="text-muted small d-block">Proveedor #@owner.ProveedorId</span></td>
+                          <td class="text-end num">@owner.RoomCount</td>
+                          <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    disabled="@(isSaving || owner.RoomCount > 0)"
+                                    title="@(owner.RoomCount > 0 ? "Primero reasigna sus habitaciones." : "Quitar asociación de esta sede")"
+                                    @onclick="() => RemoveHospitalityOwnerAsync(owner)">Quitar</button>
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <label class="form-label" for="owner-search">Asociar un proveedor existente</label>
+              <div class="input-group">
+                <input id="owner-search" class="form-control" type="search" placeholder="Razón social o ID"
+                       @bind="ownerSearch" @bind:event="oninput" @onkeyup="OnOwnerSearchKeyUpAsync" />
+                <button type="button" class="btn btn-outline-primary" disabled="@isLoading" @onclick="LoadHospitalityConfigurationAsync">Buscar</button>
+              </div>
+              <div class="list-group mt-2 owner-candidates" aria-live="polite">
+                @foreach (var candidate in HospitalityConfig.OwnerCandidates)
+                {
+                  <div class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                    <span>@candidate.Nombre <span class="text-muted small">#@candidate.ProveedorId</span></span>
+                    <button type="button" class="btn btn-sm btn-primary" disabled="@isSaving"
+                            @onclick="() => AssociateHospitalityOwnerAsync(candidate.ProveedorId)">Asociar</button>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xxl-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                <div>
+                  <h2 class="h5 mb-1">Actividades automáticas por habitación</h2>
+                  <p class="text-muted mb-0">Sólo admite plantillas estructurales de esta empresa: con ruta crítica y sin vínculo previo al calendario.</p>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="NewActivityMapping">Nueva</button>
+              </div>
+
+              <div class="table-responsive legacy-config-list mb-3">
+                <table class="table table-sm table-hover align-middle mb-0 compact-table">
+                  <thead class="table-light"><tr><th>Habitación / tipo</th><th>Plantilla</th><th>Responsable</th><th></th></tr></thead>
+                  <tbody>
+                    @if (HospitalityConfig.ActivityMappings.Count == 0)
+                    {
+                      <tr><td colspan="4" class="text-center text-muted py-4">No hay configuraciones. El procedimiento heredado permanece bloqueado.</td></tr>
+                    }
+                    else
+                    {
+                      @foreach (var mapping in HospitalityConfig.ActivityMappings)
+                      {
+                        <tr class="@(IsSelectedActivityMapping(mapping) ? "table-primary" : null)" role="button" tabindex="0"
+                            @onclick="() => SelectActivityMapping(mapping)"
+                            @onkeydown="@(args => OnRowKeyDown(args, () => SelectActivityMapping(mapping)))">
+                          <td><span class="fw-semibold">@mapping.RoomName</span><span class="d-block small text-muted">@mapping.ActivityType · @(mapping.IsEnabled ? "Activa" : "Inactiva")</span></td>
+                          <td>@mapping.TemplateName <span class="text-muted small">#@mapping.TemplateActivityId</span></td>
+                          <td>@mapping.AssigneeName</td>
+                          <td class="text-end num">@mapping.GeneratedActivityCount</td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <EditForm Model="ActivityMappingEditor" OnValidSubmit="SaveActivityMappingAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="text-danger small" />
+                <div class="row g-2">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="activity-room">Habitación</label>
+                    <InputSelect id="activity-room" class="form-select" @bind-Value="ActivityMappingEditor.RoomId" disabled="@(!isNewActivityMapping)">
+                      <option value="0">Selecciona una habitación</option>
+                      @foreach (var room in HospitalityConfig.Rooms) { <option value="@room.Id">@room.Nombre</option> }
+                    </InputSelect>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="activity-type">Tipo de orden</label>
+                    <InputText id="activity-type" class="form-control" placeholder="Ej. LIMPIEZA" @bind-Value="ActivityMappingEditor.ActivityType" disabled="@(!isNewActivityMapping)" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="activity-template">Plantilla</label>
+                    <InputSelect id="activity-template" class="form-select" @bind-Value="ActivityMappingEditor.TemplateActivityId">
+                      <option value="0">Selecciona una plantilla</option>
+                      @foreach (var template in HospitalityConfig.ActivityTemplates) { <option value="@template.Id">@template.Nombre</option> }
+                    </InputSelect>
+                  </div>
+                  <div class="col-12 col-md-8">
+                    <label class="form-label" for="activity-assignee">Responsable</label>
+                    <InputSelect id="activity-assignee" class="form-select" @bind-Value="ActivityMappingEditor.AssigneeEmployeeId">
+                      <option value="0">Selecciona una persona activa</option>
+                      @foreach (var assignee in HospitalityConfig.Assignees) { <option value="@assignee.Id">@assignee.Nombre</option> }
+                    </InputSelect>
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <label class="form-label" for="activity-account">Cuenta SAT</label>
+                    <InputNumber id="activity-account" class="form-control" @bind-Value="ActivityMappingEditor.CuentaSatId" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-check d-flex align-items-center gap-2 mb-0">
+                      <InputCheckbox class="form-check-input" @bind-Value="ActivityMappingEditor.IsEnabled" />
+                      <span class="form-check-label">Configuración activa</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                  <button type="submit" class="btn btn-primary" disabled="@isSaving">@(isSaving ? "Guardando..." : "Guardar configuración")</button>
+                  @if (!isNewActivityMapping)
+                  {
+                    <button type="button" class="btn btn-outline-danger" disabled="@(isSaving || SelectedActivityMapping?.GeneratedActivityCount > 0)"
+                            @onclick="DeleteActivityMappingAsync">Eliminar</button>
+                  }
+                  <button type="button" class="btn btn-outline-secondary" disabled="@isSaving" @onclick="NewActivityMapping">Cancelar</button>
+                </div>
+              </EditForm>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  }
   else if (ActiveDescriptor is { } descriptor)
   {
     <section class="catalogos-section">

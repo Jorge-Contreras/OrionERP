@@ -875,6 +875,252 @@ WHERE id = @id AND RFC = @rfc AND Nivel1 = @nivel1 AND Nivel2 = @nivel2 AND Nive
       : AjustesCommandResult.Ok($"Cuenta {cuenta.Clave} eliminada correctamente.");
   }
 
+  public async Task<HospitalityLegacyConfigurationDto> GetHospitalityLegacyConfigurationAsync(
+      string? ownerSearch,
+      CancellationToken ct = default)
+  {
+    using var connection = await OpenCatalogConnectionAsync(CatalogoKey.Arrendadores, null, ct);
+    const string sql = """
+      SELECT association.ProveedorId,
+             COALESCE(NULLIF(LTRIM(RTRIM(provider.RazonSocial)),''),CONCAT(N'Proveedor ',association.ProveedorId)) Nombre,
+             CONVERT(int,(SELECT COUNT_BIG(*) FROM dbo.ROOM room WHERE room.OWNER_ID=association.ProveedorId)) RoomCount
+      FROM orion.HospitalitySiteOwner association
+      JOIN dbo.Proveedores provider ON provider.id=association.ProveedorId
+      WHERE association.IsActive=1
+      ORDER BY Nombre,association.ProveedorId;
+
+      SELECT TOP (20) provider.id ProveedorId,
+             COALESCE(NULLIF(LTRIM(RTRIM(provider.RazonSocial)),''),CONCAT(N'Proveedor ',provider.id)) Nombre
+      FROM dbo.Proveedores provider
+      WHERE NULLIF(LTRIM(RTRIM(@OwnerSearch)),'') IS NOT NULL
+        AND (provider.RazonSocial LIKE N'%'+LTRIM(RTRIM(@OwnerSearch))+N'%'
+             OR CONVERT(nvarchar(20),provider.id)=LTRIM(RTRIM(@OwnerSearch)))
+        AND NOT EXISTS
+        (
+          SELECT 1 FROM orion.HospitalitySiteOwner association
+          WHERE association.ProveedorId=provider.id
+        )
+      ORDER BY Nombre,provider.id;
+
+      SELECT mapping.RoomId,room.ROOM_NAME RoomName,mapping.ActivityType,
+             mapping.TemplateActivityId,
+             COALESCE(NULLIF(LTRIM(RTRIM(template.Descripcion)),''),CONCAT(N'Actividad ',template.ID)) TemplateName,
+             mapping.AssigneeEmployeeId,
+             COALESCE(NULLIF(LTRIM(RTRIM(employee.NombreCorto)),''),
+                      NULLIF(LTRIM(RTRIM(CONCAT(employee.Nombre,N' ',employee.ApellidoPaterno,N' ',employee.ApellidoMaterno))),''),
+                      CONCAT(N'Empleado ',employee.ID)) AssigneeName,
+             mapping.CuentaSatId,mapping.IsEnabled,
+             CONVERT(int,(SELECT COUNT_BIG(*) FROM orion.HospitalityGeneratedActivity generated
+                          WHERE generated.CompanyId=mapping.CompanyId AND generated.SiteId=mapping.SiteId
+                            AND generated.RoomId=mapping.RoomId AND generated.ActivityType=mapping.ActivityType)) GeneratedActivityCount
+      FROM orion.HospitalityActivityTemplateMapping mapping
+      JOIN dbo.ROOM room ON room.ID=mapping.RoomId
+      JOIN dbo.Actividad template ON template.ID=mapping.TemplateActivityId
+      JOIN dbo.Capital_Humano employee ON employee.ID=mapping.AssigneeEmployeeId
+      ORDER BY room.ROOM_NAME,mapping.ActivityType;
+
+      SELECT room.ID Id,room.ROOM_NAME Nombre
+      FROM dbo.ROOM room
+      ORDER BY room.ROOM_NAME,room.ID;
+
+      SELECT activity.ID Id,
+             CONCAT(N'#',activity.ID,N' · ',COALESCE(NULLIF(LTRIM(RTRIM(activity.Descripcion)),''),N'Sin descripción')) Nombre
+      FROM dbo.Actividad activity
+      WHERE activity.RFC=CONVERT(nvarchar(50),SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
+        AND EXISTS (SELECT 1 FROM dbo.Actividad_Ruta_Critica step WHERE step.Actividad_ID=activity.ID)
+        AND NOT EXISTS (SELECT 1 FROM dbo.Actividad_RoomCalendar link WHERE link.Actividad_ID=activity.ID)
+      ORDER BY activity.ID;
+
+      SELECT employee.ID Id,
+             COALESCE(NULLIF(LTRIM(RTRIM(employee.NombreCorto)),''),
+                      NULLIF(LTRIM(RTRIM(CONCAT(employee.Nombre,N' ',employee.ApellidoPaterno,N' ',employee.ApellidoMaterno))),''),
+                      CONCAT(N'Empleado ',employee.ID)) Nombre
+      FROM dbo.Capital_Humano employee
+      WHERE employee.RFC=CONVERT(nvarchar(50),SESSION_CONTEXT(N'OrionERP.HospitalityRfc'))
+        AND UPPER(LTRIM(RTRIM(ISNULL(employee.[Status],''))))=N'ACTIVO'
+      ORDER BY Nombre,employee.ID;
+      """;
+
+    using var results = await connection.QueryMultipleAsync(new CommandDefinition(
+      sql, new { OwnerSearch = ownerSearch }, cancellationToken: ct));
+    return new HospitalityLegacyConfigurationDto
+    {
+      Owners = (await results.ReadAsync<HospitalityOwnerAssociationDto>()).AsList(),
+      OwnerCandidates = (await results.ReadAsync<HospitalityOwnerCandidateDto>()).AsList(),
+      ActivityMappings = (await results.ReadAsync<HospitalityActivityMappingDto>()).AsList(),
+      Rooms = (await results.ReadAsync<HospitalityLegacyOptionDto>()).AsList(),
+      ActivityTemplates = (await results.ReadAsync<HospitalityLegacyOptionDto>()).AsList(),
+      Assignees = (await results.ReadAsync<HospitalityLegacyOptionDto>()).AsList()
+    };
+  }
+
+  public async Task<AjustesCommandResult> AssociateHospitalityOwnerAsync(
+      int proveedorId,
+      CancellationToken ct = default)
+  {
+    if (proveedorId <= 0)
+      return AjustesCommandResult.Fail("Selecciona un proveedor válido.");
+
+    using var connection = await OpenCatalogConnectionAsync(CatalogoKey.Arrendadores, null, ct);
+    const string sql = """
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+      IF NOT EXISTS (SELECT 1 FROM dbo.Proveedores WITH (UPDLOCK,HOLDLOCK) WHERE id=@ProveedorId)
+      BEGIN
+        ROLLBACK TRANSACTION;
+        SELECT CONVERT(bit,0) Success,N'El proveedor seleccionado ya no existe.' Message;
+        RETURN;
+      END;
+      IF EXISTS (SELECT 1 FROM orion.HospitalitySiteOwner WITH (UPDLOCK,HOLDLOCK) WHERE ProveedorId=@ProveedorId)
+        UPDATE orion.HospitalitySiteOwner
+          SET IsActive=1,UpdatedAtUtc=SYSUTCDATETIME(),UpdatedBy=COALESCE(CONVERT(nvarchar(256),SESSION_CONTEXT(N'OrionERP.UserName')),ORIGINAL_LOGIN())
+        WHERE ProveedorId=@ProveedorId;
+      ELSE
+        INSERT orion.HospitalitySiteOwner (ProveedorId,IsActive,CreatedBy,UpdatedBy)
+          VALUES (@ProveedorId,1,
+                  COALESCE(CONVERT(nvarchar(256),SESSION_CONTEXT(N'OrionERP.UserName')),ORIGINAL_LOGIN()),
+                  COALESCE(CONVERT(nvarchar(256),SESSION_CONTEXT(N'OrionERP.UserName')),ORIGINAL_LOGIN()));
+      COMMIT TRANSACTION;
+      SELECT CONVERT(bit,1) Success,N'Arrendador asociado a la empresa y sede actuales.' Message;
+      """;
+    var result = await connection.QuerySingleAsync<CommandRow>(
+      new CommandDefinition(sql, new { ProveedorId = proveedorId }, cancellationToken: ct));
+    return result.Success ? AjustesCommandResult.Ok(result.Message, proveedorId) : AjustesCommandResult.Fail(result.Message);
+  }
+
+  public async Task<AjustesCommandResult> RemoveHospitalityOwnerAssociationAsync(
+      int proveedorId,
+      CancellationToken ct = default)
+  {
+    if (proveedorId <= 0)
+      return AjustesCommandResult.Fail("Selecciona un arrendador válido.");
+
+    using var connection = await OpenCatalogConnectionAsync(CatalogoKey.Arrendadores, null, ct);
+    const string sql = """
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+      IF EXISTS (SELECT 1 FROM dbo.ROOM WITH (UPDLOCK,HOLDLOCK) WHERE OWNER_ID=@ProveedorId)
+      BEGIN
+        ROLLBACK TRANSACTION;
+        SELECT CONVERT(bit,0) Success,N'No se puede quitar: el arrendador todavía tiene habitaciones asignadas.' Message;
+        RETURN;
+      END;
+      DELETE FROM orion.HospitalitySiteOwner WHERE ProveedorId=@ProveedorId;
+      DECLARE @Removed int=@@ROWCOUNT;
+      COMMIT TRANSACTION;
+      SELECT CONVERT(bit,CASE WHEN @Removed=1 THEN 1 ELSE 0 END) Success,
+             CASE WHEN @Removed=1 THEN N'Asociación de arrendador eliminada.' ELSE N'La asociación ya no existe.' END Message;
+      """;
+    var result = await connection.QuerySingleAsync<CommandRow>(
+      new CommandDefinition(sql, new { ProveedorId = proveedorId }, cancellationToken: ct));
+    return result.Success ? AjustesCommandResult.Ok(result.Message) : AjustesCommandResult.Fail(result.Message);
+  }
+
+  public async Task<AjustesCommandResult> SaveHospitalityActivityMappingAsync(
+      HospitalityActivityMappingSaveRequest request,
+      CancellationToken ct = default)
+  {
+    var activityType = NormalizeNullable(request.ActivityType)?.ToUpperInvariant();
+    if (request.RoomId <= 0 || request.TemplateActivityId <= 0 || request.AssigneeEmployeeId <= 0 || request.CuentaSatId <= 0)
+      return AjustesCommandResult.Fail("Habitación, plantilla, responsable y cuenta SAT son obligatorios.");
+    if (activityType is null || activityType.Length > 200)
+      return AjustesCommandResult.Fail("El tipo de orden es obligatorio y no puede exceder 200 caracteres.");
+
+    using var connection = await OpenCatalogConnectionAsync(CatalogoKey.Arrendadores, null, ct);
+    const string sql = """
+      SET XACT_ABORT ON;
+      SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+      BEGIN TRANSACTION;
+      DECLARE @Rfc nvarchar(50)=CONVERT(nvarchar(50),SESSION_CONTEXT(N'OrionERP.HospitalityRfc'));
+      IF NOT EXISTS (SELECT 1 FROM dbo.ROOM WITH (UPDLOCK,HOLDLOCK) WHERE ID=@RoomId)
+      BEGIN
+        ROLLBACK TRANSACTION;
+        SELECT CONVERT(bit,0) Success,N'La habitación no pertenece a la sede actual.' Message;
+        RETURN;
+      END;
+      IF NOT EXISTS
+      (
+        SELECT 1 FROM dbo.Actividad activity WITH (UPDLOCK,HOLDLOCK)
+        WHERE activity.ID=@TemplateActivityId AND activity.RFC=@Rfc
+          AND EXISTS (SELECT 1 FROM dbo.Actividad_Ruta_Critica step WITH (UPDLOCK,HOLDLOCK) WHERE step.Actividad_ID=activity.ID)
+          AND NOT EXISTS (SELECT 1 FROM dbo.Actividad_RoomCalendar link WITH (UPDLOCK,HOLDLOCK) WHERE link.Actividad_ID=activity.ID)
+      )
+      BEGIN
+        ROLLBACK TRANSACTION;
+        SELECT CONVERT(bit,0) Success,N'La actividad elegida no es una plantilla estructural válida para esta empresa.' Message;
+        RETURN;
+      END;
+      IF NOT EXISTS
+      (
+        SELECT 1 FROM dbo.Capital_Humano employee WITH (UPDLOCK,HOLDLOCK)
+        WHERE employee.ID=@AssigneeEmployeeId AND employee.RFC=@Rfc
+          AND UPPER(LTRIM(RTRIM(ISNULL(employee.[Status],''))))=N'ACTIVO'
+      )
+      BEGIN
+        ROLLBACK TRANSACTION;
+        SELECT CONVERT(bit,0) Success,N'El responsable no está activo en la empresa actual.' Message;
+        RETURN;
+      END;
+      IF EXISTS (SELECT 1 FROM orion.HospitalityActivityTemplateMapping WITH (UPDLOCK,HOLDLOCK)
+                 WHERE RoomId=@RoomId AND ActivityType=@ActivityType)
+        UPDATE orion.HospitalityActivityTemplateMapping
+          SET TemplateActivityId=@TemplateActivityId,AssigneeEmployeeId=@AssigneeEmployeeId,
+              CuentaSatId=@CuentaSatId,IsEnabled=@IsEnabled,UpdatedAtUtc=SYSUTCDATETIME(),
+              UpdatedBy=COALESCE(CONVERT(nvarchar(256),SESSION_CONTEXT(N'OrionERP.UserName')),ORIGINAL_LOGIN())
+        WHERE RoomId=@RoomId AND ActivityType=@ActivityType;
+      ELSE
+        INSERT orion.HospitalityActivityTemplateMapping
+          (RoomId,ActivityType,TemplateActivityId,AssigneeEmployeeId,CuentaSatId,IsEnabled,CreatedBy,UpdatedBy)
+        VALUES
+          (@RoomId,@ActivityType,@TemplateActivityId,@AssigneeEmployeeId,@CuentaSatId,@IsEnabled,
+           COALESCE(CONVERT(nvarchar(256),SESSION_CONTEXT(N'OrionERP.UserName')),ORIGINAL_LOGIN()),
+           COALESCE(CONVERT(nvarchar(256),SESSION_CONTEXT(N'OrionERP.UserName')),ORIGINAL_LOGIN()));
+      COMMIT TRANSACTION;
+      SELECT CONVERT(bit,1) Success,N'Configuración de actividad guardada.' Message;
+      """;
+    var result = await connection.QuerySingleAsync<CommandRow>(new CommandDefinition(sql, new
+    {
+      request.RoomId,
+      ActivityType = activityType,
+      request.TemplateActivityId,
+      request.AssigneeEmployeeId,
+      request.CuentaSatId,
+      request.IsEnabled
+    }, cancellationToken: ct));
+    return result.Success ? AjustesCommandResult.Ok(result.Message) : AjustesCommandResult.Fail(result.Message);
+  }
+
+  public async Task<AjustesCommandResult> DeleteHospitalityActivityMappingAsync(
+      int roomId,
+      string activityType,
+      CancellationToken ct = default)
+  {
+    var normalizedType = NormalizeNullable(activityType)?.ToUpperInvariant();
+    if (roomId <= 0 || normalizedType is null)
+      return AjustesCommandResult.Fail("La configuración seleccionada no es válida.");
+
+    using var connection = await OpenCatalogConnectionAsync(CatalogoKey.Arrendadores, null, ct);
+    const string sql = """
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+      IF EXISTS (SELECT 1 FROM orion.HospitalityGeneratedActivity WITH (UPDLOCK,HOLDLOCK)
+                 WHERE RoomId=@RoomId AND ActivityType=@ActivityType)
+      BEGIN
+        ROLLBACK TRANSACTION;
+        SELECT CONVERT(bit,0) Success,N'No se puede eliminar: esta configuración ya generó actividades. Puedes desactivarla.' Message;
+        RETURN;
+      END;
+      DELETE FROM orion.HospitalityActivityTemplateMapping WHERE RoomId=@RoomId AND ActivityType=@ActivityType;
+      DECLARE @Removed int=@@ROWCOUNT;
+      COMMIT TRANSACTION;
+      SELECT CONVERT(bit,CASE WHEN @Removed=1 THEN 1 ELSE 0 END) Success,
+             CASE WHEN @Removed=1 THEN N'Configuración eliminada.' ELSE N'La configuración ya no existe.' END Message;
+      """;
+    var result = await connection.QuerySingleAsync<CommandRow>(new CommandDefinition(
+      sql, new { RoomId = roomId, ActivityType = normalizedType }, cancellationToken: ct));
+    return result.Success ? AjustesCommandResult.Ok(result.Message) : AjustesCommandResult.Fail(result.Message);
+  }
+
   private static CatalogoTabla Resolve(CatalogoKey key)
     => Catalogos.TryGetValue(key, out var catalogo)
       ? catalogo
@@ -915,5 +1161,11 @@ WHERE id = @id AND RFC = @rfc AND Nivel1 = @nivel1 AND Nivel2 = @nivel2 AND Nive
     public int? Orden { get; set; }
     public bool Activo { get; set; }
     public int Referencias { get; set; }
+  }
+
+  private sealed class CommandRow
+  {
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
   }
 }

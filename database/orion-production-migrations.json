@@ -126,6 +126,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260909_production_calendar_owner_scope",
+      "path": "database/production/20260909/20260909_production_calendar_owner_scope.sql",
+      "description": "El calendario de reservaciones acotado al arrendador de la sesión; va antes que los binarios.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

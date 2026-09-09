@@ -263,6 +263,17 @@ cambio de conducta aparte —encendería SignalR y drenaría el rezago acumulado
 una vez— y necesita decisión del usuario antes de tocarlo. Cabe en **E8c**, que
 ya separa el contexto de trabajos del de usuario.
 
+**El aislamiento de Hospedaje dejó fuera a dos roles que sus rutas sí autorizan.**
+`HospitalityAdministrationSessionGuard` exigía `Administrador` o `SatOperator` para
+cualquier conexión de Hospedaje, mientras `/reservaciones/calendario` autoriza además
+a `Arrendadores` y `OrdenTrabajoOperador`. Los dos entraban a la página y morían en la
+capa de datos. Corregido con dos niveles explícitos —administrar y consultar— y, de
+paso, el calendario ahora se acota al dueño de la sesión, cosa que nunca hizo. Ver el
+[acta](../production-calendar-owner-scope-applied-20260909.md). El mismo patrón tumbó
+`/admin/seguridad` para nueve de las diez empresas activas: cargaba el catálogo de
+arrendadores sin condición. **Vale la pena revisar qué otra pantalla transversal abre
+un servicio de módulo sin degradar.**
+
 ## Bloqueos que siguen deliberados
 
 No son tareas para desactivar protecciones: cambiar padre o habitación de una

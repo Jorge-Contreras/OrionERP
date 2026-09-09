@@ -117,6 +117,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260909_production_workforce_attendance_scope",
+      "path": "database/production/20260909/20260909_production_workforce_attendance_scope.sql",
+      "description": "E8c: RLS fail-closed del agregado de asistencia de RH, seis tablas fuera del bypass. Exige binarios con el job de retencion nuevo ANTES de aplicarse.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

@@ -434,12 +434,7 @@ public partial class CalendarioReservacionesPage : ComponentBase
     IsCreatingReservation = true;
     try
     {
-      var cliente = await ReservacionesService.GetDefaultClienteForNewReservationAsync();
-      if (cliente is null || cliente.Id <= 0)
-      {
-        UiMessages.ShowError("No se encontró un cliente de cotización para crear la reservación.");
-        return;
-      }
+      var cliente = await ReservacionesService.GetOrCreateDefaultClienteForNewReservationAsync();
 
       var checkIn = availableCells.Min(cell => cell.RoomDate).Date;
       var checkOut = availableCells.Max(cell => cell.RoomDate).Date.AddDays(1);

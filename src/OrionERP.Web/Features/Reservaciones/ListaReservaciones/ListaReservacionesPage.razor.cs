@@ -157,12 +157,7 @@ public partial class ListaReservacionesPage : ComponentBase
   {
     try
     {
-      var cliente = await ReservacionesService.GetDefaultClienteForNewReservationAsync();
-      if (cliente is null || cliente.Id <= 0)
-      {
-        UiMessages.ShowError("No se encontró un cliente de cotización para crear la reservación.");
-        return;
-      }
+      var cliente = await ReservacionesService.GetOrCreateDefaultClienteForNewReservationAsync();
 
       var id = await ReservacionesService.CreateReservationAsync(new ListaReservacionCreateRequest
       {

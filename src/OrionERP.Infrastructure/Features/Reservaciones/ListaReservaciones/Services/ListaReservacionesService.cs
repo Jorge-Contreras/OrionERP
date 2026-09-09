@@ -579,12 +579,27 @@ SELECT CAST(SCOPE_IDENTITY() AS int);";
         cancellationToken: ct));
   }
 
-  public async Task<ClienteOptionDto?> GetDefaultClienteForNewReservationAsync(CancellationToken ct = default)
+  public async Task<ClienteOptionDto> GetOrCreateDefaultClienteForNewReservationAsync(CancellationToken ct = default)
   {
     const string sql = @"
-SELECT TOP (1)
-    c.ID AS Id,
-    c.Nombre AS Nombre
+SET XACT_ABORT ON;
+
+DECLARE @CompanyId bigint = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId'));
+DECLARE @SiteId bigint = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'));
+DECLARE @ClienteId int;
+DECLARE @LockResult int;
+DECLARE @LockResource nvarchar(255) = CONCAT(N'OrionERP:Hospitality:QuotationCustomer:', @CompanyId, N':', @SiteId);
+
+EXEC @LockResult = sys.sp_getapplock
+    @Resource = @LockResource,
+    @LockMode = N'Exclusive',
+    @LockOwner = N'Transaction',
+    @LockTimeout = 10000;
+
+IF @LockResult < 0
+  THROW 51903, 'No se pudo preparar el cliente de cotización de la sede.', 1;
+
+SELECT TOP (1) @ClienteId = c.ID
 FROM dbo.Clientes c
 INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
 WHERE c.Nombre LIKE '%COTIZAC%'
@@ -596,11 +611,37 @@ ORDER BY
       ELSE 3
     END,
     LEN(LTRIM(RTRIM(c.Nombre))),
-    c.ID;";
+    c.ID;
+
+IF @ClienteId IS NULL
+BEGIN
+  INSERT dbo.Clientes (Nombre) VALUES (N'COTIZACION');
+  SET @ClienteId = CONVERT(int, SCOPE_IDENTITY());
+
+  INSERT orion.HospitalitySiteCustomer (CompanyId, SiteId, ClienteId)
+  VALUES (@CompanyId, @SiteId, @ClienteId);
+END;
+
+SELECT c.ID AS Id, c.Nombre AS Nombre
+FROM dbo.Clientes c
+INNER JOIN orion.HospitalitySiteCustomer customerScope ON customerScope.ClienteId = c.ID
+WHERE c.ID = @ClienteId;";
 
     await using var conn = await OpenScopedAsync(ct);
-    return await conn.QueryFirstOrDefaultAsync<ClienteOptionDto>(
-      new CommandDefinition(sql, cancellationToken: ct));
+    await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct) as SqlTransaction;
+
+    try
+    {
+      var cliente = await conn.QuerySingleAsync<ClienteOptionDto>(
+        new CommandDefinition(sql, transaction: tx, cancellationToken: ct));
+      await tx!.CommitAsync(ct);
+      return cliente;
+    }
+    catch
+    {
+      try { await tx!.RollbackAsync(ct); } catch { /* ignore */ }
+      throw;
+    }
   }
 
   public async Task<ReservacionCommandResult> UpdateNotesAsync(int reservationId, string? notes, CancellationToken ct = default)

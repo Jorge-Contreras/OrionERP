@@ -12,7 +12,7 @@ public interface IListaReservacionesService
   Task<IReadOnlyList<ListaReservacionItemDto>> GetUpcomingPaidReservationsAsync(DateTime startDate, int dayCount = 3, CancellationToken ct = default);
   Task<ReservacionCommandResult> SyncPaidReservationStatusesAsync(CancellationToken ct = default);
   Task<int> CreateReservationAsync(ListaReservacionCreateRequest request, CancellationToken ct = default);
-  Task<ClienteOptionDto?> GetDefaultClienteForNewReservationAsync(CancellationToken ct = default);
+  Task<ClienteOptionDto> GetOrCreateDefaultClienteForNewReservationAsync(CancellationToken ct = default);
   Task<ReservacionCommandResult> UpdateNotesAsync(int reservationId, string? notes, CancellationToken ct = default);
   Task<ReservacionCommandResult> DeleteEmptyReservationsAsync(CancellationToken ct = default);
   Task<ReservacionCommandResult> DeleteReservationAsync(int reservationId, CancellationToken ct = default);

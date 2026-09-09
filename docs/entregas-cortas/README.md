@@ -56,7 +56,7 @@ no reinicies producción.
 | Entrega | Qué se escribe | Depende de | Estado |
 | --- | --- | --- | --- |
 | [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Entregada en `7c4105e` |
-| [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | Pendiente (apagada) |
+| [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | **Entregada (apagada)**: scripts listos, los aplica el usuario |
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada; aplicada en producción |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en producción, encendida sólo para el piloto Bruno |
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
@@ -169,6 +169,42 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Propietarios asociados, plantillas y creación de actividades | E7 |
 | RLS contable y bypass de políticas legacy | E8 |
 | Dos empresas por rama, procesos, puertos y túneles | Fuera: validación y operación |
+
+## E2: qué encontró la matriz derivada del código
+
+Los dos scripts viven en
+`src/OrionERP.Infrastructure/Features/Platform/Sql/Identities/`, en subcarpeta a
+propósito: **no son migraciones**, no entran al manifiesto ni al ledger, y no los corre
+el migrador. Otorgan permisos, no cambian esquema.
+
+**Hoy los dos websites corren como `orion`, que es `db_owner`.** Sólo existen dos
+usuarios de base en la instancia, `orion` y `openclaw_ro`. Eso es exactamente lo que E2
+viene a corregir, y nadie lo había inspeccionado.
+
+Derivar la matriz del código corrigió dos suposiciones que habrían producido scripts
+inservibles:
+
+- **La membresía de Bruno no vive en `restaurante`, sino en un esquema `fidelidad`**
+  —`MemberAccount`, `MemberQrToken`, `PointLedger`, `MemberClosureRequest`,
+  `MemberConsent`, `ProgramSettings`—. Un barrido superficial no lo veía porque el SQL
+  de `LoyaltyService` es multilínea y el nombre de la tabla cae en el renglón siguiente.
+- **Identity de Bruno vive en `brunos_auth`**, siete tablas y un trigger sobre
+  `AspNetUsers`. El esquema `auth`, con diez tablas, es el de la consola y Bruno queda
+  vetado de él explícitamente.
+
+Ninguno de los dos sitios invoca procedimientos almacenados, así que no se otorga
+`EXECUTE`. Comprobado contra Sandbox: los 64 objetos de las dos matrices existen, 25 de
+Bonhomía y 39 de Bruno, y 53 de ellos ya están bajo RLS. El `GRANT` dice a qué tablas
+llega cada identidad; la política dice qué filas ve. Una cosa no sustituye a la otra.
+
+**Ningún secreto entra al repositorio.** Los scripts no crean el login: fallan si no
+existe. La contraseña la pones tú, fuera del archivo.
+
+Una decisión deliberada que conviene revisar al aplicar: `restaurante.PublicSiteSettings`
+se otorga de lectura nada más. El servicio compartido que Bruno registra expone un
+guardado de esa tabla, pero eso es operación de consola. Si alguna pantalla de Bruno lo
+intenta, fallará con un error de permisos visible, que es preferible a concederlo por si
+acaso.
 
 ## E8c: lo que queda para producción
 

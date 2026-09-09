@@ -19,6 +19,8 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
     {
         private const string AdministratorRoleName = "Administrador";
         private const string PasswordPolicySummary = "Minimo 8 caracteres, al menos 1 digito y 1 minuscula.";
+        private const string ArrendadorCatalogUnavailableNotice =
+            "El catalogo de arrendadores pertenece a Hospedaje y no esta disponible en esta sesion: la empresa no tiene una sede de Hospedaje habilitada y seleccionada. El resto del portal no depende de el.";
         private const string PasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
         private const string PasswordLowerAlphabet = "abcdefghijkmnopqrstuvwxyz";
         private const string PasswordUpperAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -34,6 +36,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
 
         private IdentityAdminPortalSnapshot? Snapshot { get; set; }
         private IReadOnlyList<ArrendadorListItemDto> ArrendadorOptions { get; set; } = Array.Empty<ArrendadorListItemDto>();
+        private bool IsArrendadorCatalogUnavailable { get; set; }
         private IReadOnlyList<IdentityEmployeeOption> EmployeeOptions { get; set; } = Array.Empty<IdentityEmployeeOption>();
         private UserEditorModel UserForm { get; set; } = CreateEmptyUserModel();
         private RoleEditorModel RoleForm { get; set; } = CreateEmptyRoleModel();
@@ -463,6 +466,36 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             }
         }
 
+        // El arrendador ligado es un atributo de Hospedaje del usuario, no un requisito de este portal.
+        // Una sesion sin sede de Hospedaje habilitada no tiene catalogo que ofrecer, y eso no debe tumbar
+        // la administracion de identidades del resto de las empresas.
+        private async Task<IReadOnlyList<ArrendadorListItemDto>> LoadArrendadorOptionsAsync()
+        {
+            try
+            {
+                var options = await ArrendadoresService.GetArrendadoresAsync();
+                IsArrendadorCatalogUnavailable = false;
+                return options;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                IsArrendadorCatalogUnavailable = true;
+                return Array.Empty<ArrendadorListItemDto>();
+            }
+        }
+
+        // Sin catalogo, el arrendador ya ligado se conserva como opcion para que el selector no lo pierda.
+        private int? UnlistedArrendadorProveedorId
+        {
+            get
+            {
+                var linked = ParseNullableInt(UserForm.ArrendadorProveedorIdInput);
+                return linked.HasValue && !ArrendadorOptions.Any(arrendador => arrendador.Id == linked.Value)
+                    ? linked
+                    : null;
+            }
+        }
+
         private async Task LoadPortalAsync(string? preferredUserId, string? preferredRoleId)
         {
             IsRefreshing = true;
@@ -471,7 +504,7 @@ namespace OrionERP.Web.Features.Auth.AdminPortal
             try
             {
                 Snapshot = await IdentityAdminService.GetPortalSnapshotAsync();
-                ArrendadorOptions = await ArrendadoresService.GetArrendadoresAsync();
+                ArrendadorOptions = await LoadArrendadorOptionsAsync();
                 EmployeeOptions = await IdentityAdminService.GetEmployeeOptionsAsync();
                 LastRefreshedAt = DateTimeOffset.Now;
 

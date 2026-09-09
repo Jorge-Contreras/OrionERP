@@ -263,8 +263,18 @@
                                                 {
                                                     <option value="@arrendador.Id">@arrendador.RazonSocial · ID @arrendador.Id · @arrendador.RoomCount rooms</option>
                                                 }
+                                                @if (UnlistedArrendadorProveedorId is int unlistedArrendadorId)
+                                                {
+                                                    <option value="@unlistedArrendadorId">Arrendador ID @unlistedArrendadorId (fuera del catálogo de esta sesión)</option>
+                                                }
                                             </select>
-                                            <small class="field-help">Requerido para usuarios con rol Arrendadores.</small>
+                                            <small class="field-help">
+                                                Requerido para usuarios con rol Arrendadores.
+                                                @if (IsArrendadorCatalogUnavailable)
+                                                {
+                                                    <text>@ArrendadorCatalogUnavailableNotice</text>
+                                                }
+                                            </small>
                                         </label>
                                         @if (UserForm.IsNew)
                                         {

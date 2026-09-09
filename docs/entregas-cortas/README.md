@@ -107,9 +107,19 @@ con corte 2026-09-09: sus 337 pólizas previas quedan en modo compatible y el ci
 gobierna de esa fecha en adelante. Registrado por migración con ledger, no como
 escritura suelta: `20260909_production_accounting_cycle_activation`.
 
-`OHM191112Q26` y `BSU210121M77` quedaron **fuera** a propósito: entre las dos tienen 15
-pólizas descuadradas y OHM tiene 35 CFDI ligados a más de una de sus propias pólizas.
-Eso se resuelve antes de encenderlas. El baseline read-only vive en
+`OHM191112Q26` y `BSU210121M77` quedaron **fuera**, y al mirar el detalle resultó que
+casi nada de lo que las bloqueaba era un problema real:
+
+- De las 15 pólizas descuadradas, **14 son de un centavo** (±0.01, sobre la tolerancia de
+  0.005 del validador). La única de fondo es la `27047` de BSU, `SALDO INICIAL DE ENERO
+  2024`, con un solo renglón de 9,266.85 al debe y ningún abono.
+- Los **35 CFDI con varios vínculos NO eran duplicados**: 34 son repartos cuyos importes
+  suman exactamente el total del CFDI, y uno está 5.00 por debajo. Repartir un CFDI entre
+  varias pólizas es una función diseñada —`Transaccion_Comprobante.Monto`— y práctica
+  viva: 78 vínculos, el más reciente de junio 2026. Ningún CFDI está ligado por dos
+  empresas distintas.
+
+El baseline read-only vive en
 `src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_baseline.query.sql`.
 
 **Mapping de Hospedaje registrado.** Bonhomía Suites (empresa 9, sede 3) es la única sede

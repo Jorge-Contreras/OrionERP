@@ -168,7 +168,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260908_accounting_company_identity_sandbox",
       "20260908_accounting_cycle_sandbox",
       "20260908_accounting_outbox_sandbox",
-      "20260908_published_reports_sandbox"
+      "20260908_published_reports_sandbox",
+      "20260909_accounting_cycle_activation_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -200,6 +201,7 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_outbox_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260908_published_reports_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_cycle_activation_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -332,6 +334,18 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("[ESTADO_PERDIDAS_GANANCIAS]", sql, StringComparison.Ordinal);
           foreach (var fiscalStatement in new[] { "FROM fiscal.", "JOIN fiscal.", "UPDATE fiscal.", "INSERT fiscal.", "DELETE fiscal.", "EXEC fiscal." })
             Assert.DoesNotContain(fiscalStatement, sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_accounting_cycle_activation_sandbox":
+          // Ésta SÍ nombra empresas: es el registro de a quién aprobó el usuario.
+          Assert.Contains("BRUNOS260707L26", sql, StringComparison.Ordinal);
+          Assert.Contains("OHM191112Q26", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // Un piloto, no una activación masiva, y sin cerrar periodos ni publicar historia.
+          Assert.Contains("Debe quedar exactamente una empresa con el ciclo encendido.", sql, StringComparison.Ordinal);
+          Assert.Contains("Ninguna poliza historica debe entrar al ciclo por esta activacion.", sql, StringComparison.Ordinal);
+          Assert.Contains("Esta migracion no cierra periodos.", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("UPDATE dbo.Transacciones", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using OrionERP.Application.Common;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi;
+using OrionERP.UnitTests.Common;
 using OrionERP.Web.State;
 
 namespace OrionERP.UnitTests.Contabilidad;
@@ -68,6 +69,31 @@ public sealed class AccountingCompanyIdentityTests
     Assert.Contains(" OR ", predicate, StringComparison.Ordinal);
     Assert.Equal(2, CountOccurrences(predicate, "c.Comprobante_Id"));
     Assert.Equal(2, CountOccurrences(predicate, "@Rfc"));
+  }
+
+  [Fact]
+  public void OneCfdiSplitAcrossSeveralPoliciesOfTheSameCompany_StaysAllowed()
+  {
+    var service = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Services/TransaccionService.cs");
+
+    // Repartir un CFDI entre varias pólizas es práctica viva —35 comprobantes y 78
+    // vínculos en producción—, y el par exacto ya lo impide
+    // UQ_Transaccion_Comprobante_TransaccionID_ComprobanteID. Rechazar el segundo
+    // vínculo en bloque rompía ese reparto.
+    Assert.DoesNotContain("CompanyLinkElsewhere", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("ya está ligado a otra póliza de la misma empresa", service, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void TheCfdiBalanceIsMeasuredPerCompany()
+  {
+    var service = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Services/TransaccionService.cs");
+
+    // Lo asignado por otra empresa no consume el margen de ésta sobre un CFDI que
+    // ambas alcanzan legítimamente, una como emisora y la otra como receptora.
+    Assert.Contains("assignedTransaction.RFC = @CompanyRfc", service, StringComparison.Ordinal);
   }
 
   [Fact]

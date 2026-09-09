@@ -2403,7 +2403,6 @@ EXEC sys.sp_set_session_context @key = N'OrionERP.Application', @value = N'Orion
     public bool CurrentLinkExists { get; set; }
     public bool HasPaymentLinks { get; set; }
     public bool PlaceholderExists { get; set; }
-    public bool CompanyLinkElsewhere { get; set; }
   }
 
   private sealed class Pago20LinkContextRow
@@ -2567,6 +2566,12 @@ SELECT
     CAST(ISNULL(SUM(CASE
         WHEN tc.Transaccion_ID = @TransaccionId AND tc.Comprobante_ID = @ComprobanteId THEN 0
         WHEN @RelinkPlaceholder = 1 AND tc.Transaccion_ID = 5505 THEN 0
+        WHEN NOT EXISTS
+        (
+          SELECT 1 FROM dbo.Transacciones AS assignedTransaction
+          WHERE assignedTransaction.ID = tc.Transaccion_ID
+            AND assignedTransaction.RFC = @CompanyRfc
+        ) THEN 0
         ELSE tc.Monto END), 0) AS decimal(19,4)) AS CfdiAssignedOther,
     CAST(ISNULL((
         SELECT SUM(tc2.Monto)
@@ -2591,15 +2596,7 @@ SELECT
     CAST(CASE WHEN EXISTS (
         SELECT 1 FROM dbo.Transaccion_Comprobante AS placeholder WITH (UPDLOCK, HOLDLOCK)
         WHERE placeholder.Transaccion_ID = 5505 AND placeholder.Comprobante_ID = @ComprobanteId
-    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists,
-    CAST(CASE WHEN EXISTS (
-        SELECT 1 FROM dbo.Transaccion_Comprobante AS companyLink WITH (UPDLOCK, HOLDLOCK)
-        JOIN dbo.Transacciones AS companyTransaction ON companyTransaction.ID = companyLink.Transaccion_ID
-        WHERE companyLink.Comprobante_ID = @ComprobanteId
-          AND companyTransaction.RFC = @CompanyRfc
-          AND companyLink.Transaccion_ID <> @TransaccionId
-          AND companyLink.Transaccion_ID <> 5505
-    ) THEN 1 ELSE 0 END AS bit) AS CompanyLinkElsewhere
+    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists
 FROM dbo.Transaccion_Comprobante AS tc WITH (UPDLOCK, HOLDLOCK)
 WHERE tc.Comprobante_ID = @ComprobanteId;";
       var state = await conn.QuerySingleAsync<RegularCfdiLinkStateRow>(new CommandDefinition(
@@ -2618,13 +2615,6 @@ WHERE tc.Comprobante_ID = @ComprobanteId;";
       {
         await tx.RollbackAsync(ct);
         return TransaccionCommandResult.Fail("La pÃ³liza ya contiene vÃ­nculos de complementos de pago.");
-      }
-      // El mismo CFDI puede seguir pendiente para la otra empresa, pero dentro de
-      // ésta no se duplica: una sola póliza suya lo lleva.
-      if (!updateExisting && state.CompanyLinkElsewhere)
-      {
-        await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("Este CFDI ya está ligado a otra póliza de la misma empresa.");
       }
       if (updateExisting != state.CurrentLinkExists)
       {

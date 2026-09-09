@@ -45,24 +45,29 @@ actúan sobre filas ya publicadas, y ninguna lo está.
 `contabilidad.CompanyCycleActivation`, y eso espera la aprobación del baseline por
 empresa.
 
-## Hallazgo independiente, anterior a este cambio
+## Salud de producción tras aplicar
 
-El servicio de la consola en el puerto 5000 responde `302` a
-`/Identity/Account/Login`, y **esa página de login devuelve 500**. La causa no es esta
-migración: el directorio desplegado
-`GitHubs\Production\OrionERP` **no contiene ningún archivo `.dll`** —sólo `.pdb`, el
-`.exe`, `appsettings.json` y `web.config`—, y la publicación productiva es
-`--self-contained false`, así que esos ensamblados son obligatorios. El proceso sigue
-en pie porque los cargó antes de que desaparecieran; un reinicio no arrancaría.
+Los tres servicios responden **200** en su endpoint de readiness real, `/readyz`:
 
-Por contraste, `GitHubs\Production\OrionERP.Bonhomia.Web` conserva sus DLL y su
-readiness responde `200` con el Host correcto. El puerto 5020 responde `404` en
-`/health/ready`, que es otra cosa a revisar aparte.
+| Servicio | Puerto | `/readyz` |
+| --- | --- | --- |
+| Consola `OrionERP` | 5000 | `200` · `{"status":"ready","database":{"catalog":"grupocarpio","reachable":true}}` |
+| Bonhomía | 5010 | `200` |
+| Bruno | 5020 | `200` |
 
-El directorio vive dentro de Dropbox, así que la hipótesis principal es deshidratación
-o conflicto de sincronización sobre esa carpeta. No se pudo leer la excepción ni el
-estado del servicio: la inspección de producción (servicios, logs, SQL ad-hoc) está
-bloqueada en esta sesión.
+### Corrección de una alarma que no era tal
 
-Reparar la consola es volver a publicar sus binarios, lo que a su vez exige el push
-pendiente.
+La primera versión de esta acta reportó una consola productiva rota. **Era falso**, por
+tres lecturas equivocadas, y queda anotado para que nadie repita el diagnóstico:
+
+- **El 500 del login es esperado sobre HTTP plano.** El propio `Publish-All-prod.ps1` lo
+  documenta al elegir `/readyz` como health check: renderizar ese formulario sin TLS
+  falla cuando las cookies antiforgery exigen petición segura. Probar `/` sigue la
+  redirección al login y da ese 500.
+- **El 404 del puerto 5020 fue una URL equivocada.** El endpoint es `/healthz` o
+  `/readyz`, no `/health/ready`; con la ruta correcta responde 200.
+- **No faltan DLL.** `src/OrionERP.Web/OrionERP.Web.csproj` publica con
+  `PublishSingleFile=true` e `IncludeNativeLibrariesForSelfExtract=true`, así que los
+  ensamblados van dentro de `OrionERP.Web.exe`, de 83 MB. Sólo la consola lo hace; por
+  eso Bonhomía sí tiene DLL sueltos y ella no. El contraste entre las dos carpetas,
+  que pareció evidencia, era la diferencia de modo de publicación.

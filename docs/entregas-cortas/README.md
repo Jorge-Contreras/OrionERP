@@ -62,7 +62,7 @@ no reinicies producción.
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | Pendiente (apagada) |
-| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | Pendiente |
+| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c entregada y observada en Sandbox**; a, b y d pendientes |
 
 Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabilidad.
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
@@ -169,6 +169,23 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Propietarios asociados, plantillas y creación de actividades | E7 |
 | RLS contable y bypass de políticas legacy | E8 |
 | Dos empresas por rama, procesos, puertos y túneles | Fuera: validación y operación |
+
+## E8c: lo que queda para producción
+
+El lote son **seis tablas exactas**: `rh.TimeEvent`, `rh.AttendanceDay`,
+`rh.AttendanceException`, `rh.AttendanceCorrectionRequest`, `rh.OvertimeDecision` y
+`rh.AuditEvent`. Sus 18 predicados salieron de `rh.RfcSecurityPolicy`, que conserva los
+otros 48 sobre las dieciséis tablas restantes.
+
+**El orden en producción importa y no es simétrico.** Primero los binarios, después la
+migración. Si la migración entra antes que el código, el job de retención viejo borra el
+contexto, no ve nada y **purga cero evidencias sin reportar error** — exactamente la
+falla silenciosa que E8 advierte. Al revés es inocuo: fijar un RFC concreto funciona
+igual bajo la política vieja.
+
+Límite conocido: la retención enumera empresas desde `orion.Company`. Una fila de RH con
+un RFC que no sea empresa activa no sería recorrida. La migración comprueba que hoy no
+existe ninguna y falla si aparece.
 
 ## Hallazgos abiertos
 

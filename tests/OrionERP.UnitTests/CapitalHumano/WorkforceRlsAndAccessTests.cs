@@ -58,15 +58,19 @@ public class WorkforceRlsAndAccessTests
 
   /// <summary>
   /// La fábrica de conexiones deja SESSION_CONTEXT en '__UNSCOPED__' cuando no hay
-  /// sesión, y con la política activa eso equivale a no ver nada. Las tres rutas que
-  /// corren sin RFC de sesión tienen que fijarlo o limpiarlo a propósito.
+  /// sesión, y con la política activa eso equivale a no ver nada. Las rutas que corren
+  /// sin RFC de sesión tienen que fijarlo a propósito, una empresa a la vez: desde E8c
+  /// no queda ningún bypass por contexto nulo del que valerse.
   /// </summary>
   [Fact]
   public void RutasSinSesion_FijanOLimpianElAlcanceDeRfc()
   {
     var baseService = RepoFile.Read("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/WorkforceServiceBase.cs");
     Assert.Contains("PinRfcScopeAsync", baseService, StringComparison.Ordinal);
-    Assert.Contains("ClearRfcScopeAsync", baseService, StringComparison.Ordinal);
+    // E8c dejó el agregado de asistencia fail-closed, así que el helper que borraba el
+    // RFC para aprovechar el bypass por contexto nulo ya no existe. Dejarlo invitaría a
+    // reintroducirlo.
+    Assert.DoesNotContain("public static Task ClearRfcScopeAsync", baseService, StringComparison.Ordinal);
 
     var kiosk = RepoFile.Read("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/KioskAttendanceService.cs");
     Assert.Equal(2, CountOccurrences(kiosk, "WorkforceServiceBase.PinRfcScopeAsync"));
@@ -74,8 +78,12 @@ public class WorkforceRlsAndAccessTests
     var attendance = RepoFile.Read("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/AttendanceService.cs");
     Assert.Contains("WorkforceServiceBase.PinRfcScopeAsync(connection, null, command.Rfc, ct)", attendance, StringComparison.Ordinal);
 
+    // La retención ya no se pone por encima de todas las empresas: las recorre.
     var retention = RepoFile.Read("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/WorkforceRetentionMaintenance.cs");
-    Assert.Contains("WorkforceServiceBase.ClearRfcScopeAsync", retention, StringComparison.Ordinal);
+    Assert.DoesNotContain("ClearRfcScopeAsync", retention, StringComparison.Ordinal);
+    Assert.Contains("WorkforceServiceBase.PinRfcScopeAsync(connection, null, rfc, ct)", retention, StringComparison.Ordinal);
+    Assert.Contains("FROM orion.Company WHERE IsActive = 1", retention, StringComparison.Ordinal);
+    Assert.Contains("foreach (var rfc in companies)", retention, StringComparison.Ordinal);
   }
 
   /// <summary>

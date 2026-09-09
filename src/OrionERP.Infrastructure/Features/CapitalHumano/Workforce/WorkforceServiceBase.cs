@@ -104,22 +104,11 @@ public abstract class WorkforceServiceBase
       transaction,
       cancellationToken: ct));
 
-  /// <summary>
-  /// Deja la conexion sin RFC para las tareas que recorren todas las empresas.
-  ///
-  /// La unica que lo necesita es la retencion programada, que anonimiza evidencia
-  /// de ubicacion agrupando por Rfc. Corre en un BackgroundService, fuera de toda
-  /// peticion HTTP, asi que la fabrica la dejaria en '__UNSCOPED__' y el predicado
-  /// la filtraria por completo: purgaria cero filas sin reportar ningun error.
-  /// </summary>
-  public static Task ClearRfcScopeAsync(
-    IDbConnection connection,
-    IDbTransaction? transaction,
-    CancellationToken ct)
-    => connection.ExecuteAsync(new CommandDefinition(
-      "EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=NULL, @read_only=0;",
-      transaction: transaction,
-      cancellationToken: ct));
+  // Aqui vivia ClearRfcScopeAsync, que dejaba la conexion sin RFC para que la
+  // retencion programada recorriera todas las empresas al amparo del bypass por
+  // contexto nulo. E8c hizo fail-closed el agregado de asistencia, asi que ese bypass
+  // ya no existe y la retencion recorre empresa por empresa fijando el RFC. El helper
+  // se elimina a proposito: dejarlo invitaria a reintroducir el bypass.
 
   public static async Task WriteAuditAsync(
     IDbConnection connection,

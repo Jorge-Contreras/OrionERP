@@ -39,9 +39,26 @@ public sealed class WorkforceMaintenanceService : IWorkforceMaintenanceService
     var calculatedDays = Math.Clamp(_options.CalculatedAttendanceRetentionDays, 365, 7300);
     using var connection = _connectionFactory.Create();
     connection.Open();
-    await WorkforceServiceBase.ClearRfcScopeAsync(connection, null, ct);
-    using var transaction = connection.BeginTransaction();
-    var purged = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+
+    // El agregado de asistencia es fail-closed desde E8c: ya no hay bypass por
+    // contexto nulo que recorrer. La retención recorre las empresas una por una,
+    // fijando el RFC en cada vuelta, así que cada sentencia opera dentro de su
+    // alcance en vez de por encima de todos. orion.Company no está bajo RLS, así que
+    // enumerarla no exige contexto.
+    var companies = (await connection.QueryAsync<string>(new CommandDefinition(
+      "SELECT Rfc FROM orion.Company WHERE IsActive = 1 ORDER BY Rfc;",
+      cancellationToken: ct))).AsList();
+    if (companies.Count == 0)
+      throw new InvalidOperationException("No hay empresas activas: la retención no puede recorrer nada.");
+
+    var purged = 0;
+    var eligible = 0;
+    foreach (var rfc in companies)
+    {
+      ct.ThrowIfCancellationRequested();
+      await WorkforceServiceBase.PinRfcScopeAsync(connection, null, rfc, ct);
+      using var transaction = connection.BeginTransaction();
+      purged += await connection.ExecuteScalarAsync<int>(new CommandDefinition(
       """
       DECLARE @Changed TABLE (Rfc varchar(50) NOT NULL);
       UPDATE rh.TimeEvent SET LocationProtected=NULL
@@ -53,7 +70,7 @@ public sealed class WorkforceMaintenanceService : IWorkforceMaintenanceService
       FROM @Changed GROUP BY Rfc;
       SELECT @Purged;
       """, new { GpsCutoffUtc = asOfUtc.AddDays(-gpsDays) }, transaction, cancellationToken: ct));
-    var eligible = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+      eligible += await connection.ExecuteScalarAsync<int>(new CommandDefinition(
       """
       SELECT COUNT(1) FROM rh.AttendanceDay dayRecord
       WHERE dayRecord.WorkDate<CONVERT(date,@CalculatedCutoffUtc)
@@ -62,7 +79,9 @@ public sealed class WorkforceMaintenanceService : IWorkforceMaintenanceService
           WHERE snapshot.EmployeeId=dayRecord.EmployeeId AND period.Rfc=dayRecord.Rfc
             AND dayRecord.WorkDate BETWEEN period.FromDate AND period.ToDate);
       """, new { CalculatedCutoffUtc = asOfUtc.AddDays(-calculatedDays) }, transaction, cancellationToken: ct));
-    transaction.Commit();
+      transaction.Commit();
+    }
+
     return new WorkforceRetentionResult(purged, eligible);
   }
 }

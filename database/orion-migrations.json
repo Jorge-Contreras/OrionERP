@@ -105,6 +105,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260909_workforce_attendance_scope_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/Sql/20260909_workforce_attendance_scope_sandbox.sql",
+      "description": "E8c: RLS fail-closed del agregado de asistencia de RH, seis tablas movidas fuera del bypass, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

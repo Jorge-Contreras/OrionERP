@@ -170,7 +170,8 @@ public sealed class DatabaseMigrationManifestTests
       "20260908_accounting_outbox_sandbox",
       "20260908_published_reports_sandbox",
       "20260909_accounting_cycle_activation_sandbox",
-      "20260909_bsu_opening_balance_counterpart_sandbox"
+      "20260909_bsu_opening_balance_counterpart_sandbox",
+      "20260909_workforce_attendance_scope_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -204,6 +205,7 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260908_published_reports_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_cycle_activation_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_bsu_opening_balance_counterpart_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/Sql/20260909_workforce_attendance_scope_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -363,6 +365,21 @@ public sealed class DatabaseMigrationManifestTests
           // Comprueba la forma antes de escribir y vuelve a leerla bajo candado.
           Assert.Contains("La poliza cambio despues del preview; no se aplica a ciegas.", sql, StringComparison.Ordinal);
           Assert.Contains("Esta correccion no mete la poliza al ciclo.", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_workforce_attendance_scope_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          // Fail-closed de verdad: el predicado nuevo no admite contexto nulo.
+          Assert.Contains("CREATE FUNCTION rh.fn_WorkforceScopePredicate", sql, StringComparison.Ordinal);
+          Assert.Contains("El predicado nuevo no debe admitir contexto nulo.", sql, StringComparison.Ordinal);
+          // Un lote acotado: seis tablas fuera, y las demás conservan su política.
+          Assert.Contains("La politica heredada de RH debe conservar sus otros cuarenta y ocho predicados.", sql, StringComparison.Ordinal);
+          Assert.Contains("Una tabla del lote sigue en la politica heredada.", sql, StringComparison.Ordinal);
+          // No toca reglas laborales, nómina, expedientes ni biométricos.
+          foreach (var write in new[] { "INSERT rh.", "UPDATE rh.", "DELETE rh.", "INSERT INTO rh." })
+            Assert.DoesNotContain(write, sql, StringComparison.OrdinalIgnoreCase);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

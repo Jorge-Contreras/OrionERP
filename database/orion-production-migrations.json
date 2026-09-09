@@ -81,6 +81,24 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260908_production_accounting_outbox",
+      "path": "database/production/20260908/20260908_production_accounting_outbox.sql",
+      "description": "Bandeja contable durable con identidad unica de operacion, y mappings de Hospedaje vacios.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260908_production_published_reports",
+      "path": "database/production/20260908/20260908_production_published_reports.sql",
+      "description": "Balanza y resultados versionados con el parametro @SoloPublicadas apagado por omision.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

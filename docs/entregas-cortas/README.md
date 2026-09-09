@@ -59,8 +59,8 @@ no reinicies producción.
 | [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | Pendiente (apagada) |
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada en `b3f036a`; aplicada en Sandbox |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en Sandbox **apagada** |
-| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado; Hospedaje **apagada** por mappings faltantes |
-| [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada; variante publicada **no adoptable aún** |
+| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada** por mappings faltantes |
+| [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | Pendiente (apagada) |
 | [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | Pendiente |
 
@@ -92,12 +92,15 @@ como mínimo, `LeaseIncomeAccount` y `LeaseReceivableAccount`; opcionalmente
 `dbo.CreateTransaccionesForRoom` sigue lanzando 51823 y no se infiere ninguna cuenta
 ni categoría por texto.
 
-**Aplicadas en producción el 2026-09-08.** `20260908_production_accounting_company_identity`
-y `20260908_production_accounting_cycle` están aplicadas en `grupocarpio` con respaldo
-verificado y preview revisado; el ledger productivo devuelve **9 VERIFIED**. Los
-binarios **todavía no se despliegan**; el push ya está hecho, así que
-`Publish-All-prod.ps1` ya cumple su precondición y sólo falta ejecutarlo. Ver
-[acta](../production-accounting-packages-applied-20260908.md).
+**Producción al día en base de datos.** Los cuatro paquetes contables están aplicados
+en `grupocarpio` con respaldo verificado y preview revisado, y el ledger productivo
+devuelve **11 VERIFIED**. Actas: [E3 y E4](../production-accounting-packages-applied-20260908.md)
+y [E5 y E6](../production-outbox-reports-applied-20260909.md).
+
+**Los binarios productivos preceden a E5 y E6.** Son de las 19:45 del 2026-09-08; E5 se
+registró a las 22:21 y E6 a las 22:34. Nada está roto —el código anterior no invoca la
+bandeja y el parámetro nuevo tiene valor por omisión— pero E5 y E6 no surten efecto
+hasta una publicación más.
 
 **Activar el ciclo es otra cosa.** La migración crea la capacidad apagada. Encenderla
 para una empresa es escribir su fila en `contabilidad.CompanyCycleActivation`, y eso

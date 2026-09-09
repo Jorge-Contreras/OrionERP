@@ -99,6 +99,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260909_production_accounting_cycle_activation",
+      "path": "database/production/20260909/20260909_production_accounting_cycle_activation.sql",
+      "description": "Enciende el ciclo solo para el piloto BRUNOS con corte 2026-09-09, y registra el mapping de Bonhomia Suites.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

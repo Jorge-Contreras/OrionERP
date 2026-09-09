@@ -102,11 +102,21 @@ registró a las 22:21 y E6 a las 22:34. Nada está roto —el código anterior n
 bandeja y el parámetro nuevo tiene valor por omisión— pero E5 y E6 no surten efecto
 hasta una publicación más.
 
-**Activar el ciclo es otra cosa.** La migración crea la capacidad apagada. Encenderla
-para una empresa es escribir su fila en `contabilidad.CompanyCycleActivation`, y eso
-sólo procede cuando el usuario apruebe el baseline de esa empresa. El baseline vive en
-`src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_baseline.query.sql`
-y es read-only.
+**Ciclo encendido para un piloto (2026-09-09).** El usuario eligió `BRUNOS260707L26`
+con corte 2026-09-09: sus 337 pólizas previas quedan en modo compatible y el ciclo
+gobierna de esa fecha en adelante. Registrado por migración con ledger, no como
+escritura suelta: `20260909_production_accounting_cycle_activation`.
+
+`OHM191112Q26` y `BSU210121M77` quedaron **fuera** a propósito: entre las dos tienen 15
+pólizas descuadradas y OHM tiene 35 CFDI ligados a más de una de sus propias pólizas.
+Eso se resuelve antes de encenderlas. El baseline read-only vive en
+`src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_baseline.query.sql`.
+
+**Mapping de Hospedaje registrado.** Bonhomía Suites (empresa 9, sede 3) es la única sede
+con Hospedaje: `LeaseIncomeAccount = 401.25.02` y `LeaseReceivableAccount = 205.01.01`,
+elegidas por el usuario sobre su propio catálogo. Aviso importante:
+`dbo.CreateTransaccionesForRoom` **sigue lanzando 51823**. El dato ya está; falta el
+código que lo consuma a través del contrato durable.
 
 "Apagada" significa que el mecanismo se implementa y se entrega desactivado: falta
 un dato empresarial o una decisión del usuario para encenderlo, no código.

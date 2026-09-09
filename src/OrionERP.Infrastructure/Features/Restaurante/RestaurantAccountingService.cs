@@ -12,16 +12,26 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly ITransaccionService _transactionService;
   private readonly IRestaurantScopeAccessor _scopeAccessor;
+  private readonly IAccountingOutbox _outbox;
 
   public RestaurantAccountingService(
     IDbConnectionFactory connectionFactory,
     ITransaccionService transactionService,
-    IRestaurantScopeAccessor scopeAccessor)
+    IRestaurantScopeAccessor scopeAccessor,
+    IAccountingOutbox outbox)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
     _scopeAccessor = scopeAccessor ?? throw new ArgumentNullException(nameof(scopeAccessor));
+    _outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
   }
+
+  /// <summary>
+  /// Identidad única de la contabilización diaria. Determinista a propósito: dos
+  /// reintentos de la misma fecha y sede son la misma operación, no dos.
+  /// </summary>
+  internal static string DailyOperationKey(int siteId, DateTime operationalDate)
+    => $"DAILY:{siteId}:{operationalDate:yyyy-MM-dd}";
 
   public async Task<RestaurantAccountingPreviewDto> GetDailyPreviewAsync(
     string rfc,
@@ -96,10 +106,27 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     var preview = await GetDailyPreviewAsync(normalizedRfc, siteId, date, ct);
     if (preview.ExistingTransactionId.HasValue)
       return RestaurantCommandResult.Ok($"La póliza diaria ya existe: {preview.ExistingTransactionId}.");
+
+    // Reclamar antes de trabajar: la identidad es única en la base, así que un
+    // reintento concurrente no puede producir una segunda contabilización.
+    var operation = await _outbox.ClaimAsync(
+      AccountingOutboxModules.Restaurant,
+      DailyOperationKey(siteId, date),
+      $"{{\"module\":\"restaurant\",\"kind\":\"dailyConsolidated\",\"siteId\":{siteId},\"operationalDate\":\"{date:yyyy-MM-dd}\"}}",
+      ct);
+    if (operation.AlreadyCompleted)
+      return RestaurantCommandResult.Ok($"La póliza diaria ya existe: {operation.TransaccionId}.");
+
     if (preview.EligibleOrderCount == 0)
+    {
+      await _outbox.FailAsync(operation.Id, "No hay ventas liquidadas elegibles para esta fecha.", ct);
       return RestaurantCommandResult.Fail("No hay ventas liquidadas elegibles para esta fecha.");
+    }
     if (!preview.ConfigurationComplete)
+    {
+      await _outbox.FailAsync(operation.Id, "Faltan cuentas contables de la sede.", ct);
       return RestaurantCommandResult.Fail("Completa las cuentas contables requeridas en Configuración operativa.");
+    }
 
     using var conn = CreateConnection();
     var config = await LoadConfigurationAsync(conn, normalizedRfc, siteId, ct);
@@ -113,12 +140,29 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     };
     var receiptTotal = totals.Receipts.Sum(receipt => receipt.Amount);
     if (Math.Abs(receiptTotal - (totals.Sales + totals.Tax)) > 0.02m)
-      return RestaurantCommandResult.Fail($"Los cobros ({receiptTotal:C}) no coinciden con las ventas netas e IVA ({totals.Sales + totals.Tax:C}); concilia pagos antes de generar la póliza.");
+    {
+      // Un descuadre no publica, y la operación queda pendiente con su motivo.
+      var imbalance = $"Los cobros ({receiptTotal:C}) no coinciden con las ventas netas e IVA ({totals.Sales + totals.Tax:C}); concilia pagos antes de generar la póliza.";
+      await _outbox.FailAsync(operation.Id, imbalance, ct);
+      return RestaurantCommandResult.Fail(imbalance);
+    }
 
-    var concept = $"VENTAS RESTAURANTE {date:yyyy-MM-dd} SEDE {siteId}";
-    var transactionId = await CreateClosedTransactionAsync(
-      normalizedRfc, date, concept, receiptTotal, config, totals, false, false,
-      $"Consolidado diario Restaurante; excluye CFDI individuales, propinas, cancelaciones, reembolsos y saldos pendientes. Usuario: {userName}", ct);
+    // Recuperación entre pasos: si un intento anterior alcanzó a crear la póliza y no
+    // a vincularla, se retoma esa misma póliza en vez de crear otra.
+    var resumed = operation.ResumesFromExistingPolicy
+      && await PolicyExistsAsync(conn, operation.TransaccionId!.Value, ct);
+    var transactionId = resumed ? operation.TransaccionId!.Value : 0;
+    if (!resumed)
+    {
+      if (operation.ResumesFromExistingPolicy) await _outbox.ForgetPolicyAsync(operation.Id, ct);
+      var concept = $"VENTAS RESTAURANTE {date:yyyy-MM-dd} SEDE {siteId}";
+      transactionId = await CreateClosedTransactionAsync(
+        normalizedRfc, date, concept, receiptTotal, config, totals, false, false,
+        $"Consolidado diario Restaurante; excluye CFDI individuales, propinas, cancelaciones, reembolsos y saldos pendientes. Usuario: {userName}", ct);
+      // El rastro se graba antes de intentar el vínculo: eso es lo que hace
+      // recuperable un fallo entre ambos pasos.
+      await _outbox.RecordPolicyAsync(operation.Id, transactionId, ct);
+    }
     try
     {
       var linkedOrders = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
@@ -126,8 +170,13 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
         SET XACT_ABORT ON;
         BEGIN TRANSACTION;
         {RestaurantScopeAccessor.EnsureEnabledSql}
-        INSERT INTO restaurante.AccountingLink (Rfc,SiteId,OperationalDate,LinkType,TransactionId)
-        VALUES (@Rfc,@SiteId,@Date,'DailyConsolidated',@TransactionId);
+        IF NOT EXISTS
+        (
+          SELECT 1 FROM restaurante.AccountingLink WITH (UPDLOCK,HOLDLOCK)
+          WHERE Rfc=@Rfc AND SiteId=@SiteId AND OperationalDate=@Date AND LinkType='DailyConsolidated'
+        )
+          INSERT INTO restaurante.AccountingLink (Rfc,SiteId,OperationalDate,LinkType,TransactionId)
+          VALUES (@Rfc,@SiteId,@Date,'DailyConsolidated',@TransactionId);
 
         INSERT INTO restaurante.AccountingOrderLink
           (Rfc,OrderId,SiteId,OperationalDate,LinkType,TransactionId)
@@ -153,15 +202,33 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
         COMMIT TRANSACTION;
         SELECT @Linked;
         """, ScopedParameters(scope, new { Rfc = normalizedRfc, SiteId = siteId, Date = date, TransactionId = transactionId, UserName = userName }), cancellationToken: ct));
-      if (linkedOrders == 0) throw new InvalidOperationException("Las ventas fueron vinculadas por otro proceso.");
+      if (linkedOrders == 0)
+      {
+        // Nadie más pudo estar en esta misma operación —la identidad es única—, así que
+        // las ventas se fueron por otra vía y esta póliza sí quedaría huérfana.
+        await _transactionService.DeleteTransaccionAsync(transactionId, ct);
+        await _outbox.ForgetPolicyAsync(operation.Id, ct);
+        await _outbox.FailAsync(operation.Id, "Las ventas fueron vinculadas por otra vía contable.", ct);
+        return RestaurantCommandResult.Fail("No se generó la póliza: las ventas fueron vinculadas por otra vía contable.");
+      }
+
+      await _outbox.CompleteAsync(operation.Id, ct);
       return RestaurantCommandResult.Ok($"Póliza diaria {transactionId} generada y balanceada para {linkedOrders} venta(s).");
     }
     catch (Exception ex)
     {
-      await _transactionService.DeleteTransaccionAsync(transactionId, ct);
-      return RestaurantCommandResult.Fail($"No se generó la póliza: {ex.Message}");
+      // La póliza NO se borra: ya está registrada en la bandeja y el reintento retoma
+      // desde el vínculo. Borrarla aquí es justo lo que hacía este flujo no durable.
+      await _outbox.FailAsync(operation.Id, ex.Message, ct);
+      return RestaurantCommandResult.Fail(
+        $"La póliza {transactionId} quedó creada pero sin vincular: {ex.Message} El reintento la retoma sin duplicarla.");
     }
   }
+
+  private static Task<bool> PolicyExistsAsync(DbConnection conn, int transaccionId, CancellationToken ct)
+    => conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+      "SELECT CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.Transacciones WHERE ID=@Id) THEN 1 ELSE 0 END);",
+      new { Id = transaccionId }, cancellationToken: ct));
 
   public async Task<RestaurantCommandResult> GenerateIndividualCfdiPolicyAsync(
     string rfc,

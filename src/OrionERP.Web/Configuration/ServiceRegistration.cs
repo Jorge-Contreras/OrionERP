@@ -202,6 +202,7 @@ public static class ServiceRegistration
     services.AddScoped<AccountingConnectionFactory>();
     services.AddScoped<AccountingCycleSessionGuard>();
     services.AddScoped<IAccountingCycleService, AccountingCycleService>();
+    services.AddScoped<IAccountingOutbox, AccountingOutboxService>();
     services.AddScoped<ContabITransaccionService, ContabTransaccionService>();
     services.AddHttpClient<IFacturamaApiClient, FacturamaApiClient>();
     services.AddScoped<ICfdiStampingService, CfdiStampingService>();

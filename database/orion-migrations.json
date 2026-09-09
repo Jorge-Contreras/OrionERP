@@ -73,6 +73,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260908_accounting_outbox_sandbox",
+      "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_outbox_sandbox.sql",
+      "description": "Bandeja contable durable con identidad unica de operacion, y mappings de Hospedaje vacios, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

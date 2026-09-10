@@ -40,3 +40,16 @@ No se toca el script ajeno `20260907_fiscal_declaracion_deploy.ps1`.
 
 Build Release. Unitarias del comportamiento nuevo: `Draft` excluido, `Posted`
 incluido, efecto de la reversa, y periodo y empresa correctos.
+
+## Estado productivo medido — 2026-09-10
+
+La variante publicada está instalada, pero ninguna empresa tiene todavía pólizas en
+`Posted` o `Reversed`. Bruno es el único piloto con ciclo habilitado: sus 339 pólizas
+siguen en historia compatible y hay cero publicadas. OHM tiene 6,240 pólizas y BSU
+671, ambas con el ciclo apagado; las demás empresas activas también conservan su
+historia compatible.
+
+Por tanto, adoptar hoy la variante publicada como reporte oficial lo dejaría vacío.
+Cerrar E6 como capacidad de software no requiere más código; adoptarlo como política
+oficial exige una decisión contable por empresa sobre fecha de corte, publicación y
+conciliación de la historia compatible.

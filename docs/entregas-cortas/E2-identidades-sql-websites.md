@@ -4,11 +4,17 @@ Lee primero las [reglas permanentes](README.md#reglas-permanentes). Depende de: 
 Superficie: Bonhomía y Bruno. **Se entrega apagada**: los scripts quedan listos y el
 usuario los aplica y cambia la cadena.
 
-## Estado actual
+## Estado actual — verificado 2026-09-10
 
 Los perfiles y procesos por instancia están definidos, pero eso no demuestra permisos
-SQL mínimos: la matriz contable marca este punto como pendiente de cierre operativo.
-Ninguna revisión ha inspeccionado los logins productivos.
+SQL mínimos. El corte productivo read-only confirmó que `orion_bonhomia_web` y
+`orion_bruno_web` no existen todavía como login ni como usuario de `grupocarpio`.
+Los tres servicios corren como `LocalSystem` y hoy comparten la identidad SQL `orion`.
+
+Los scripts y la matriz están completos. El cierre es operativo: crear dos contraseñas
+fuertes fuera del repositorio, ejecutar los grants, guardar una conexión distinta en la
+configuración privada de cada servicio público, reiniciarlos y hacer smoke test. No se
+puede cerrar inventando o registrando esas credenciales en archivos versionados.
 
 ## Qué se escribe
 

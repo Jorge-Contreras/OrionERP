@@ -59,7 +59,7 @@ no reinicies producción.
 | [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | **Entregada (apagada)**: scripts listos, los aplica el usuario |
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada; aplicada en producción |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en producción, encendida sólo para el piloto Bruno |
-| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
+| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | **Código completo** para consolidado, CFDI individual/tardío y Hospedaje; el sustrato SQL está en producción y los binarios más recientes quedan por publicar |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
 | [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | **Implementada en Sandbox**; los 288 vínculos se eliminaron también en producción con manifiesto y auditoría inmutables |
 | [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c aplicada en producción; E8a/E8b/E8d aplicadas en Sandbox y previsualizadas para producción** |
@@ -82,11 +82,11 @@ que queden fuera. `GetPublishedReportAvailabilityAsync` devuelve ese pendiente c
 nombre; mientras haya pólizas fuera del ciclo, el reporte vigente sigue siendo el
 oficial.
 
-**Lo que E5 dejó fuera, con nombre exacto.** El contrato durable cubre sólo la
-contabilización diaria de Restaurante. `GenerateIndividualCfdiPolicyAsync` —órdenes
-individuales y el ajuste de CFDI tardío, que hoy crea la reversión
-`LateCfdiReversal`— sigue fuera de la bandeja y conserva su comportamiento actual:
-borra la póliza si el vínculo falla. Es el siguiente lote.
+**E5 ya no deja una vía contable de Restaurante fuera.** Además del consolidado diario,
+`GenerateIndividualCfdiPolicyAsync` y la reversión `LateCfdiReversal` tienen identidades
+durables separadas. Un fallo de vínculo conserva la póliza registrada y el reintento la
+retoma; los vínculos CFDI/orden y el evento son idempotentes. Una integración SQL real
+en Sandbox provocó ese fallo entre pasos y confirmó una sola póliza balanceada.
 
 **Hospedaje ya usa la bandeja durable.** La acción **Crear Póliza** de la reservación
 consume `contabilidad.HospitalityAccountingMapping`, exige las cuentas explícitas de

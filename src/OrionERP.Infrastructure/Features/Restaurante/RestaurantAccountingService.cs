@@ -1,5 +1,7 @@
 using System.Data.Common;
+using System.Text.Json;
 using Dapper;
+using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Logistica.Shared;
@@ -9,21 +11,25 @@ namespace OrionERP.Infrastructure.Features.Restaurante;
 
 public sealed class RestaurantAccountingService : IRestaurantAccountingService
 {
+  private static readonly JsonSerializerOptions OutboxJsonOptions = new(JsonSerializerDefaults.Web);
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly ITransaccionService _transactionService;
   private readonly IRestaurantScopeAccessor _scopeAccessor;
   private readonly IAccountingOutbox _outbox;
+  private readonly ILogger<RestaurantAccountingService> _logger;
 
   public RestaurantAccountingService(
     IDbConnectionFactory connectionFactory,
     ITransaccionService transactionService,
     IRestaurantScopeAccessor scopeAccessor,
-    IAccountingOutbox outbox)
+    IAccountingOutbox outbox,
+    ILogger<RestaurantAccountingService> logger)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
     _scopeAccessor = scopeAccessor ?? throw new ArgumentNullException(nameof(scopeAccessor));
     _outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
+    _logger = logger ?? throw new ArgumentNullException(nameof(logger));
   }
 
   /// <summary>
@@ -246,110 +252,362 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     if (order is null) return RestaurantCommandResult.Fail("La orden no pertenece al RFC seleccionado.");
     if (order.Status == "Cancelled" || order.PaymentStatus != "Paid")
       return RestaurantCommandResult.Fail("Sólo se puede ligar CFDI a una venta pagada y no cancelada.");
-    if (order.LinkType == "IndividualCfdi")
-      return RestaurantCommandResult.Ok($"La orden ya tiene póliza individual {order.LinkedTransactionId}.");
     var scope = await _scopeAccessor.ResolveRequiredAsync(normalizedRfc, order.SiteId, ct);
 
-    var receipts = (await conn.QueryAsync<RestaurantReportBreakdownDto>(new CommandDefinition(
-      """
-      SELECT PaymentMethod AS Label,CAST(SUM(Amount-RefundedAmount) AS decimal(18,2)) AS Amount
-      FROM restaurante.Payment
-      WHERE Rfc=@Rfc AND OrderId=@OrderId AND Amount-RefundedAmount>0
-      GROUP BY PaymentMethod;
-      """, new { Rfc = normalizedRfc, OrderId = orderId }, cancellationToken: ct))).AsList();
-    var totals = new AccountingTotals
-    {
-      Sales = order.Total - order.TaxTotal,
-      Tax = order.TaxTotal,
-      Discounts = order.DiscountTotal,
-      Cost = order.TheoreticalCost,
-      Receipts = receipts
-    };
-    var receiptTotal = receipts.Sum(receipt => receipt.Amount);
-    if (Math.Abs(receiptTotal - order.Total) > 0.02m)
-      return RestaurantCommandResult.Fail("Los cobros de la orden no coinciden con su total; concilia antes de ligar el CFDI.");
-    var config = await LoadConfigurationAsync(conn, normalizedRfc, order.SiteId, ct);
-    if (!IsComplete(config, totals.Tax, totals.Discounts, totals.Cost, totals.Receipts))
-      return RestaurantCommandResult.Fail("Completa las cuentas contables requeridas para esta sede.");
+    // Una orden admite una sola conversión a póliza individual. El CFDI solicitado
+    // forma parte del payload inmutable: cambiarlo después de iniciar exige revisar
+    // el intento, no crear otra póliza.
+    var individualPayload = new IndividualCfdiPayload(
+      scope.LegacySiteId,
+      order.Id,
+      comprobanteId,
+      decimal.Round(order.Total, 2, MidpointRounding.ToEven));
+    var individualOperation = await _outbox.ClaimAsync(
+      AccountingOutboxModules.Restaurant,
+      IndividualCfdiOperationKey(scope.LegacySiteId, order.Id),
+      JsonSerializer.Serialize(individualPayload, OutboxJsonOptions),
+      ct);
+    if (individualOperation.InProgress)
+      return RestaurantCommandResult.Fail("La póliza individual ya se está generando. Espera un momento antes de reintentar.");
 
-    int? reversalTransactionId = null;
+    int? durableIndividualTransactionId = individualOperation.TransaccionId;
     try
     {
+      EnsureIndividualPayload(individualOperation, normalizedRfc, individualPayload);
+      if (individualOperation.AlreadyCompleted)
+      {
+        if (individualOperation.TransaccionId is not > 0)
+          throw new InvalidOperationException("El rastro durable completado no identifica su póliza.");
+        return RestaurantCommandResult.Ok($"La orden ya tiene póliza individual {individualOperation.TransaccionId}.");
+      }
+
+      // Adopta una póliza individual creada por la versión anterior sólo cuando el
+      // usuario solicita exactamente el mismo CFDI de la misma orden.
+      if (order.LinkType == "IndividualCfdi")
+      {
+        if (order.LinkedTransactionId is not > 0 || order.LinkedCfdiId != comprobanteId)
+          throw new InvalidOperationException("La orden ya tiene otra póliza individual o un CFDI distinto.");
+        if (individualOperation.TransaccionId is > 0
+          && individualOperation.TransaccionId != order.LinkedTransactionId)
+          throw new InvalidOperationException("El rastro durable apunta a una póliza distinta de la orden.");
+        if (individualOperation.TransaccionId is null)
+        {
+          await _outbox.RecordPolicyAsync(individualOperation.Id, order.LinkedTransactionId.Value, ct);
+          durableIndividualTransactionId = order.LinkedTransactionId.Value;
+        }
+        await _outbox.CompleteAsync(individualOperation.Id, ct);
+        return RestaurantCommandResult.Ok($"La orden ya tiene póliza individual {order.LinkedTransactionId}.");
+      }
+
+      var receipts = (await conn.QueryAsync<RestaurantReportBreakdownDto>(new CommandDefinition(
+        """
+        SELECT PaymentMethod AS Label,CAST(SUM(Amount-RefundedAmount) AS decimal(18,2)) AS Amount
+        FROM restaurante.Payment
+        WHERE Rfc=@Rfc AND OrderId=@OrderId AND Amount-RefundedAmount>0
+        GROUP BY PaymentMethod;
+        """, new { Rfc = normalizedRfc, OrderId = orderId }, cancellationToken: ct))).AsList();
+      var totals = new AccountingTotals
+      {
+        Sales = order.Total - order.TaxTotal,
+        Tax = order.TaxTotal,
+        Discounts = order.DiscountTotal,
+        Cost = order.TheoreticalCost,
+        Receipts = receipts
+      };
+      var receiptTotal = receipts.Sum(receipt => receipt.Amount);
+      if (Math.Abs(receiptTotal - order.Total) > 0.02m)
+        throw new InvalidOperationException("Los cobros de la orden no coinciden con su total; concilia antes de ligar el CFDI.");
+      var config = await LoadConfigurationAsync(conn, normalizedRfc, order.SiteId, ct);
+      if (!IsComplete(config, totals.Tax, totals.Discounts, totals.Cost, totals.Receipts))
+        throw new InvalidOperationException("Completa las cuentas contables requeridas para esta sede.");
+
+      int? reversalTransactionId = null;
       if (order.LinkType == "DailyConsolidated")
       {
-        var reversalConcept = $"AJUSTE CFDI TARDÍO RESTAURANTE FOLIO {order.Folio:000}";
-        reversalTransactionId = await CreateClosedTransactionAsync(
-          normalizedRfc, order.OperationalDate, reversalConcept, receiptTotal, config, totals, false, true,
-          $"Reversión supervisada de la porción incluida en la póliza diaria {order.LinkedTransactionId}. Usuario: {userName}", ct);
+        if (order.LinkedTransactionId is not > 0)
+          throw new InvalidOperationException("La venta diaria no identifica la póliza que debe revertirse.");
+        reversalTransactionId = await EnsureLateCfdiReversalAsync(
+          conn,
+          scope,
+          normalizedRfc,
+          order,
+          receiptTotal,
+          config,
+          totals,
+          userName,
+          ct);
       }
 
-      var concept = $"VENTA RESTAURANTE FOLIO {order.Folio:000} CFDI {comprobanteId}";
-      var individualTransactionId = await CreateClosedTransactionAsync(
-        normalizedRfc, order.OperationalDate, concept, receiptTotal, config, totals, true, false,
-        $"Póliza individual de venta Restaurante con CFDI. Usuario: {userName}", ct);
-      var cfdiLink = await _transactionService.InsertTransaccionComprobanteAsync(individualTransactionId, comprobanteId, order.Total, ct);
-      if (!cfdiLink.Success)
+      var resumed = individualOperation.ResumesFromExistingPolicy
+        && await PolicyExistsAsync(conn, individualOperation.TransaccionId!.Value, ct);
+      var individualTransactionId = resumed ? individualOperation.TransaccionId!.Value : 0;
+      if (!resumed)
       {
-        await _transactionService.DeleteTransaccionAsync(individualTransactionId, ct);
-        if (reversalTransactionId.HasValue) await _transactionService.DeleteTransaccionAsync(reversalTransactionId.Value, ct);
-        return RestaurantCommandResult.Fail(cfdiLink.Message ?? "No se pudo ligar el CFDI a la póliza individual.");
+        if (individualOperation.ResumesFromExistingPolicy)
+          await _outbox.ForgetPolicyAsync(individualOperation.Id, ct);
+        var concept = $"VENTA RESTAURANTE FOLIO {order.Folio:000} CFDI {comprobanteId}";
+        individualTransactionId = await CreateClosedTransactionAsync(
+          normalizedRfc, order.OperationalDate, concept, receiptTotal, config, totals, true, false,
+          $"Póliza individual de venta Restaurante con CFDI. Usuario: {userName}", ct);
+        try
+        {
+          await _outbox.RecordPolicyAsync(individualOperation.Id, individualTransactionId, ct);
+          durableIndividualTransactionId = individualTransactionId;
+        }
+        catch
+        {
+          await _transactionService.DeleteTransaccionAsync(individualTransactionId, ct);
+          throw;
+        }
       }
 
-      try
+      if (!await _transactionService.IsComprobanteLinkedToTransaccionAsync(
+        individualTransactionId, comprobanteId, ct))
       {
-        await conn.ExecuteAsync(new CommandDefinition(
-          $"""
-          SET XACT_ABORT ON;
-          BEGIN TRANSACTION;
-          {RestaurantScopeAccessor.EnsureEnabledSql}
-          IF @ReversalTransactionId IS NOT NULL
-          BEGIN
-            INSERT INTO restaurante.AccountingLink (Rfc,SiteId,OrderId,OperationalDate,LinkType,TransactionId)
-            VALUES (@Rfc,@SiteId,@OrderId,@Date,'LateCfdiReversal',@ReversalTransactionId);
-          END;
-          INSERT INTO restaurante.AccountingLink (Rfc,SiteId,OrderId,OperationalDate,LinkType,TransactionId,CfdiId)
-          VALUES (@Rfc,@SiteId,@OrderId,@Date,'IndividualCfdi',@IndividualTransactionId,@CfdiId);
-
-          IF EXISTS (SELECT 1 FROM restaurante.AccountingOrderLink WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND OrderId=@OrderId)
-            UPDATE restaurante.AccountingOrderLink
-            SET LinkType='IndividualCfdi',TransactionId=@IndividualTransactionId,CfdiId=@CfdiId,CreatedAt=SYSUTCDATETIME()
-            WHERE Rfc=@Rfc AND OrderId=@OrderId;
-          ELSE
-            INSERT INTO restaurante.AccountingOrderLink (Rfc,OrderId,SiteId,OperationalDate,LinkType,TransactionId,CfdiId)
-            VALUES (@Rfc,@OrderId,@SiteId,@Date,'IndividualCfdi',@IndividualTransactionId,@CfdiId);
-
-          INSERT INTO restaurante.OrderEvent
-            (Rfc,SiteId,OrderId,EventType,Category,Title,[Description],Actor,SourceKey)
-          VALUES
-            (@Rfc,@SiteId,@OrderId,'CfdiLinked','Accounting',N'CFDI ligado a póliza individual',
-             CONCAT(N'Póliza ',@IndividualTransactionId,N' · CFDI ',@CfdiId),@UserName,
-             CONCAT('accounting:',CONVERT(varchar(36),@OrderId),':IndividualCfdi:',@IndividualTransactionId));
-          COMMIT TRANSACTION;
-          """, ScopedParameters(scope, new
-          {
-            Rfc = normalizedRfc,
-            order.SiteId,
-            OrderId = orderId,
-            Date = order.OperationalDate,
-            ReversalTransactionId = reversalTransactionId,
-            IndividualTransactionId = individualTransactionId,
-            CfdiId = comprobanteId,
-            UserName = userName
-          }), cancellationToken: ct));
-        return reversalTransactionId.HasValue
-          ? RestaurantCommandResult.Ok($"Se generó reversión {reversalTransactionId} y póliza individual {individualTransactionId} ligada al CFDI.")
-          : RestaurantCommandResult.Ok($"Póliza individual {individualTransactionId} ligada al CFDI.");
+        var cfdiLink = await _transactionService.InsertTransaccionComprobanteAsync(
+          individualTransactionId, comprobanteId, order.Total, ct);
+        if (!cfdiLink.Success)
+          throw new InvalidOperationException(cfdiLink.Message ?? "No se pudo ligar el CFDI a la póliza individual.");
       }
-      catch
-      {
-        await _transactionService.DeleteTransaccionAsync(individualTransactionId, ct);
-        if (reversalTransactionId.HasValue) await _transactionService.DeleteTransaccionAsync(reversalTransactionId.Value, ct);
-        throw;
-      }
+
+      await LinkIndividualPolicyAsync(
+        conn, scope, normalizedRfc, order, individualTransactionId, comprobanteId, userName, ct);
+      await _outbox.CompleteAsync(individualOperation.Id, ct);
+      return reversalTransactionId.HasValue
+        ? RestaurantCommandResult.Ok($"Se generó reversión {reversalTransactionId} y póliza individual {individualTransactionId} ligada al CFDI.")
+        : RestaurantCommandResult.Ok($"Póliza individual {individualTransactionId} ligada al CFDI.");
     }
     catch (Exception ex)
     {
-      return RestaurantCommandResult.Fail($"No se generó la póliza individual: {ex.Message}");
+      await FailOutboxQuietlyAsync(individualOperation.Id, ex, ct);
+      var existing = durableIndividualTransactionId is > 0
+        ? $" La póliza {durableIndividualTransactionId} se conserva y el reintento la retomará."
+        : string.Empty;
+      return RestaurantCommandResult.Fail($"No se completó la póliza individual: {ex.Message}{existing}");
+    }
+  }
+
+  internal static string IndividualCfdiOperationKey(int siteId, Guid orderId)
+    => $"INDIVIDUAL_CFDI:{siteId}:{orderId:D}";
+
+  internal static string LateCfdiReversalOperationKey(int siteId, Guid orderId)
+    => $"LATE_CFDI_REVERSAL:{siteId}:{orderId:D}";
+
+  private async Task<int> EnsureLateCfdiReversalAsync(
+    DbConnection conn,
+    RestaurantScope scope,
+    string rfc,
+    AccountingOrderRow order,
+    decimal receiptTotal,
+    AccountingConfigurationRow config,
+    AccountingTotals totals,
+    string userName,
+    CancellationToken ct)
+  {
+    var originalTransactionId = order.LinkedTransactionId!.Value;
+    var payload = new LateCfdiReversalPayload(
+      scope.LegacySiteId,
+      order.Id,
+      originalTransactionId,
+      decimal.Round(order.Total, 2, MidpointRounding.ToEven));
+    var operation = await _outbox.ClaimAsync(
+      AccountingOutboxModules.Restaurant,
+      LateCfdiReversalOperationKey(scope.LegacySiteId, order.Id),
+      JsonSerializer.Serialize(payload, OutboxJsonOptions),
+      ct);
+    if (operation.InProgress)
+      throw new InvalidOperationException("La reversión de CFDI tardío ya se está generando.");
+    EnsureReversalPayload(operation, rfc, payload);
+    if (operation.AlreadyCompleted)
+      return operation.TransaccionId is > 0
+        ? operation.TransaccionId.Value
+        : throw new InvalidOperationException("El rastro durable completado no identifica su póliza de reversión.");
+
+    var resumed = operation.ResumesFromExistingPolicy
+      && await PolicyExistsAsync(conn, operation.TransaccionId!.Value, ct);
+    var transactionId = resumed ? operation.TransaccionId!.Value : 0;
+    if (!resumed)
+    {
+      if (operation.ResumesFromExistingPolicy)
+        await _outbox.ForgetPolicyAsync(operation.Id, ct);
+      var concept = $"AJUSTE CFDI TARDÍO RESTAURANTE FOLIO {order.Folio:000}";
+      transactionId = await CreateClosedTransactionAsync(
+        rfc, order.OperationalDate, concept, receiptTotal, config, totals, false, true,
+        $"Reversión supervisada de la porción incluida en la póliza diaria {originalTransactionId}. Usuario: {userName}", ct);
+      try
+      {
+        await _outbox.RecordPolicyAsync(operation.Id, transactionId, ct);
+      }
+      catch
+      {
+        await _transactionService.DeleteTransaccionAsync(transactionId, ct);
+        throw;
+      }
+    }
+
+    try
+    {
+      var linkedTransactionId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+        $"""
+        SET XACT_ABORT ON;
+        BEGIN TRANSACTION;
+        {RestaurantScopeAccessor.EnsureEnabledSql}
+        IF NOT EXISTS
+        (
+          SELECT 1 FROM restaurante.AccountingLink WITH (UPDLOCK,HOLDLOCK)
+          WHERE Rfc=@Rfc AND OrderId=@OrderId AND LinkType='LateCfdiReversal'
+        )
+          INSERT INTO restaurante.AccountingLink
+            (Rfc,SiteId,OrderId,OperationalDate,LinkType,TransactionId)
+          VALUES (@Rfc,@SiteId,@OrderId,@Date,'LateCfdiReversal',@TransactionId);
+        SELECT TransactionId FROM restaurante.AccountingLink
+        WHERE Rfc=@Rfc AND OrderId=@OrderId AND LinkType='LateCfdiReversal';
+        COMMIT TRANSACTION;
+        """, ScopedParameters(scope, new
+        {
+          Rfc = rfc,
+          SiteId = order.SiteId,
+          OrderId = order.Id,
+          Date = order.OperationalDate,
+          TransactionId = transactionId
+        }), cancellationToken: ct));
+      if (linkedTransactionId != transactionId)
+        throw new InvalidOperationException("La orden ya tiene otra reversión de CFDI tardío.");
+      await _outbox.CompleteAsync(operation.Id, ct);
+      return transactionId;
+    }
+    catch (Exception ex)
+    {
+      await FailOutboxQuietlyAsync(operation.Id, ex, ct);
+      throw;
+    }
+  }
+
+  private async Task FailOutboxQuietlyAsync(long operationId, Exception original, CancellationToken ct)
+  {
+    try
+    {
+      await _outbox.FailAsync(operationId, original.Message, ct);
+    }
+    catch (Exception outboxException)
+    {
+      _logger.LogError(
+        outboxException,
+        "No se pudo conservar el fallo de la operación contable de restaurante {OperationId}",
+        operationId);
+    }
+  }
+
+  private static async Task LinkIndividualPolicyAsync(
+    DbConnection conn,
+    RestaurantScope scope,
+    string rfc,
+    AccountingOrderRow order,
+    int transactionId,
+    int comprobanteId,
+    string userName,
+    CancellationToken ct)
+  {
+    await conn.ExecuteAsync(new CommandDefinition(
+      $"""
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+      {RestaurantScopeAccessor.EnsureEnabledSql}
+      IF EXISTS
+      (
+        SELECT 1 FROM restaurante.AccountingLink WITH (UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND OrderId=@OrderId AND LinkType='IndividualCfdi'
+          AND (TransactionId<>@TransactionId OR ISNULL(CfdiId,0)<>@CfdiId)
+      ) THROW 52300,'La orden ya tiene otra póliza individual o un CFDI distinto.',1;
+
+      IF NOT EXISTS
+      (
+        SELECT 1 FROM restaurante.AccountingLink WITH (UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND OrderId=@OrderId AND LinkType='IndividualCfdi'
+      )
+        INSERT INTO restaurante.AccountingLink
+          (Rfc,SiteId,OrderId,OperationalDate,LinkType,TransactionId,CfdiId)
+        VALUES (@Rfc,@SiteId,@OrderId,@Date,'IndividualCfdi',@TransactionId,@CfdiId);
+
+      IF EXISTS
+      (
+        SELECT 1 FROM restaurante.AccountingOrderLink WITH (UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND OrderId=@OrderId AND LinkType='IndividualCfdi'
+          AND (TransactionId<>@TransactionId OR ISNULL(CfdiId,0)<>@CfdiId)
+      ) THROW 52301,'La orden ya apunta a otra póliza individual o a otro CFDI.',1;
+      IF EXISTS
+      (
+        SELECT 1 FROM restaurante.AccountingOrderLink WITH (UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND OrderId=@OrderId
+          AND LinkType NOT IN ('DailyConsolidated','IndividualCfdi')
+      ) THROW 52302,'La orden tiene un vínculo contable incompatible con la póliza individual.',1;
+
+      IF EXISTS (SELECT 1 FROM restaurante.AccountingOrderLink WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND OrderId=@OrderId)
+        UPDATE restaurante.AccountingOrderLink
+        SET LinkType='IndividualCfdi',TransactionId=@TransactionId,CfdiId=@CfdiId,CreatedAt=SYSUTCDATETIME()
+        WHERE Rfc=@Rfc AND OrderId=@OrderId;
+      ELSE
+        INSERT INTO restaurante.AccountingOrderLink
+          (Rfc,OrderId,SiteId,OperationalDate,LinkType,TransactionId,CfdiId)
+        VALUES (@Rfc,@OrderId,@SiteId,@Date,'IndividualCfdi',@TransactionId,@CfdiId);
+
+      IF NOT EXISTS
+      (
+        SELECT 1 FROM restaurante.OrderEvent WITH (UPDLOCK,HOLDLOCK)
+        WHERE Rfc=@Rfc AND OrderId=@OrderId
+          AND SourceKey=CONCAT('accounting:',CONVERT(varchar(36),@OrderId),':IndividualCfdi:',@TransactionId)
+      )
+        INSERT INTO restaurante.OrderEvent
+          (Rfc,SiteId,OrderId,EventType,Category,Title,[Description],Actor,SourceKey)
+        VALUES
+          (@Rfc,@SiteId,@OrderId,'CfdiLinked','Accounting',N'CFDI ligado a póliza individual',
+           CONCAT(N'Póliza ',@TransactionId,N' · CFDI ',@CfdiId),@UserName,
+           CONCAT('accounting:',CONVERT(varchar(36),@OrderId),':IndividualCfdi:',@TransactionId));
+      COMMIT TRANSACTION;
+      """, ScopedParameters(scope, new
+      {
+        Rfc = rfc,
+        SiteId = order.SiteId,
+        OrderId = order.Id,
+        Date = order.OperationalDate,
+        TransactionId = transactionId,
+        CfdiId = comprobanteId,
+        UserName = userName
+      }), cancellationToken: ct));
+  }
+
+  private static void EnsureIndividualPayload(
+    AccountingOperation operation,
+    string rfc,
+    IndividualCfdiPayload current)
+  {
+    var original = DeserializePayload<IndividualCfdiPayload>(operation, rfc);
+    if (original != current)
+      throw new InvalidOperationException("La orden o el CFDI cambiaron después de iniciar la póliza individual.");
+  }
+
+  private static void EnsureReversalPayload(
+    AccountingOperation operation,
+    string rfc,
+    LateCfdiReversalPayload current)
+  {
+    var original = DeserializePayload<LateCfdiReversalPayload>(operation, rfc);
+    if (original != current)
+      throw new InvalidOperationException("La póliza diaria cambió después de iniciar su reversión.");
+  }
+
+  private static T DeserializePayload<T>(AccountingOperation operation, string rfc) where T : class
+  {
+    if (!string.Equals(operation.Rfc, rfc, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidOperationException("La operación durable pertenece a otro RFC.");
+    try
+    {
+      return JsonSerializer.Deserialize<T>(operation.Payload, OutboxJsonOptions)
+        ?? throw new InvalidOperationException("El rastro durable no tiene contenido.");
+    }
+    catch (JsonException ex)
+    {
+      throw new InvalidOperationException("El rastro durable no es válido.", ex);
     }
   }
 
@@ -496,7 +754,7 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
       """
       SELECT orderInfo.Id,orderInfo.SiteId,orderInfo.Folio,orderInfo.OperationalDate,orderInfo.[Status],orderInfo.PaymentStatus,
              orderInfo.Total,orderInfo.TaxTotal,orderInfo.DiscountTotal,orderInfo.TheoreticalCost,
-             linkInfo.LinkType,linkInfo.TransactionId AS LinkedTransactionId
+             linkInfo.LinkType,linkInfo.TransactionId AS LinkedTransactionId,linkInfo.CfdiId AS LinkedCfdiId
       FROM restaurante.[Order] orderInfo
       LEFT JOIN restaurante.AccountingOrderLink linkInfo ON linkInfo.Rfc=orderInfo.Rfc AND linkInfo.OrderId=orderInfo.Id
       WHERE orderInfo.Rfc=@Rfc AND orderInfo.Id=@OrderId;
@@ -543,5 +801,9 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
     public decimal TheoreticalCost { get; set; }
     public string? LinkType { get; set; }
     public int? LinkedTransactionId { get; set; }
+    public int? LinkedCfdiId { get; set; }
   }
+
+  private sealed record IndividualCfdiPayload(int SiteId, Guid OrderId, int CfdiId, decimal Amount);
+  private sealed record LateCfdiReversalPayload(int SiteId, Guid OrderId, int OriginalTransactionId, decimal Amount);
 }

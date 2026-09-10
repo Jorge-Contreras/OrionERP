@@ -22,16 +22,16 @@ transaccional del evento, consumo idempotente, y creación más vínculo de pól
 recuperación ante fallo entre pasos. Outbox contable propio, sin interferir con los
 eventos públicos que alimentan SignalR.
 
-**Restaurante primero**, sobre `RestaurantAccountingService` y `AccountingLink`,
-limitado a la **contabilización diaria**: un reintento concurrente produce una sola
-contabilización, y un fallo antes o después de crear la póliza, o antes o después de
-vincularla, se recupera sin dejar póliza huérfana.
+**Restaurante primero**, sobre `RestaurantAccountingService` y `AccountingLink`:
+un reintento concurrente produce una sola contabilización, y un fallo antes o después
+de crear la póliza, o antes o después de vincularla, se recupera sin dejar una segunda
+póliza. La primera fase cubrió el consolidado diario; el cierre incorporó las órdenes
+individuales con CFDI y su reversión por CFDI tardío.
 
 **Hospedaje después**, reutilizando el mismo contrato con identidad
-empresa/sede/reserva. Referencias explícitas de cuentas y categorías configuradas,
-y `CreateTransaccionesForRoom` habilitado **sólo** a través de ese contrato y con
-mappings completos. Empieza por una operación definida; no recorre calendarios
-históricos para generar cargos retrospectivos.
+empresa/sede/reserva y referencias explícitas de cuentas configuradas. La operación
+soportada es **Crear Póliza** desde la reservación; no recorre calendarios históricos
+para generar cargos retrospectivos.
 
 ## Límite
 
@@ -42,9 +42,7 @@ Si faltan mappings empresariales, la capacidad de Hospedaje se publica apagada y
 piden sólo los mappings faltantes; no se anuncia el flujo como terminado ni se
 infieren cuentas o categorías por texto. No se incluyen pagos cruzados excluidos.
 
-Órdenes individuales y CFDI tardío quedan fuera de este lote: si no quedan cubiertos,
-anota sus nombres exactos para el siguiente. Una corrección se hace por reversa,
-conforme al ciclo formal de E4.
+Una corrección de CFDI tardío se hace por reversa, conforme al ciclo formal de E4.
 
 ## Verificación
 
@@ -75,3 +73,16 @@ Evidencia: 16 unitarias focalizadas y una integración SQL real contra
 `Orion_Sandbox`. La integración creó una reservación temporal, ejecutó dos veces la
 acción, comprobó una sola operación completada, un solo vínculo y dos movimientos
 balanceados, y eliminó exclusivamente sus datos temporales.
+
+## Cierre de órdenes individuales 2026-09-10
+
+`GenerateIndividualCfdiPolicyAsync` y `LateCfdiReversal` ya tienen identidades
+durables separadas por empresa, sede y orden. El payload fija CFDI, importe y póliza
+diaria original; un reintento no puede cambiar esos datos ni crear una contabilización
+paralela. La póliza se registra antes del vínculo CFDI o del vínculo de Restaurante,
+y los vínculos y el evento de la orden son idempotentes.
+
+La prueba SQL real provoca un fallo exactamente después de registrar la póliza y antes
+de ligar el CFDI. El segundo intento retoma esa misma póliza, deja una sola operación
+completada, un solo vínculo de orden, un solo evento y dos movimientos balanceados; al
+terminar restaura la configuración y elimina únicamente sus datos temporales.

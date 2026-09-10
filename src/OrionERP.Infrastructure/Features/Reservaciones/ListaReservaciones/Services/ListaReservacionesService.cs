@@ -784,6 +784,7 @@ SET
     IS_LOCKED = 0,
     LOCKED_BY = '',
     LOCK_DESCRIPTION = '',
+    ReservationId = NULL,
     STATUS = ''
 WHERE ID IN @Ids;";
 
@@ -1646,7 +1647,8 @@ UPDATE dbo.ROOM_CALENDAR
 SET
     IS_LOCKED = 1,
     LOCKED_BY = @LockedBy,
-    LOCK_DESCRIPTION = @ReservationId,
+    LOCK_DESCRIPTION = @ReservationIdText,
+    ReservationId = @ReservationId,
     STATUS = @Status
 WHERE ID IN @Ids;";
 
@@ -1667,7 +1669,8 @@ WHERE ID IN @Ids;";
         {
           Ids = roomCalendarIds.ToArray(),
           LockedBy = string.IsNullOrWhiteSpace(clienteNombre) ? string.Empty : clienteNombre.Trim(),
-          ReservationId = reservationId.ToString(CultureInfo.InvariantCulture),
+          ReservationId = reservationId,
+          ReservationIdText = reservationId.ToString(CultureInfo.InvariantCulture),
           Status = string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim()
         },
         transaction: tx, cancellationToken: ct));
@@ -1687,6 +1690,7 @@ SET
     IS_LOCKED = 0,
     LOCKED_BY = '',
     LOCK_DESCRIPTION = '',
+    ReservationId = NULL,
     STATUS = ''
 WHERE ID IN @Ids;";
 

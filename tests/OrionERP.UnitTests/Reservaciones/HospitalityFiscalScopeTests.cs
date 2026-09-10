@@ -12,11 +12,38 @@ using OrionERP.Application.Features.Rfcs.Contracts;
 using OrionERP.Infrastructure.Features.Cfdi.Facturama;
 using OrionERP.Infrastructure.Features.Contabilidad.Transacciones.Services;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
+using OrionERP.UnitTests.Common;
 
 namespace OrionERP.UnitTests.Reservaciones;
 
 public class HospitalityFiscalScopeTests
 {
+  [Fact]
+  public void CfdiSuiteSource_PrefersCanonicalReservationLinkAndFallsBackToLegacyLink()
+  {
+    var source = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Reservaciones/Cfdi/ReservationCfdiService.cs");
+
+    Assert.Contains("WHERE rc.ReservationId = @ReservationId", source, StringComparison.Ordinal);
+    Assert.Contains("rc.ReservationId IS NULL", source, StringComparison.Ordinal);
+    Assert.Contains(
+      "TRY_CONVERT(int, NULLIF(LTRIM(RTRIM(rc.LOCK_DESCRIPTION)), '')) = @ReservationId",
+      source,
+      StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ConsoleSuiteLink_WritesAndClearsCanonicalAndLegacyReferencesTogether()
+  {
+    var source = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Services/ListaReservacionesService.cs");
+
+    Assert.Contains("LOCK_DESCRIPTION = @ReservationIdText", source, StringComparison.Ordinal);
+    Assert.Contains("ReservationId = @ReservationId", source, StringComparison.Ordinal);
+    Assert.Contains("ReservationIdText = reservationId.ToString", source, StringComparison.Ordinal);
+    Assert.Contains("LOCK_DESCRIPTION = '',\n    ReservationId = NULL,", source, StringComparison.Ordinal);
+  }
+
   [Fact]
   public async Task ReservationContext_RejectsAnotherIssuerBeforeLoadingReservationOrCallingExternalServices()
   {

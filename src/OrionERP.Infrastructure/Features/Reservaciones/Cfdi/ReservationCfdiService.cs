@@ -1203,6 +1203,10 @@ LEFT JOIN dbo.ROOM r
    AND r.OrionCompanyId = rc.OrionCompanyId
    AND r.OrionSiteId = rc.OrionSiteId
 WHERE rc.ReservationId = @ReservationId
+   OR (
+        rc.ReservationId IS NULL
+        AND TRY_CONVERT(int, NULLIF(LTRIM(RTRIM(rc.LOCK_DESCRIPTION)), '')) = @ReservationId
+      )
 ORDER BY rc.ROOM_DATE, rc.ROOM;
 """;
 

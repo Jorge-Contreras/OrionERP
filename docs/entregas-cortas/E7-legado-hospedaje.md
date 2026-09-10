@@ -1,4 +1,4 @@
-# E7 — Legado de Hospedaje: implementada; corrector aplicado en producción
+# E7 — Legado de Hospedaje: código completo; corte productivo restante preparado
 
 Lee primero las [reglas permanentes](README.md#reglas-permanentes). Depende de: nada.
 Superficie: consola. **Se entrega apagada**: los cuatro mecanismos son aditivos y
@@ -114,3 +114,17 @@ mismo estado. Producción quedó con **0** vínculos físicos del conjunto, 288 
 manifiesto y 288 de auditoría. Las 288 transacciones BSU, sus 251 renglones contables y
 sus 20 vínculos CFDI siguen intactos. El manifiesto productivo completo terminó con
 **16 VERIFIED**. Véase el [acta productiva](../production-e7-payment-link-removal-applied-20260909.md).
+
+## Paquete productivo de los mecanismos restantes — 2026-09-10
+
+`20260910_production_hospitality_legacy_mechanisms` consolida en un solo corte los
+tres pasos que Sandbox necesitó durante su afinación. Conserva exactamente la misma
+evidencia: repara localmente `105 → 24222` y `107 → 24228`, pone `18` y `61` en
+cuarentena local, crea las asociaciones de arrendadores y habilita únicamente las
+actividades con mapping completo. No llama Microsoft Graph ni toca eventos remotos.
+
+La simulación contra `grupocarpio` pasó y revirtió completa: validó las cuatro
+identidades Outlook, el alcance Bonhomía, los propietarios y 81 predicados RLS. El
+recibo es `artifacts/database-previews/e7-legacy-mechanisms-production-preview.json`.
+El paquete está preparado, **no aplicado**; requiere respaldo productivo verificado y
+autorización explícita junto con los tres paquetes E8 pendientes.

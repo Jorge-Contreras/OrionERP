@@ -146,6 +146,15 @@
       ]
     },
     {
+      "id": "20260910_production_hospitality_legacy_mechanisms",
+      "path": "database/production/20260910/20260910_production_hospitality_legacy_mechanisms.sql",
+      "description": "E7: asociaciones de arrendadores, mappings explícitos de actividad y reparación o cuarentena local de cuatro mappings Outlook; no invoca Microsoft Graph.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
       "id": "20260909_production_accounting_rls_scope",
       "path": "database/production/20260909/20260909_production_accounting_rls_scope.sql",
       "description": "E8a: RLS fail-closed productivo de Transacciones y Registro_Contable por CompanyId y RFC de sesión.",

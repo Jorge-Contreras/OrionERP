@@ -258,15 +258,13 @@ comprobantes ligados a varias pólizas de la misma empresa —hasta cuatro—. S
 E3 rechaza duplicar de aquí en adelante y no toca lo existente. Hay que resolverlos
 antes de activar el ciclo en esas empresas.
 
-**El broadcaster de Restaurante no publica nada.** `RestaurantEventBroadcaster`
-corre en un alcance de fondo sin sesión, así que `SqlConnectionFactory` le fija
-`OrionRfc='__UNSCOPED__'`; `logistica.RfcSecurityPolicy` cubre
-`restaurante.EventOutbox` y filtra el lote a cero filas. Comprobado en Sandbox:
-2058 eventos sin contexto, 0 con `__UNSCOPED__`. La guarda de módulo que agregó
-E1 es correcta pero no llega a ejercerse. Corregir el contexto del trabajo es un
-cambio de conducta aparte —encendería SignalR y drenaría el rezago acumulado de
-una vez— y necesita decisión del usuario antes de tocarlo. Cabe en **E8c**, que
-ya separa el contexto de trabajos del de usuario.
+**El broadcaster de Restaurante ya sabe trabajar con alcance fail-closed, pero nace
+apagado.** Enumera únicamente empresas/sedes con el módulo habilitado y fija
+`OrionRfc` + `OrionERP.CompanyId` en cada conexión antes de leer o marcar eventos.
+`RestaurantEventBroadcasting:Enabled` permanece en `false`, así que publicar el código
+no consume el rezago. El corte read-only del 2026-09-10 encontró **2,000** eventos
+BRUNOS pendientes, sin intentos, desde 2026-07-31; encenderlo los difundiría y marcaría
+publicados por lotes. Esa activación sigue siendo una decisión operativa del usuario.
 
 **El aislamiento de Hospedaje dejó fuera a dos roles que sus rutas sí autorizan.**
 `HospitalityAdministrationSessionGuard` exigía `Administrador` o `SatOperator` para

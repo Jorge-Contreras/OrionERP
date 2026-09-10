@@ -487,6 +487,8 @@ builder.Services.PostConfigure<BonhomiaGraphCalendarSyncOptions>(options =>
 builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
 builder.Services.Configure<RestaurantQzTraySigningOptions>(
   builder.Configuration.GetSection(RestaurantQzTraySigningOptions.SectionName));
+builder.Services.Configure<RestaurantEventBroadcastOptions>(
+  builder.Configuration.GetSection(RestaurantEventBroadcastOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
 {
   var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");

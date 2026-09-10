@@ -1,30 +1,54 @@
 using System.Data.Common;
 using Dapper;
 using Microsoft.AspNetCore.SignalR;
-using OrionERP.Application.Common;
-using OrionERP.Application.Features.Restaurante;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace OrionERP.Web.Features.Restaurante;
 
+public sealed class RestaurantEventBroadcastOptions
+{
+  public const string SectionName = "RestaurantEventBroadcasting";
+  public bool Enabled { get; set; }
+  public int PollIntervalMilliseconds { get; set; } = 1000;
+  public int BatchSize { get; set; } = 50;
+}
+
 public sealed class RestaurantEventBroadcaster : BackgroundService
 {
-  private readonly IServiceScopeFactory _scopeFactory;
+  private readonly string? _connectionString;
+  private readonly RestaurantEventBroadcastOptions _options;
   private readonly IHubContext<RestaurantEventsHub> _hub;
   private readonly ILogger<RestaurantEventBroadcaster> _logger;
 
   public RestaurantEventBroadcaster(
-    IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
+    IOptions<RestaurantEventBroadcastOptions> options,
     IHubContext<RestaurantEventsHub> hub,
     ILogger<RestaurantEventBroadcaster> logger)
   {
-    _scopeFactory = scopeFactory;
+    ArgumentNullException.ThrowIfNull(configuration);
+    _connectionString = configuration.GetConnectionString("OrionDb");
+    _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     _hub = hub;
     _logger = logger;
   }
 
   protected override async Task ExecuteAsync(CancellationToken stoppingToken)
   {
-    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+    // El código de alcance está listo, pero habilitarlo consume todo el rezago
+    // pendiente. La activación es una decisión operativa explícita, no un efecto de
+    // publicar binarios nuevos.
+    if (!_options.Enabled)
+    {
+      _logger.LogInformation("La difusión SignalR de Restaurante permanece deshabilitada.");
+      return;
+    }
+    if (string.IsNullOrWhiteSpace(_connectionString))
+      throw new InvalidOperationException("Falta ConnectionStrings:OrionDb para difundir eventos de Restaurante.");
+
+    var interval = TimeSpan.FromMilliseconds(Math.Clamp(_options.PollIntervalMilliseconds, 250, 60_000));
+    using var timer = new PeriodicTimer(interval);
     while (!stoppingToken.IsCancellationRequested)
     {
       try
@@ -58,12 +82,40 @@ public sealed class RestaurantEventBroadcaster : BackgroundService
 
   private async Task PublishBatchAsync(CancellationToken ct)
   {
-    using var scope = _scopeFactory.CreateScope();
-    var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-    var moduleScope = scope.ServiceProvider.GetRequiredService<IRestaurantScopeAccessor>();
-    using var conn = connectionFactory.Create() as DbConnection
-      ?? throw new InvalidOperationException("La fábrica de conexiones no devolvió una DbConnection.");
+    var sites = await LoadEnabledSitesAsync(ct);
+    foreach (var site in sites)
+      await PublishSiteBatchAsync(site, ct);
+  }
+
+  private async Task<IReadOnlyList<EnabledSiteRow>> LoadEnabledSitesAsync(CancellationToken ct)
+  {
+    await using var conn = new SqlConnection(_connectionString);
     await conn.OpenAsync(ct);
+    var rows = await conn.QueryAsync<EnabledSiteRow>(new CommandDefinition(
+      """
+      SELECT company.CompanyId,company.Rfc,site.SiteKey
+      FROM orion.Company company
+      JOIN orion.Site site ON site.CompanyId=company.CompanyId AND site.IsActive=1
+      JOIN orion.CompanyModule companyModule
+        ON companyModule.CompanyId=company.CompanyId AND companyModule.ModuleCode='RESTAURANT'
+      JOIN orion.Module moduleInfo
+        ON moduleInfo.ModuleCode=companyModule.ModuleCode AND moduleInfo.IsActive=1
+      JOIN orion.SiteCapability capability
+        ON capability.CompanyId=company.CompanyId AND capability.SiteId=site.SiteId
+       AND capability.ModuleCode=companyModule.ModuleCode AND capability.IsEnabled=1
+      WHERE company.IsActive=1 AND companyModule.[Status]='Enabled'
+        AND (companyModule.EffectiveFromUtc IS NULL OR companyModule.EffectiveFromUtc<=SYSUTCDATETIME())
+        AND (companyModule.EffectiveToUtc IS NULL OR companyModule.EffectiveToUtc>SYSUTCDATETIME())
+      ORDER BY company.CompanyId,site.SiteId;
+      """, cancellationToken: ct));
+    return rows.AsList();
+  }
+
+  private async Task PublishSiteBatchAsync(EnabledSiteRow site, CancellationToken ct)
+  {
+    await using var conn = new SqlConnection(_connectionString);
+    await conn.OpenAsync(ct);
+    await InitializeCompanyScopeAsync(conn, site, ct);
 
     // A pooled connection can retain the isolation level used by an earlier
     // workflow. Establish the locking level in its own command so SQL Server
@@ -74,22 +126,25 @@ public sealed class RestaurantEventBroadcaster : BackgroundService
 
     var events = (await conn.QueryAsync<OutboxRow>(new CommandDefinition(
       """
-      SELECT TOP (50) Id, Rfc, SiteId, EventType, AggregateId, Payload, OccurredAt
-      FROM restaurante.EventOutbox WITH (READPAST, UPDLOCK, ROWLOCK)
-      WHERE PublishedAt IS NULL AND Attempts < 20
-      ORDER BY Id;
-      """, cancellationToken: ct))).AsList();
+      SELECT TOP (@BatchSize)
+        eventInfo.Id,eventInfo.Rfc,eventInfo.SiteId,eventInfo.EventType,
+        eventInfo.AggregateId,eventInfo.Payload,eventInfo.OccurredAt
+      FROM restaurante.EventOutbox eventInfo WITH (READPAST,UPDLOCK,ROWLOCK)
+      JOIN restaurante.Site legacySite
+        ON legacySite.Rfc=eventInfo.Rfc AND legacySite.Id=eventInfo.SiteId
+      WHERE eventInfo.Rfc=@Rfc AND legacySite.SiteCode=@SiteKey
+        AND eventInfo.PublishedAt IS NULL AND eventInfo.Attempts<20
+      ORDER BY eventInfo.Id;
+      """, new
+      {
+        BatchSize = Math.Clamp(_options.BatchSize, 1, 500),
+        site.Rfc,
+        site.SiteKey
+      }, cancellationToken: ct))).AsList();
     if (events.Count == 0) return;
-
-    // Suspender el módulo no consume el mensaje: se queda pendiente, con sus
-    // intentos intactos, para cuando la empresa vuelva a tenerlo habilitado.
-    var enabled = await moduleScope.GetEnabledCompanyRfcsAsync(
-      events.Select(eventInfo => eventInfo.Rfc).ToArray(), ct);
 
     foreach (var eventInfo in events)
     {
-      if (!enabled.Contains(eventInfo.Rfc)) continue;
-
       try
       {
         await _hub.Clients.Group(RestaurantEventsHub.GroupName(eventInfo.Rfc, eventInfo.SiteId))
@@ -113,6 +168,28 @@ public sealed class RestaurantEventBroadcaster : BackgroundService
         throw;
       }
     }
+  }
+
+  private static Task InitializeCompanyScopeAsync(
+    DbConnection connection,
+    EnabledSiteRow site,
+    CancellationToken ct)
+    => connection.ExecuteAsync(new CommandDefinition(
+      """
+      EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc,@read_only=0;
+      EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId',@value=@CompanyId,@read_only=0;
+      IF NOT EXISTS
+      (
+        SELECT 1 FROM orion.Company
+        WHERE CompanyId=@CompanyId AND Rfc=@Rfc AND IsActive=1
+      ) THROW 52310,'La empresa de difusión de Restaurante no es válida.',1;
+      """, new { site.Rfc, site.CompanyId }, cancellationToken: ct));
+
+  private sealed class EnabledSiteRow
+  {
+    public long CompanyId { get; set; }
+    public string Rfc { get; set; } = string.Empty;
+    public string SiteKey { get; set; } = string.Empty;
   }
 
   private sealed class OutboxRow

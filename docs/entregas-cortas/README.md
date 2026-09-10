@@ -61,7 +61,7 @@ no reinicies producción.
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en producción, encendida sólo para el piloto Bruno |
 | [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | Restaurante entregado y aplicado en producción; Hospedaje **apagada**: mapping ya cargado, falta el código |
 | [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
-| [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | **Implementada y aplicada en Sandbox**; los 288 vínculos se eliminaron allí con auditoría; preview productivo aprobado, sin corte productivo |
+| [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | **Implementada en Sandbox**; los 288 vínculos se eliminaron también en producción con manifiesto y auditoría inmutables |
 | [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c aplicada en producción; E8a/E8b/E8d aplicadas en Sandbox** |
 
 Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabilidad.
@@ -69,9 +69,9 @@ Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c
 dependen de nada y pueden adelantarse.
 
 Con E1, E3, E4, E5, E6 y las implementaciones Sandbox de E7 y E8 entregadas, la
-cadena larga está completa. Quedan el corte posterior de **E2**, el corte productivo
-ya previsualizado de los 288 vínculos de **E7**, los paquetes productivos restantes
-de **E7/E8a/E8b/E8d**, y los siguientes subagregados RLS documentados en E8.
+cadena larga está completa. Quedan el corte posterior de **E2**, los paquetes
+productivos restantes de **E7/E8a/E8b/E8d**, y los siguientes subagregados RLS
+documentados en E8. El corrector productivo de los 288 vínculos de E7 ya fue ejecutado.
 
 **Qué falta para adoptar el reporte publicado como oficial.** La balanza y el estado de
 resultados quedaron versionados con `@SoloPublicadas`, apagado por omisión, así que el
@@ -94,10 +94,12 @@ como mínimo, `LeaseIncomeAccount` y `LeaseReceivableAccount`; opcionalmente
 `dbo.CreateTransaccionesForRoom` sigue lanzando 51823 y no se infiere ninguna cuenta
 ni categoría por texto.
 
-**Producción al día en base de datos.** Los cuatro paquetes contables están aplicados
-en `grupocarpio` con respaldo verificado y preview revisado, y el ledger productivo
-devuelve **11 VERIFIED**. Actas: [E3 y E4](../production-accounting-packages-applied-20260908.md)
-y [E5 y E6](../production-outbox-reports-applied-20260909.md).
+**Producción al día en base de datos.** Los cuatro paquetes contables y el corrector
+E7 están aplicados en `grupocarpio` con respaldos verificados y previews revisados; el
+manifiesto productivo completo devuelve **16 VERIFIED**. Actas:
+[E3 y E4](../production-accounting-packages-applied-20260908.md),
+[E5 y E6](../production-outbox-reports-applied-20260909.md) y
+[corrector E7](../production-e7-payment-link-removal-applied-20260909.md).
 
 **Los binarios productivos ya incluyen E5 y E6.** La publicación urgente de la
 corrección para crear reservaciones reinició la consola a las 14:15 del 2026-09-09 y
@@ -166,7 +168,7 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Idempotencia y bandeja contable durable de ambos módulos | E5 |
 | `CreateTransaccionesForRoom` con mappings y contrato contable | E5 |
 | Reportes de pólizas publicadas y métricas operativas separadas | E6 |
-| 288 vínculos históricos eliminados en Sandbox, sin cambiar transacciones ni importes | E7 |
+| 288 vínculos históricos eliminados en Sandbox y producción, sin cambiar transacciones ni importes | E7 |
 | Cuatro mappings Outlook; Graph sigue apagado | E7 |
 | Propietarios asociados, plantillas y creación de actividades | E7 |
 | RLS contable y bypass de políticas legacy | E8 |

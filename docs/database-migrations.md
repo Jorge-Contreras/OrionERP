@@ -196,8 +196,10 @@ registran en el [plan actualizado](public-websites-rebaseline-20260908.md).
 Los scripts anteriores conservaron sus checksums.
 
 La migración limita dos procedimientos heredados de escritura hasta disponer
-de configuración por sede; conserva 288 vínculos de pagos contradictorios y
-cuatro mapeos Outlook huérfanos, sin adjudicación automática. Consultar
+de configuración por sede; en esa fase conservó 288 vínculos de pagos contradictorios y
+cuatro mapeos Outlook huérfanos, sin adjudicación automática. Los 288 vínculos fueron
+corregidos posteriormente en Sandbox y producción por
+`20260909_hospitality_payment_link_removal`, sin modificar las transacciones BSU. Consultar
 [el inventario y los límites operativos](hospitality-sql-isolation-20260908.md)
 antes de probar consumidores heredados. La política requiere contexto en cada
 conexión, incluidos los hosts públicos y los reportes. Esta fase aún no está

@@ -52,12 +52,11 @@ No se repitieron suites completas ni navegador en ese incremento.
    proyecto/calendario queda en 8/8, incluidos edición/eliminación primero y
    vínculo después con bloqueo SQL observado, commit y rollback. Véase el
    [smoke y cierre focalizado](multiempresa-browser-smoke-20260908.md).
-2. **Corrección histórica pendiente.** Los 288 vínculos de reservas
-   `OHM191112Q26` con pagos `BSU210121M77` permanecen almacenados y ocultos por
-   la política. El usuario confirmó el 2026-09-08: **son errores históricos**.
-   La clasificación empresarial está resuelta; falta identificar los vínculos
-   correctos con evidencia antes de corregirlos. No reasignar por inferencia ni
-   alterar pagos para hacer coincidir totales.
+2. **Corrección histórica cerrada.** Los 288 vínculos de reservas
+   `OHM191112Q26` con pagos `BSU210121M77` fueron eliminados en Sandbox y producción
+   el 2026-09-09 mediante manifiesto y auditoría inmutables. No se reasignaron pagos
+   ni se alteraron transacciones, pólizas, importes o CFDI. El conteo físico final es
+   cero y el paquete productivo está verificado.
 3. **Mappings legacy.** Resolver los cuatro mappings Outlook huérfanos y
    configurar plantillas, cuentas/categorías y propietarios por empresa/sede.
    `CreateActividadForReservation` y `CreateTransaccionesForRoom` están

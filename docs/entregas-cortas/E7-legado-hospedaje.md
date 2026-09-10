@@ -1,4 +1,4 @@
-# E7 — Legado de Hospedaje: implementada en Sandbox
+# E7 — Legado de Hospedaje: implementada; corrector aplicado en producción
 
 Lee primero las [reglas permanentes](README.md#reglas-permanentes). Depende de: nada.
 Superficie: consola. **Se entrega apagada**: los cuatro mecanismos son aditivos y
@@ -65,8 +65,9 @@ es la salvaguarda del punto 1.
 
 ## Estado ejecutado — 2026-09-09
 
-Implementación terminada y aplicada **sólo en `Orion_Sandbox`** mediante tres
-migraciones aditivas con ledger y checksum:
+Implementación terminada y aplicada inicialmente en `Orion_Sandbox` mediante tres
+migraciones aditivas con ledger y checksum. El corrector definitivo de pagos se
+aplicó después también en `grupocarpio`:
 
 - `20260909_hospitality_legacy_mechanisms_sandbox` crea las asociaciones y
   auditorías, reemplaza el bloqueo global de actividades por validación exacta y
@@ -79,7 +80,7 @@ migraciones aditivas con ledger y checksum:
 
 Resultado por frente:
 
-1. **288 vínculos:** decisión empresarial cerrada y ejecutada sólo en Sandbox por
+1. **288 vínculos:** decisión empresarial cerrada y ejecutada en Sandbox y producción por
    `20260909_hospitality_payment_link_removal`. Se eliminaron exactamente las 288
    relaciones cruzadas por doce lotes (once de 25 y uno de 13), por un total de
    $852,308.75. Quedaron 288 filas de manifiesto y 288 de auditoría; las 288
@@ -105,6 +106,11 @@ Evidencia de validación: build completo Release con **0 warnings / 0 errores** 
 sumar los seis del manifiesto/auditoría; el rechazo de actividad y los correctores
 dejan `@@TRANCOUNT = 0`; una actividad completa se generó dentro de una transacción
 de prueba (8 pasos, 1 vínculo de calendario, 1 de reserva) y el rollback dejó cero
-residuos. La previsualización productiva leyó el mismo fingerprint y los mismos doce
-checksums, y terminó con rollback. **Producción conserva todavía los 288 vínculos**;
-el corte exige backup, un preview vigente y autorización explícita.
+residuos.
+
+El corte productivo del corrector se ejecutó el 2026-09-09 después de un respaldo
+`COPY_ONLY` con checksum y `RESTORE VERIFYONLY`, y de regenerar el preview contra ese
+mismo estado. Producción quedó con **0** vínculos físicos del conjunto, 288 filas de
+manifiesto y 288 de auditoría. Las 288 transacciones BSU, sus 251 renglones contables y
+sus 20 vínculos CFDI siguen intactos. El manifiesto productivo completo terminó con
+**16 VERIFIED**. Véase el [acta productiva](../production-e7-payment-link-removal-applied-20260909.md).

@@ -155,6 +155,15 @@
       ]
     },
     {
+      "id": "20260910_production_restaurant_event_outbox_disposition",
+      "path": "database/production/20260910/20260910_production_restaurant_event_outbox_disposition.sql",
+      "description": "Cierra con auditoría inmutable los 2,000 eventos históricos de Bruno autorizados y deja fuera todos los eventos posteriores al Id 2124.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
       "id": "20260909_production_accounting_rls_scope",
       "path": "database/production/20260909/20260909_production_accounting_rls_scope.sql",
       "description": "E8a: RLS fail-closed productivo de Transacciones y Registro_Contable por CompanyId y RFC de sesión.",

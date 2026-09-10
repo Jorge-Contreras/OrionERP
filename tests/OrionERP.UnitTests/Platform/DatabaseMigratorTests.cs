@@ -172,7 +172,14 @@ public sealed class DatabaseMigrationManifestTests
       "20260909_accounting_cycle_activation_sandbox",
       "20260909_bsu_opening_balance_counterpart_sandbox",
       "20260909_workforce_attendance_scope_sandbox",
-      "20260909_calendar_owner_scope_sandbox"
+      "20260909_calendar_owner_scope_sandbox",
+      "20260909_hospitality_legacy_mechanisms_sandbox",
+      "20260909_hospitality_legacy_transaction_guards_sandbox",
+      "20260909_hospitality_payment_policy_switch_sandbox",
+      "20260909_hospitality_payment_link_removal",
+      "20260909_accounting_rls_scope_sandbox",
+      "20260909_inventory_core_rls_scope_sandbox",
+      "20260909_fiscal_rls_scope_sandbox"
     })
     {
       var sandboxOnlyMigration = Manifest.Migrations.Single(item => item.Id == sandboxOnlyId);
@@ -208,6 +215,13 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_bsu_opening_balance_counterpart_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/Sql/20260909_workforce_attendance_scope_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Sql/20260909_calendar_owner_scope_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_legacy_mechanisms_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_legacy_transaction_guards_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_policy_switch_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_link_removal.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_rls_scope_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Logistica/Sql/20260909_inventory_core_rls_scope_sandbox.sql"));
+    actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260909_fiscal_rls_scope_sandbox.sql"));
 
     Assert.Equal(
       actual.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -397,6 +411,74 @@ public sealed class DatabaseMigrationManifestTests
           // Versiona un procedimiento: no toca datos ni políticas de seguridad.
           foreach (var write in new[] { "INSERT dbo.", "UPDATE dbo.", "DELETE dbo.", "ALTER SECURITY POLICY" })
             Assert.DoesNotContain(write, sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_hospitality_legacy_mechanisms_sandbox":
+          // El único RFC escrito a mano corresponde a los cuatro mappings Outlook
+          // cuya evidencia exacta fue revisada; los demás alcances se resuelven por contexto.
+          Assert.Contains("OHM191112Q26", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("HospitalityPaymentCorrectionManifest", sql, StringComparison.Ordinal);
+          Assert.Contains("HospitalityOutlookMappingQuarantine", sql, StringComparison.Ordinal);
+          Assert.Contains("HospitalityActivityTemplateMapping", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_hospitality_legacy_transaction_guards_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("IF XACT_STATE()<>0 ROLLBACK TRANSACTION", sql, StringComparison.Ordinal);
+          Assert.Contains("ReconcileHospitalityPaymentLinks_E7Core", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_hospitality_payment_policy_switch_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("fn_HospitalityPaymentScopePredicate", sql, StringComparison.Ordinal);
+          Assert.Contains("ExpectedPreviewChecksum", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_hospitality_payment_link_removal":
+          // Este corrector nombra ambos RFC porque registra la decisión empresarial
+          // exacta. Su única eliminación permitida es el vínculo cruzado revisado.
+          Assert.Contains("OHM191112Q26", sql, StringComparison.Ordinal);
+          Assert.Contains("BSU210121M77", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("CE25D7CFD35BCDD6554E2C4798A2FA51825E04B7849B3DBB5FAF99197862A40A", sql, StringComparison.Ordinal);
+          Assert.Contains("HospitalityPaymentLinkRemovalAudit", sql, StringComparison.Ordinal);
+          Assert.Contains("HAVING COUNT(*) NOT BETWEEN 1 AND 25", sql, StringComparison.Ordinal);
+          Assert.Contains("DELETE link", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("DELETE dbo.Transacciones", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("DELETE dbo.Registro_Contable", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("DELETE dbo.Transaccion_Comprobante", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_accounting_rls_scope_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("CREATE SECURITY POLICY contabilidad.AccountingScopePolicy", sql, StringComparison.Ordinal);
+          Assert.Contains("El predicado contable no debe admitir bypass por NULL.", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_inventory_core_rls_scope_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("CREATE SECURITY POLICY logistica.InventoryCoreScopePolicy", sql, StringComparison.Ordinal);
+          Assert.Contains("El predicado E8b no debe admitir bypass por NULL.", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260909_fiscal_rls_scope_sandbox":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("SIN_RFC", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("CREATE SECURITY POLICY fiscal.DeclarationScopePolicy", sql, StringComparison.Ordinal);
+          Assert.Contains("El predicado E8d no debe admitir bypass por NULL.", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("ALTER SECURITY POLICY fiscal.ComprobanteScopePolicy", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

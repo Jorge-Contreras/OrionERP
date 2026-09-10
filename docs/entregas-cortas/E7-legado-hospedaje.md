@@ -6,18 +6,20 @@ esperan un dato empresarial para encenderse. Puede adelantarse a la cadena conta
 
 ## 1. Corrector de los 288 vínculos OHM/BSU
 
-El usuario confirmó el 2026-09-08 que **son errores históricos**; esa clasificación
-está resuelta. Lo que falta es identificar el vínculo correcto con evidencia.
+El usuario resolvió la disposición empresarial el 2026-09-09: las 288 transacciones
+pertenecen a `BSU210121M77` y **no deben relacionarse con `OHM191112Q26` de ninguna
+forma**. Por tanto, no se busca un pago OHM sustituto y no se reclasifica ninguna
+transacción. Se elimina exclusivamente cada fila errónea de
+`dbo.Reservation_Transacciones`.
 
-Se escribe un corrector aditivo, transaccional e idempotente, con preview y
-auditoría, que consume un manifiesto de entrada: ID original, relación propuesta,
-evidencia y motivo, con los casos demostrados separados de los no resueltos.
-Confirma precondiciones por fila, detecta datos que cambiaron después del preview y
-una segunda ejecución no duplica nada.
+El corrector es aditivo, transaccional e idempotente. Fija el conjunto completo por
+SHA-256, comprueba los 288 IDs y sus importes, lo divide en doce lotes de máximo 25,
+genera un checksum por lote y conserva manifiesto y auditoría inmutables. Si cambia
+una sola precondición, revierte todo.
 
-**Sin manifiesto no corrige nada.** No se inventa el vínculo correcto, no se cambian
-RFC de pagos, importes ni saldos, y no se eliminan enlaces para cuadrar reportes. El
-primer lote productivo será de veinticinco relaciones demostradas como máximo.
+Las 288 cabeceras de `dbo.Transacciones`, sus pólizas, sus 251 movimientos contables,
+sus 20 vínculos CFDI, RFC, importes y saldos permanecen bajo BSU. La operación no
+contiene `UPDATE` ni `DELETE` sobre esas tablas.
 
 ## 2. Los cuatro mappings Outlook huérfanos
 
@@ -77,11 +79,13 @@ migraciones aditivas con ledger y checksum:
 
 Resultado por frente:
 
-1. **288 vínculos:** el mecanismo está listo, pero no se cambió ninguno. El
-   manifiesto exige relación propuesta, RFC e importe esperado de ambos pagos,
-   evidencia, motivo y aprobación; limita cada lote a 25 y enlaza `apply` con el
-   checksum del preview. Sólo cambia `TransaccionID`. Una segunda ejecución queda
-   registrada como ya aplicada. Sigue faltando evidencia empresarial por relación.
+1. **288 vínculos:** decisión empresarial cerrada y ejecutada sólo en Sandbox por
+   `20260909_hospitality_payment_link_removal`. Se eliminaron exactamente las 288
+   relaciones cruzadas por doce lotes (once de 25 y uno de 13), por un total de
+   $852,308.75. Quedaron 288 filas de manifiesto y 288 de auditoría; las 288
+   transacciones BSU, las 84 que tienen movimientos contables y las 20 que tienen
+   vínculo CFDI siguen intactas. El corrector anterior de relink se conserva por
+   compatibilidad, pero no se usa para este conjunto.
 2. **Outlook:** `105 → 24222` y `107 → 24228` quedaron reparados; `18` y `61`
    quedaron fuera de la tabla viva y preservados íntegros en cuarentena. Hay dos
    filas de auditoría de reparación y dos de cuarentena. La identidad remota se
@@ -96,9 +100,11 @@ Resultado por frente:
    plantilla probada y registra calendario/reserva/idempotencia. Sin mapping exacto
    sigue bloqueada; no se precargó ninguno por semejanza de nombres.
 
-Evidencia de validación: build completo Release con **0 warnings / 0 errores**;
-RLS fail-closed sin contexto; 75 predicados activos; el rechazo de actividad y el
-del corrector dejan `@@TRANCOUNT = 0`; una actividad completa se generó dentro de
-una transacción de prueba (8 pasos, 1 vínculo de calendario, 1 de reserva) y el
-rollback dejó cero residuos. Los tres checksums verifican. No hubo cambios en
-producción.
+Evidencia de validación: build completo Release con **0 warnings / 0 errores** y
+1,361 unitarias aprobadas; RLS fail-closed sin contexto; 81 predicados activos tras
+sumar los seis del manifiesto/auditoría; el rechazo de actividad y los correctores
+dejan `@@TRANCOUNT = 0`; una actividad completa se generó dentro de una transacción
+de prueba (8 pasos, 1 vínculo de calendario, 1 de reserva) y el rollback dejó cero
+residuos. La previsualización productiva leyó el mismo fingerprint y los mismos doce
+checksums, y terminó con rollback. **Producción conserva todavía los 288 vínculos**;
+el corte exige backup, un preview vigente y autorización explícita.

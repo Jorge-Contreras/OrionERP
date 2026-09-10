@@ -147,6 +147,14 @@
       ]
     },
     {
+      "id": "20260909_hospitality_payment_link_removal",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_link_removal.sql",
+      "description": "E7: elimina exclusivamente los 288 v\u00ednculos OHM/BSU confirmados, en lotes auditados de hasta 25, sin cambiar las transacciones BSU.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
       "id": "20260909_accounting_rls_scope_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_rls_scope_sandbox.sql",
       "description": "E8a: RLS fail-closed de Transacciones y Registro_Contable por CompanyId y RFC de sesi\u00f3n, exclusivamente en Orion_Sandbox.",

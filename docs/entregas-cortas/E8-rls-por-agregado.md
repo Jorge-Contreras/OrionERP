@@ -96,8 +96,9 @@ El inventario de consumidores corrigió cinco caminos antes de activar la polít
 
 Los servicios de Bancos, CxP, Restaurante, Logística, reportes y adjuntos ya comparten
 la primera fábrica; reservaciones usa la segunda; `TransaccionService`, ciclo y outbox
-ya usaban la fábrica contable desde E3–E5. Consumidores externos/VBA no quedan
-declarados como adaptados: por eso este lote todavía no se propone para producción.
+ya usaban la fábrica contable desde E3–E5. El usuario confirmó el 2026-09-09 que no
+existen consumidores contables externos ni VBA; esa condición de compatibilidad ya
+está cerrada. Todavía falta preparar, previsualizar y autorizar el paquete productivo.
 
 **E8b — Logística.** El lote mínimo exacto es `logistica.Location`,
 `logistica.StockBalance` y `logistica.StockTransaction`: ubicaciones, existencia

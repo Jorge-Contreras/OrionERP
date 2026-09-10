@@ -135,6 +135,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260909_hospitality_payment_link_removal",
+      "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_link_removal.sql",
+      "description": "E7: elimina exclusivamente los 288 vínculos OHM/BSU confirmados, en lotes auditados de hasta 25, sin cambiar las transacciones BSU.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

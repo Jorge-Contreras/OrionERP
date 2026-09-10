@@ -52,7 +52,7 @@ public sealed class AccountingOutboxService : IAccountingOutbox
         (
           Id bigint, CompanyId bigint, Rfc varchar(50), SourceModule varchar(30),
           OperationKey varchar(200), Payload nvarchar(max), [Status] varchar(20),
-          TransaccionId int, Attempts int
+          TransaccionId int, Attempts int, WasClaimed bit
         );
 
         MERGE contabilidad.AccountingOutbox WITH (HOLDLOCK) AS target
@@ -60,7 +60,15 @@ public sealed class AccountingOutboxService : IAccountingOutbox
           ON target.CompanyId = source.CompanyId
          AND target.SourceModule = source.SourceModule
          AND target.OperationKey = source.OperationKey
-        WHEN MATCHED AND target.[Status] <> 'Completed' THEN
+        WHEN MATCHED AND
+        (
+          target.[Status] IN ('Pending', 'Failed')
+          OR
+          (
+            target.[Status] = 'Claimed'
+            AND (target.ClaimedAtUtc IS NULL OR target.ClaimedAtUtc < DATEADD(MINUTE, -5, SYSUTCDATETIME()))
+          )
+        ) THEN
           UPDATE SET [Status] = 'Claimed', Attempts = target.Attempts + 1,
                      ClaimedAtUtc = SYSUTCDATETIME(), ClaimedBy = @Actor,
                      UpdatedAtUtc = SYSUTCDATETIME()
@@ -69,13 +77,13 @@ public sealed class AccountingOutboxService : IAccountingOutbox
           VALUES (@CompanyId, @Rfc, @SourceModule, @OperationKey, @Payload, 'Claimed', 1, SYSUTCDATETIME(), @Actor)
         OUTPUT inserted.Id, inserted.CompanyId, inserted.Rfc, inserted.SourceModule,
                inserted.OperationKey, inserted.Payload, inserted.[Status],
-               inserted.TransaccionId, inserted.Attempts
+               inserted.TransaccionId, inserted.Attempts, CONVERT(bit, 1)
         INTO @Claimed;
 
-        SELECT Id, CompanyId, Rfc, SourceModule, OperationKey, Payload, [Status], TransaccionId, Attempts
+        SELECT Id, CompanyId, Rfc, SourceModule, OperationKey, Payload, [Status], TransaccionId, Attempts, WasClaimed
         FROM @Claimed
         UNION ALL
-        SELECT Id, CompanyId, Rfc, SourceModule, OperationKey, Payload, [Status], TransaccionId, Attempts
+        SELECT Id, CompanyId, Rfc, SourceModule, OperationKey, Payload, [Status], TransaccionId, Attempts, CONVERT(bit, 0)
         FROM contabilidad.AccountingOutbox
         WHERE CompanyId = @CompanyId AND SourceModule = @SourceModule AND OperationKey = @OperationKey
           AND NOT EXISTS (SELECT 1 FROM @Claimed);
@@ -140,8 +148,9 @@ public sealed class AccountingOutboxService : IAccountingOutbox
     public string Status { get; set; } = "";
     public int? TransaccionId { get; set; }
     public int Attempts { get; set; }
+    public bool WasClaimed { get; set; }
 
     public AccountingOperation ToOperation()
-      => new(Id, CompanyId, Rfc, SourceModule, OperationKey, Payload, Status, TransaccionId, Attempts);
+      => new(Id, CompanyId, Rfc, SourceModule, OperationKey, Payload, Status, TransaccionId, Attempts, WasClaimed);
   }
 }

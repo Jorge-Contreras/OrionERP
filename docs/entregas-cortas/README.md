@@ -88,12 +88,13 @@ individuales y el ajuste de CFDI tardío, que hoy crea la reversión
 `LateCfdiReversal`— sigue fuera de la bandeja y conserva su comportamiento actual:
 borra la póliza si el vínculo falla. Es el siguiente lote.
 
-**Mappings que faltan para encender Hospedaje.** `contabilidad.HospitalityAccountingMapping`
-está creada y vacía. Por cada empresa y sede que se quiera contabilizar hacen falta,
-como mínimo, `LeaseIncomeAccount` y `LeaseReceivableAccount`; opcionalmente
-`VatPayableAccount`, `CategoryId` y `BankAccount`. Mientras no existan esas filas,
-`dbo.CreateTransaccionesForRoom` sigue lanzando 51823 y no se infiere ninguna cuenta
-ni categoría por texto.
+**Hospedaje ya usa la bandeja durable.** La acción **Crear Póliza** de la reservación
+consume `contabilidad.HospitalityAccountingMapping`, exige las cuentas explícitas de
+la empresa/sede y reintenta sobre una sola póliza. Bonhomía Suites tiene el mapping
+habilitado. Las futuras sedes nacen apagadas mientras no tengan, como mínimo,
+`LeaseIncomeAccount` y `LeaseReceivableAccount`. El procedimiento heredado
+`dbo.CreateTransaccionesForRoom` permanece bloqueado porque el usuario confirmó que
+no tiene consumidor externo ni VBA; la consola es el único punto de entrada soportado.
 
 **Producción al día en base de datos.** Los cuatro paquetes contables y el corrector
 E7 están aplicados en `grupocarpio` con respaldos verificados y previews revisados; el
@@ -133,11 +134,10 @@ lo que sí lo era ya se resolvió:
 El baseline read-only vive en
 `src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_cycle_baseline.query.sql`.
 
-**Mapping de Hospedaje registrado.** Bonhomía Suites (empresa 9, sede 3) es la única sede
+**Mapping de Hospedaje en uso.** Bonhomía Suites (empresa 9, sede 3) es la única sede
 con Hospedaje: `LeaseIncomeAccount = 401.25.02` y `LeaseReceivableAccount = 205.01.01`,
-elegidas por el usuario sobre su propio catálogo. Aviso importante:
-`dbo.CreateTransaccionesForRoom` **sigue lanzando 51823**. El dato ya está; falta el
-código que lo consuma a través del contrato durable.
+elegidas por el usuario sobre su propio catálogo. Desde 2026-09-10 la consola ya lo
+consume a través del contrato durable; un reintento conserva y retoma la misma póliza.
 
 "Apagada" significa que el mecanismo se implementa y se entrega desactivado: falta
 un dato empresarial o una decisión del usuario para encenderlo, no código.
@@ -167,7 +167,7 @@ De las veinte restantes se quitó el encabezado repetido y la sección
 | Periodos, `Draft/Posted/Reversed`, balance e inmutabilidad, reversa | E4 |
 | Conciliación heredada y baseline | E4 (consulta read-only) |
 | Idempotencia y bandeja contable durable de ambos módulos | E5 |
-| `CreateTransaccionesForRoom` con mappings y contrato contable | E5 |
+| Reemplazo soportado de `CreateTransaccionesForRoom` con mappings y contrato contable | E5, cerrado 2026-09-10 |
 | Reportes de pólizas publicadas y métricas operativas separadas | E6 |
 | 288 vínculos históricos eliminados en Sandbox y producción, sin cambiar transacciones ni importes | E7 |
 | Cuatro mappings Outlook; Graph sigue apagado | E7 |

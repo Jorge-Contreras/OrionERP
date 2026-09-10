@@ -14,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
+using OrionERP.Application.Features.Reservaciones.Accounting;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.Extras;
@@ -49,6 +50,7 @@ public partial class ReservacionPage : ComponentBase, IDisposable
   [Inject] public IReservacionExperiencesService ExperiencesService { get; set; } = default!;
   [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
   [Inject] public ITransaccionService TransaccionService { get; set; } = default!;
+  [Inject] public IReservationAccountingService ReservationAccountingService { get; set; } = default!;
   [Inject] public ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
@@ -367,63 +369,14 @@ public partial class ReservacionPage : ComponentBase, IDisposable
         return;
       }
 
-      var cliente = string.IsNullOrWhiteSpace(Detail.Cliente)
-        ? "(Sin cliente)"
-        : Detail.Cliente;
-
-      var createResult = await TransaccionService.CreateTransaccionAsync(new TransaccionCreateRequest
+      var result = await ReservationAccountingService.GeneratePolicyAsync(Detail.Id);
+      if (!result.Success || !result.TransaccionId.HasValue)
       {
-        Rfc = RfcState.RequireRfc(),
-        Fecha = DateTime.Now,
-        Concepto = $"PAGO POR RESERVACION#{Detail.Id} - {cliente}",
-        Monto = TotalReservacion,
-        Cuenta = "ORION HABITAT DE MEXICO",
-        TipoPoliza = "INGRESO",
-        FormaPago = "03"
-      });
-
-      if (!createResult.Success || createResult.NewTransaccionId <= 0)
-      {
-        UiMessages.ShowError(createResult.Message ?? "No se pudo crear la póliza.");
+        UiMessages.ShowError(result.Message);
         return;
       }
 
-      var linkResult = await TransaccionService.UpsertReservacionLinkAsync(new TransaccionReservacionLinkUpsertRequest
-      {
-        ReservationId = Detail.Id,
-        TransaccionId = createResult.NewTransaccionId,
-        Amount = TotalReservacion
-      });
-
-      if (!linkResult.Success)
-      {
-        UiMessages.ShowError(
-          $"La póliza {createResult.NewTransaccionId} se creó, pero no se pudo ligar a la reservación. {linkResult.Message}");
-        return;
-      }
-
-      var appliedAirbnbAccounting = false;
-      if (Detail.AirbnbBreakdown is not null)
-      {
-        var accountingResult = await ReservationCfdiService.ApplyAirbnbAccountingAsync(
-          new ReservationAirbnbAccountingRequest
-          {
-            ReservationId = Detail.Id,
-            TransaccionId = createResult.NewTransaccionId,
-            IssuerRfc = RfcState.RequireRfc()
-          });
-
-        if (!accountingResult.Success)
-        {
-          UiMessages.ShowError(
-            $"La póliza {createResult.NewTransaccionId} se creó y se ligó a la reservación, pero no se pudo generar el registro contable Airbnb. {accountingResult.Message}");
-          return;
-        }
-
-        appliedAirbnbAccounting = true;
-      }
-
-      var url = $"/contabilidad/transacciones/{createResult.NewTransaccionId}";
+      var url = $"/contabilidad/transacciones/{result.TransaccionId.Value}";
       try
       {
         await Js.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
@@ -433,9 +386,8 @@ public partial class ReservacionPage : ComponentBase, IDisposable
         Nav.NavigateTo(url);
       }
 
-      UiMessages.ShowSuccess(appliedAirbnbAccounting
-        ? $"Póliza {createResult.NewTransaccionId} creada, ligada y con registro contable Airbnb."
-        : $"Póliza {createResult.NewTransaccionId} creada.");
+      UiMessages.ShowSuccess(result.Message);
+      await LoadAllAsync();
     }
     catch (Exception ex)
     {

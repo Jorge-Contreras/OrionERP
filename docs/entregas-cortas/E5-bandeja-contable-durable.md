@@ -50,3 +50,28 @@ conforme al ciclo formal de E4.
 
 Build Release. Unitarias del comportamiento nuevo: idempotencia ante reintento
 concurrente, y punto de fallo entre crear la póliza y vincularla.
+
+## Cierre 2026-09-10
+
+La operación definida de Hospedaje ya es la acción **Crear Póliza** de una
+reservación. Usa identidad `empresa/sede/reservación`, exige el mapping habilitado
+de la sede, toma las cuentas exactas del catálogo de la empresa y genera un asiento
+balanceado: cargo a arrendamiento por cobrar y abono a ingreso por arrendamiento.
+Las reservaciones Airbnb conservan su desglose especializado. El rastro de la póliza
+se guarda en `contabilidad.AccountingOutbox` antes de intentar el vínculo; un fallo
+posterior deja la misma póliza recuperable y el reintento no crea otra.
+
+La reclamación compartida ahora distingue entre el consumidor que obtuvo el trabajo
+y un segundo clic mientras sigue activo. Una reclamación reciente no se roba; una
+interrumpida puede retomarse después de cinco minutos.
+
+El usuario confirmó que no existe consumidor externo ni VBA del procedimiento
+heredado `dbo.CreateTransaccionesForRoom`. Por eso permanece bloqueado como punto de
+entrada no soportado: habilitar su firma de fechas/habitación volvería a recorrer
+calendarios y rompería la identidad por reservación exigida por esta entrega. Su
+reemplazo soportado es el servicio durable invocado por la consola.
+
+Evidencia: 16 unitarias focalizadas y una integración SQL real contra
+`Orion_Sandbox`. La integración creó una reservación temporal, ejecutó dos veces la
+acción, comprobó una sola operación completada, un solo vínculo y dos movimientos
+balanceados, y eliminó exclusivamente sus datos temporales.

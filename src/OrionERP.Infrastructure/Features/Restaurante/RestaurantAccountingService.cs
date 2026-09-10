@@ -116,6 +116,8 @@ public sealed class RestaurantAccountingService : IRestaurantAccountingService
       ct);
     if (operation.AlreadyCompleted)
       return RestaurantCommandResult.Ok($"La póliza diaria ya existe: {operation.TransaccionId}.");
+    if (operation.InProgress)
+      return RestaurantCommandResult.Fail("La póliza diaria ya se está generando. Espera un momento antes de reintentar.");
 
     if (preview.EligibleOrderCount == 0)
     {

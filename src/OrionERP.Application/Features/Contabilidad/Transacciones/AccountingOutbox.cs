@@ -28,9 +28,15 @@ public sealed record AccountingOperation(
   string Payload,
   string State,
   int? TransaccionId,
-  int Attempts)
+  int Attempts,
+  bool WasClaimed = true)
 {
   public bool AlreadyCompleted => string.Equals(State, AccountingOutboxStates.Completed, StringComparison.Ordinal);
+  /// <summary>
+  /// Otro consumidor conserva una reclamación reciente. Este intento no puede
+  /// continuar: hacerlo permitiría que dos solicitudes crearan dos pólizas.
+  /// </summary>
+  public bool InProgress => !AlreadyCompleted && !WasClaimed;
   /// <summary>La póliza ya existe de un intento previo; falta cerrar el vínculo.</summary>
   public bool ResumesFromExistingPolicy => TransaccionId is > 0 && !AlreadyCompleted;
 }

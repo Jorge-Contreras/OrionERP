@@ -47,6 +47,26 @@ public sealed class AccountingOutboxTests
   }
 
   [Fact]
+  public void ARecentClaim_IsNotProcessedByASecondConsumer()
+  {
+    var claimedBySomeoneElse = Operation(AccountingOutboxStates.Claimed, null) with { WasClaimed = false };
+
+    Assert.True(claimedBySomeoneElse.InProgress);
+    Assert.False(claimedBySomeoneElse.AlreadyCompleted);
+  }
+
+  [Fact]
+  public void AStaleClaim_CanBeRecoveredButARecentOneCannotBeStolen()
+  {
+    var service = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/AccountingOutboxService.cs");
+
+    Assert.Contains("target.[Status] = 'Claimed'", service, StringComparison.Ordinal);
+    Assert.Contains("DATEADD(MINUTE, -5, SYSUTCDATETIME())", service, StringComparison.Ordinal);
+    Assert.Contains("CONVERT(bit, 0)", service, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void AnOperationThatNeverReachedAPolicy_StartsFromScratch()
   {
     Assert.False(Operation(AccountingOutboxStates.Claimed, null).ResumesFromExistingPolicy);

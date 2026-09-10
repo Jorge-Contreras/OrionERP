@@ -144,6 +144,33 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260909_production_accounting_rls_scope",
+      "path": "database/production/20260909/20260909_production_accounting_rls_scope.sql",
+      "description": "E8a: RLS fail-closed productivo de Transacciones y Registro_Contable por CompanyId y RFC de sesión.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260909_production_inventory_core_rls_scope",
+      "path": "database/production/20260909/20260909_production_inventory_core_rls_scope.sql",
+      "description": "E8b: RLS fail-closed productivo del núcleo de ubicaciones, existencias y movimientos.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260909_production_fiscal_rls_scope",
+      "path": "database/production/20260909/20260909_production_fiscal_rls_scope.sql",
+      "description": "E8d: RLS fail-closed productivo del agregado fiscal sin imponer propiedad exclusiva a CFDI.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

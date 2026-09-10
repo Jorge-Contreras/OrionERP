@@ -70,7 +70,7 @@ deshabilita RLS para poder recuperar binarios viejos**.
 Build Release de lo que cambie en código. La migración se aplica y se observa en
 Sandbox. Sin unitarias: el cambio es SQL.
 
-## Resultado de E8a, E8b y E8d — 2026-09-09
+## Resultado de E8a, E8b y E8d — 2026-09-10
 
 Los tres lotes pendientes se implementaron, previsualizaron, aplicaron y verificaron
 por separado **sólo en `Orion_Sandbox`**. No hubo corte productivo.
@@ -118,8 +118,21 @@ sus 16,642 filas siguieron visibles en la comprobación sin contexto: no se impu
 propietario exclusivo ni se alteró el contrato emisor/receptor, cálculos, cierres o
 timbrado.
 
-Migraciones: `20260909_accounting_rls_scope_sandbox`,
+Migraciones Sandbox: `20260909_accounting_rls_scope_sandbox`,
 `20260909_inventory_core_rls_scope_sandbox` y
 `20260909_fiscal_rls_scope_sandbox`. Build de la consola Release: 0 warnings / 0
-errores. El siguiente paso productivo requiere paquete distinto, respaldo, preview y
-autorización explícita de cada corte.
+errores.
+
+Los tres paquetes productivos distintos ya están preparados y pasaron preview contra
+`grupocarpio` con rollback completo:
+
+- `20260909_production_accounting_rls_scope`: 8,102 pólizas, dos cabeceras y cuatro
+  movimientos legacy resueltos por el vínculo exacto de OHM; seis predicados nuevos.
+- `20260909_production_inventory_core_rls_scope`: 11,500 filas entre Bruno y OHM;
+  mueve nueve predicados y conserva los otros 285 en la política heredada.
+- `20260909_production_fiscal_rls_scope`: 16 filas OHM; mueve los 18 predicados
+  fiscales y deja `cfdi.Comprobante` fuera.
+
+Los recibos viven en `artifacts/database-previews/e8[a|b|d]-production-preview.json`.
+No se aplicaron a producción: el corte todavía exige respaldo verificado y autorización
+explícita sobre estos tres paquetes.

@@ -1,8 +1,8 @@
-# E7 — Legado de Hospedaje: código completo; corte productivo restante preparado
+# E7 — Legado de Hospedaje: completada en producción
 
 Lee primero las [reglas permanentes](README.md#reglas-permanentes). Depende de: nada.
-Superficie: consola. **Se entrega apagada**: los cuatro mecanismos son aditivos y
-esperan un dato empresarial para encenderse. Puede adelantarse a la cadena contable.
+Superficie: consola. Los mecanismos están aplicados; las actividades conservan el
+bloqueo seguro cuando una sede todavía no tiene un mapping empresarial completo.
 
 ## 1. Corrector de los 288 vínculos OHM/BSU
 
@@ -124,7 +124,8 @@ cuarentena local, crea las asociaciones de arrendadores y habilita únicamente l
 actividades con mapping completo. No llama Microsoft Graph ni toca eventos remotos.
 
 La simulación contra `grupocarpio` pasó y revirtió completa: validó las cuatro
-identidades Outlook, el alcance Bonhomía, los propietarios y 81 predicados RLS. El
-recibo es `artifacts/database-previews/e7-legacy-mechanisms-production-preview.json`.
-El paquete está preparado, **no aplicado**; requiere respaldo productivo verificado y
-autorización explícita junto con los tres paquetes E8 pendientes.
+identidades Outlook, el alcance Bonhomía, los propietarios y 81 predicados RLS. Tras
+el respaldo verificado del 2026-09-10 se regeneró el preview y el paquete quedó
+**aplicado en producción**. La comprobación final encontró tres asociaciones de
+arrendador, dos reparaciones, dos cuarentenas y los 81 predicados activos. Véase el
+[acta final](../production-final-e7-e8-cutover-applied-20260910.md).

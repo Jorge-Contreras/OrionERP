@@ -56,31 +56,31 @@ no reinicies producción.
 | Entrega | Qué se escribe | Depende de | Estado |
 | --- | --- | --- | --- |
 | [E1 — Guardas de suspensión de Restaurante](E1-guardas-restaurante.md) | Scope accessor de Restaurante aplicado a contabilidad, producción, operaciones de sede y el job registrado | — | Entregada en `7c4105e` |
-| [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | **Entregada (apagada)**: scripts listos, los aplica el usuario |
+| [E2 — Identidades SQL por website](E2-identidades-sql-websites.md) | Dos scripts de permisos mínimos, uno por instancia pública | — | **Completada y aplicada en producción** |
 | [E3 — Identidad contable y contrato CFDI](E3-identidad-contable-cfdi.md) | `CompanyId` de sesión, fábrica de conexiones contables, predicado emisor/receptor único | — | Entregada; aplicada en producción |
 | [E4 — Ciclo contable formal](E4-ciclo-contable.md) | Periodos, `Draft/Posted/Reversed`, publicación atómica, inmutabilidad y reversa | E3 | Entregada; aplicada en producción, encendida sólo para el piloto Bruno |
-| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | **Código completo** para consolidado, CFDI individual/tardío y Hospedaje; el sustrato SQL está en producción y los binarios más recientes quedan por publicar |
-| [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | Entregada y aplicada en producción; variante publicada **no adoptable aún** |
-| [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | **Código completo**; 288 vínculos corregidos en producción y paquete restante previsualizado, sin aplicar |
-| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8c aplicada en producción; E8a/E8b/E8d aplicadas en Sandbox y previsualizadas para producción** |
+| [E5 — Bandeja contable durable](E5-bandeja-contable-durable.md) | Contrato durable idempotente para Restaurante y Hospedaje | E4 | **Completada y publicada en producción** |
+| [E6 — Reportes sobre pólizas publicadas](E6-reportes-publicados.md) | Balanza y resultados agregando sólo asientos publicados | E4 | **Completada**; el reporte compatible sigue oficial por decisión empresarial |
+| [E7 — Legado de Hospedaje](E7-legado-hospedaje.md) | Corrector de vínculos, mappings Outlook, propietarios por sede, plantillas y actividades | — | **Completada y aplicada en producción** |
+| [E8 — RLS por agregado](E8-rls-por-agregado.md) | Predicados fail-closed, un agregado por lote: contable, logística, RH, fiscal | E3 (a, d), E1 (b) | **E8a/E8b/E8c/E8d aplicadas en producción** |
 
 Orden sugerido: **E1** primero, que cierra la estabilización sin tocar contabilidad.
 Después **E3 → E4 → E5/E6**, que es la cadena larga. **E2**, **E7** y **E8c** no
 dependen de nada y pueden adelantarse.
 
-Con E1, E3, E4, E5, E6 y las implementaciones Sandbox de E7 y E8 entregadas, la
-cadena larga está completa. Quedan el corte posterior de **E2**, los paquetes
-la aplicación controlada del paquete productivo ya previsualizado de **E7** y de los
-tres paquetes ya previsualizados de **E8a/E8b/E8d**, además de los siguientes subagregados RLS
-documentados en E8. El corrector productivo de los 288 vínculos de E7 ya fue ejecutado.
+Las ocho entregas quedaron completas. E2, E7 y los lotes E8a/E8b/E8d cerraron su
+corte productivo el 2026-09-10; E8c ya estaba aplicada. Los siguientes subagregados
+RLS documentados en E8 son ampliaciones futuras, no pendientes de estas ocho
+entregas. El [acta final](../production-final-e7-e8-cutover-applied-20260910.md)
+conserva la evidencia operativa.
 
-**Qué falta para adoptar el reporte publicado como oficial.** La balanza y el estado de
-resultados quedaron versionados con `@SoloPublicadas`, apagado por omisión, así que el
-reporte vigente conserva exactamente su significado. Encenderlo por empresa exige, en
-orden: activar el ciclo de E4 para esa empresa, publicar sus pólizas, y conciliar las
-que queden fuera. `GetPublishedReportAvailabilityAsync` devuelve ese pendiente con
-nombre; mientras haya pólizas fuera del ciclo, el reporte vigente sigue siendo el
-oficial.
+**Condición para una adopción futura del reporte publicado.** La balanza y el estado
+de resultados quedaron versionados con `@SoloPublicadas`, apagado por omisión, así que
+el reporte vigente conserva exactamente su significado y continúa oficial por
+decisión empresarial. Si después se decide encenderlo para otra empresa, el orden es:
+activar el ciclo E4, publicar sus pólizas y conciliar las que queden fuera.
+`GetPublishedReportAvailabilityAsync` identifica esas filas. Esta adopción futura no
+es un pendiente de las ocho entregas.
 
 **E5 ya no deja una vía contable de Restaurante fuera.** Además del consolidado diario,
 `GenerateIndividualCfdiPolicyAsync` y la reversión `LateCfdiReversal` tienen identidades
@@ -96,17 +96,17 @@ habilitado. Las futuras sedes nacen apagadas mientras no tengan, como mínimo,
 `dbo.CreateTransaccionesForRoom` permanece bloqueado porque el usuario confirmó que
 no tiene consumidor externo ni VBA; la consola es el único punto de entrada soportado.
 
-**Producción al día en base de datos.** Los cuatro paquetes contables y el corrector
-E7 están aplicados en `grupocarpio` con respaldos verificados y previews revisados; el
-manifiesto productivo completo devuelve **16 VERIFIED**. Actas:
+**Producción al día en base de datos.** Los paquetes contables, E7 y los cuatro lotes
+E8 están aplicados en `grupocarpio` con respaldos verificados y previews revisados; el
+manifiesto productivo completo devuelve **21 APPLIED**. Actas:
 [E3 y E4](../production-accounting-packages-applied-20260908.md),
 [E5 y E6](../production-outbox-reports-applied-20260909.md) y
-[corrector E7](../production-e7-payment-link-removal-applied-20260909.md).
+[corrector E7](../production-e7-payment-link-removal-applied-20260909.md), más el
+[cierre E2/E7/E8](../production-final-e7-e8-cutover-applied-20260910.md).
 
-**Los binarios productivos ya incluyen E5 y E6.** La publicación urgente de la
-corrección para crear reservaciones reinició la consola a las 14:15 del 2026-09-09 y
-salió de un `main` que ya contenía ambas entregas. Los cambios posteriores de E7 y
-E8a/E8b/E8d siguen únicamente en código y Sandbox; no forman parte de ese binario.
+**Los binarios productivos incluyen las ocho entregas.** Consola, Bonhomia y Bruno se
+publicaron desde `main` el 2026-09-10 antes de aplicar E8. Los tres servicios quedaron
+en ejecución y sus superficies públicas respondieron 200.
 
 **Ciclo encendido para un piloto (2026-09-09).** El usuario eligió `BRUNOS260707L26`
 con corte 2026-09-09: sus 337 pólizas previas quedan en modo compatible y el ciclo
@@ -258,13 +258,12 @@ comprobantes ligados a varias pólizas de la misma empresa —hasta cuatro—. S
 E3 rechaza duplicar de aquí en adelante y no toca lo existente. Hay que resolverlos
 antes de activar el ciclo en esas empresas.
 
-**El broadcaster de Restaurante ya sabe trabajar con alcance fail-closed, pero nace
-apagado.** Enumera únicamente empresas/sedes con el módulo habilitado y fija
-`OrionRfc` + `OrionERP.CompanyId` en cada conexión antes de leer o marcar eventos.
-`RestaurantEventBroadcasting:Enabled` permanece en `false`, así que publicar el código
-no consume el rezago. El corte read-only del 2026-09-10 encontró **2,000** eventos
-BRUNOS pendientes, sin intentos, desde 2026-07-31; encenderlo los difundiría y marcaría
-publicados por lotes. Esa activación sigue siendo una decisión operativa del usuario.
+**El broadcaster de Restaurante opera con alcance fail-closed.** Enumera únicamente
+empresas/sedes con el módulo habilitado y fija `OrionRfc` + `OrionERP.CompanyId` en
+cada conexión. Antes de habilitarlo, los **2,000** eventos históricos BRUNOS quedaron
+cerrados uno por uno en auditoría inmutable; los Id 125–2124 no se difundieron. La
+configuración privada productiva quedó en `Enabled=true`, por lo que sólo procesa
+eventos nuevos.
 
 **El aislamiento de Hospedaje dejó fuera a dos roles que sus rutas sí autorizan.**
 `HospitalityAdministrationSessionGuard` exigía `Administrador` o `SatOperator` para

@@ -72,8 +72,9 @@ Sandbox. Sin unitarias: el cambio es SQL.
 
 ## Resultado de E8a, E8b y E8d — 2026-09-10
 
-Los tres lotes pendientes se implementaron, previsualizaron, aplicaron y verificaron
-por separado **sólo en `Orion_Sandbox`**. No hubo corte productivo.
+Los tres lotes se implementaron, previsualizaron, aplicaron y verificaron por separado
+primero en `Orion_Sandbox` y después en **`grupocarpio`** mediante el corte autorizado
+del 2026-09-10.
 
 **E8a — Contable.** `dbo.Transacciones` y `dbo.Registro_Contable` ahora exigen el
 `CompanyId` técnico y el `OrionRfc` exacto de una empresa activa. Las dos pólizas OHM
@@ -98,7 +99,7 @@ Los servicios de Bancos, CxP, Restaurante, Logística, reportes y adjuntos ya co
 la primera fábrica; reservaciones usa la segunda; `TransaccionService`, ciclo y outbox
 ya usaban la fábrica contable desde E3–E5. El usuario confirmó el 2026-09-09 que no
 existen consumidores contables externos ni VBA; esa condición de compatibilidad ya
-está cerrada. Todavía falta preparar, previsualizar y autorizar el paquete productivo.
+está cerrada. El paquete productivo quedó aplicado el 2026-09-10.
 
 **E8b — Logística.** El lote mínimo exacto es `logistica.Location`,
 `logistica.StockBalance` y `logistica.StockTransaction`: ubicaciones, existencia
@@ -123,8 +124,8 @@ Migraciones Sandbox: `20260909_accounting_rls_scope_sandbox`,
 `20260909_fiscal_rls_scope_sandbox`. Build de la consola Release: 0 warnings / 0
 errores.
 
-Los tres paquetes productivos distintos ya están preparados y pasaron preview contra
-`grupocarpio` con rollback completo:
+Los tres paquetes productivos distintos se prepararon y pasaron preview contra
+`grupocarpio` con rollback completo antes de aplicarse:
 
 - `20260909_production_accounting_rls_scope`: 8,102 pólizas, dos cabeceras y cuatro
   movimientos legacy resueltos por el vínculo exacto de OHM; seis predicados nuevos.
@@ -133,6 +134,8 @@ Los tres paquetes productivos distintos ya están preparados y pasaron preview c
 - `20260909_production_fiscal_rls_scope`: 16 filas OHM; mueve los 18 predicados
   fiscales y deja `cfdi.Comprobante` fuera.
 
-Los recibos viven en `artifacts/database-previews/e8[a|b|d]-production-preview.json`.
-No se aplicaron a producción: el corte todavía exige respaldo verificado y autorización
-explícita sobre estos tres paquetes.
+Después de publicar los binarios compatibles se regeneraron los tres previews contra
+el respaldo verificado y se aplicaron en orden E8a → E8b → E8d. Sin contexto, los
+tres agregados devolvieron cero filas; con contexto sólo devolvieron la empresa
+correspondiente. Las 21 migraciones del manifiesto productivo terminaron aplicadas.
+Véase el [acta final](../production-final-e7-e8-cutover-applied-20260910.md).

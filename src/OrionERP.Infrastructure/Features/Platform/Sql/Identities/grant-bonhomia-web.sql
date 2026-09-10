@@ -90,6 +90,15 @@ END;
 CLOSE permiso_cursor;
 DEALLOCATE permiso_cursor;
 
+/* El readiness publico comprueba que la politica siga activa y schema-bound y que
+   los dos indices filtrados de ROOM_CALENDAR conserven su definición. VIEW DEFINITION
+   sobre estos dos objetos exactos sólo expone metadatos; no concede acceso a nuevas
+   filas, DDL, ALTER ni bypass de RLS. */
+SET @Sql = N'GRANT VIEW DEFINITION ON OBJECT::[orion].[HospitalityScopePolicy] TO ' + QUOTENAME(@Usuario) + N';';
+EXEC sys.sp_executesql @Sql;
+SET @Sql = N'GRANT VIEW DEFINITION ON OBJECT::[dbo].[ROOM_CALENDAR] TO ' + QUOTENAME(@Usuario) + N';';
+EXEC sys.sp_executesql @Sql;
+
 /* Y ni un objeto de la otra instancia, ni de lo administrativo. El DENY es explicito
    para que nadie lo conceda mas tarde por descuido. */
 DECLARE @Vedados TABLE (Esquema sysname NOT NULL PRIMARY KEY);

@@ -5,32 +5,32 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
-namespace OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 
-public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
+public sealed class HospitalityPayPalClient : IHospitalityPayPalClient
 {
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
   private readonly HttpClient _httpClient;
-  private readonly BonhomiaCheckoutOptions _options;
-  private readonly ILogger<BonhomiaPayPalClient> _logger;
+  private readonly HospitalityCheckoutOptions _options;
+  private readonly ILogger<HospitalityPayPalClient> _logger;
   private string? _accessToken;
   private DateTimeOffset _accessTokenExpiresAtUtc;
 
-  public BonhomiaPayPalClient(
+  public HospitalityPayPalClient(
     HttpClient httpClient,
-    IOptions<BonhomiaCheckoutOptions> options,
-    ILogger<BonhomiaPayPalClient> logger)
+    IOptions<HospitalityCheckoutOptions> options,
+    ILogger<HospitalityPayPalClient> logger)
   {
     _httpClient = httpClient;
     _options = options.Value;
     _logger = logger;
   }
 
-  public async Task<BonhomiaPayPalOrderResult> CreateOrderAsync(
-    BonhomiaQuoteDto quote,
+  public async Task<HospitalityPayPalOrderResult> CreateOrderAsync(
+    HospitalityQuoteDto quote,
     string idempotencyKey,
     CancellationToken ct = default)
   {
@@ -48,7 +48,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       {
         new
         {
-          reference_id = BonhomiaPayPalOrderPolicy.CreateReferenceId(quote),
+          reference_id = HospitalityPayPalOrderPolicy.CreateReferenceId(quote),
           description = $"{_options.PublicName} - {quote.RoomName}",
           custom_id = quote.Fingerprint,
           amount = new
@@ -65,27 +65,27 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     if (!response.IsSuccessStatusCode)
     {
       _logger.LogWarning("PayPal create order failed with status {Status}. Body: {Body}", response.StatusCode, body);
-      throw new BonhomiaPublicBookingException("paypal_create_failed", "PayPal no pudo crear la orden de pago.");
+      throw new HospitalityPublicBookingException("paypal_create_failed", "PayPal no pudo crear la orden de pago.");
     }
 
     using var document = JsonDocument.Parse(body);
     var root = document.RootElement;
-    return new BonhomiaPayPalOrderResult
+    return new HospitalityPayPalOrderResult
     {
       OrderId = root.GetProperty("id").GetString() ?? string.Empty,
       Status = root.TryGetProperty("status", out var status) ? status.GetString() ?? string.Empty : string.Empty
     };
   }
 
-  public async Task<BonhomiaPayPalCaptureResult> CaptureOrderAsync(
+  public async Task<HospitalityPayPalCaptureResult> CaptureOrderAsync(
     string orderId,
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     string idempotencyKey,
     CancellationToken ct = default)
   {
     if (string.IsNullOrWhiteSpace(orderId))
     {
-      throw new BonhomiaPublicBookingException("paypal_order_required", "La orden PayPal es obligatoria.");
+      throw new HospitalityPublicBookingException("paypal_order_required", "La orden PayPal es obligatoria.");
     }
 
     ArgumentNullException.ThrowIfNull(quote);
@@ -134,7 +134,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       }
 
       _logger.LogWarning("PayPal capture failed for order {OrderId} with status {Status}. Body: {Body}", orderId, response.StatusCode, body);
-      throw new BonhomiaPublicBookingException("paypal_capture_failed", "PayPal no pudo confirmar el pago.");
+      throw new HospitalityPublicBookingException("paypal_capture_failed", "PayPal no pudo confirmar el pago.");
     }
 
     using var document = JsonDocument.Parse(body);
@@ -161,13 +161,13 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     }
 
     _logger.LogWarning("PayPal capture response for order {OrderId} did not include a capture. Body: {Body}", orderId, body);
-    throw new BonhomiaPublicBookingException("paypal_capture_failed", "PayPal no devolvio la confirmacion del pago.");
+    throw new HospitalityPublicBookingException("paypal_capture_failed", "PayPal no devolvio la confirmacion del pago.");
   }
 
-  private async Task<BonhomiaPayPalCaptureResult?> GetCapturedOrderAsync(
+  private async Task<HospitalityPayPalCaptureResult?> GetCapturedOrderAsync(
     string orderId,
     string token,
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     CancellationToken ct)
   {
     using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_options.PayPalBaseUri, $"/v2/checkout/orders/{Uri.EscapeDataString(orderId.Trim())}"));
@@ -178,7 +178,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     if (!response.IsSuccessStatusCode)
     {
       _logger.LogWarning("PayPal get order failed for {OrderId} with status {Status}. Body: {Body}", orderId, response.StatusCode, body);
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "paypal_order_validation_failed",
         "PayPal no permitio verificar que la orden corresponda a esta cotizacion.");
     }
@@ -190,14 +190,14 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       return null;
     }
 
-    BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+    HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
     return result;
   }
 
-  private async Task<BonhomiaPayPalCaptureResult?> WaitForCompletedCaptureAsync(
+  private async Task<HospitalityPayPalCaptureResult?> WaitForCompletedCaptureAsync(
     string orderId,
     string token,
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     CancellationToken ct)
   {
     for (var attempt = 0; attempt < 2; attempt++)
@@ -233,7 +233,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     if (!response.IsSuccessStatusCode)
     {
       _logger.LogWarning("PayPal OAuth failed with status {Status}. Body: {Body}", response.StatusCode, body);
-      throw new BonhomiaPublicBookingException("paypal_auth_failed", "PayPal no pudo autenticar la cuenta configurada.");
+      throw new HospitalityPublicBookingException("paypal_auth_failed", "PayPal no pudo autenticar la cuenta configurada.");
     }
 
     using var document = JsonDocument.Parse(body);
@@ -244,14 +244,14 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
       : 300;
     _accessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(expiresIn, 60));
 
-    return _accessToken ?? throw new BonhomiaPublicBookingException("paypal_auth_failed", "PayPal no devolvio token de acceso.");
+    return _accessToken ?? throw new HospitalityPublicBookingException("paypal_auth_failed", "PayPal no devolvio token de acceso.");
   }
 
   private void EnsureConfigured()
   {
     if (!_options.IsPayPalConfigured)
     {
-      throw new BonhomiaPublicBookingException("paypal_not_configured", "PayPal todavia no esta configurado para recibir pagos.");
+      throw new HospitalityPublicBookingException("paypal_not_configured", "PayPal todavia no esta configurado para recibir pagos.");
     }
   }
 
@@ -305,9 +305,9 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
   private static bool TryMapCaptureResult(
     JsonElement root,
     string fallbackOrderId,
-    out BonhomiaPayPalCaptureResult result)
+    out HospitalityPayPalCaptureResult result)
   {
-    result = new BonhomiaPayPalCaptureResult();
+    result = new HospitalityPayPalCaptureResult();
     if (!root.TryGetProperty("purchase_units", out var purchaseUnits) || purchaseUnits.ValueKind != JsonValueKind.Array)
     {
       return false;
@@ -329,7 +329,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
           continue;
         }
 
-        result = new BonhomiaPayPalCaptureResult
+        result = new HospitalityPayPalCaptureResult
         {
           OrderId = root.TryGetProperty("id", out var orderId) ? orderId.GetString() ?? fallbackOrderId : fallbackOrderId,
           CustomId = purchaseUnit.TryGetProperty("custom_id", out var customId) ? customId.GetString() ?? string.Empty : string.Empty,
@@ -357,13 +357,13 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     return false;
   }
 
-  private static void EnsureOrderBelongsToQuote(JsonElement root, BonhomiaQuoteDto quote)
+  private static void EnsureOrderBelongsToQuote(JsonElement root, HospitalityQuoteDto quote)
   {
     if (!root.TryGetProperty("purchase_units", out var purchaseUnits)
         || purchaseUnits.ValueKind != JsonValueKind.Array
         || purchaseUnits.GetArrayLength() != 1)
     {
-      BonhomiaPayPalOrderPolicy.EnsureOrderBelongsToQuote(null, null, quote);
+      HospitalityPayPalOrderPolicy.EnsureOrderBelongsToQuote(null, null, quote);
       return;
     }
 
@@ -374,24 +374,24 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     var referenceId = purchaseUnit.TryGetProperty("reference_id", out var referenceIdElement)
       ? referenceIdElement.GetString()
       : null;
-    BonhomiaPayPalOrderPolicy.EnsureOrderBelongsToQuote(customId, referenceId, quote);
+    HospitalityPayPalOrderPolicy.EnsureOrderBelongsToQuote(customId, referenceId, quote);
   }
 
   private static void EnsureCaptureResponseIsConsistent(
-    BonhomiaPayPalCaptureResult result,
-    BonhomiaQuoteDto quote)
+    HospitalityPayPalCaptureResult result,
+    HospitalityQuoteDto quote)
   {
-    var expectedReferenceId = BonhomiaPayPalOrderPolicy.CreateReferenceId(quote);
+    var expectedReferenceId = HospitalityPayPalOrderPolicy.CreateReferenceId(quote);
     if (!string.IsNullOrWhiteSpace(result.CustomId)
         && !string.Equals(result.CustomId.Trim(), quote.Fingerprint, StringComparison.Ordinal))
     {
-      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+      HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
     }
 
     if (!string.IsNullOrWhiteSpace(result.ReferenceId)
         && !string.Equals(result.ReferenceId.Trim(), expectedReferenceId, StringComparison.OrdinalIgnoreCase))
     {
-      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+      HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
     }
 
     // Some capture responses omit purchase-unit metadata. The order was
@@ -399,7 +399,7 @@ public sealed class BonhomiaPayPalClient : IBonhomiaPayPalClient
     // verified binding for the persistence-layer guard.
     result.CustomId = quote.Fingerprint;
     result.ReferenceId = expectedReferenceId;
-    BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
+    HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(result, quote);
   }
 
   private static string GetCaptureStatusReason(JsonElement capture)

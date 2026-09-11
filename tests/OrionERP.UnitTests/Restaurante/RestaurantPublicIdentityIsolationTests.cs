@@ -40,8 +40,8 @@ public sealed class RestaurantPublicIdentityIsolationTests
 
     await using var serviceScopeA = providerA.CreateAsyncScope();
     await using var serviceScopeB = providerB.CreateAsyncScope();
-    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
-    var managerB = serviceScopeB.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
+    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
+    var managerB = serviceScopeB.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
 
     var userA = NewUser("member@example.test");
     var userB = NewUser("member@example.test");
@@ -71,9 +71,9 @@ public sealed class RestaurantPublicIdentityIsolationTests
     await using var providerB = CreateIdentityProvider(root, databaseName, scopeB);
     await using var serviceScopeA = providerA.CreateAsyncScope();
     await using var serviceScopeB = providerB.CreateAsyncScope();
-    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
-    var storeB = Assert.IsType<RestaurantMemberUserStore>(
-      serviceScopeB.ServiceProvider.GetRequiredService<IUserStore<BrunoMemberUser>>());
+    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
+    var storeB = Assert.IsType<PublicSiteUserStore>(
+      serviceScopeB.ServiceProvider.GetRequiredService<IUserStore<PublicSiteUser>>());
 
     var userA = NewUser("member-a@example.test");
     Assert.True((await managerA.CreateAsync(userA, "Password1!")).Succeeded);
@@ -97,8 +97,8 @@ public sealed class RestaurantPublicIdentityIsolationTests
     await using var providerB = CreateIdentityProvider(root, databaseName, scopeB, dataProtection);
     await using var serviceScopeA = providerA.CreateAsyncScope();
     await using var serviceScopeB = providerB.CreateAsyncScope();
-    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
-    var managerB = serviceScopeB.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
+    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
+    var managerB = serviceScopeB.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
     var userA = NewUser("shared@example.test");
     var userB = NewUser("shared@example.test");
     Assert.True((await managerA.CreateAsync(userA, "Password1!")).Succeeded);
@@ -149,8 +149,8 @@ public sealed class RestaurantPublicIdentityIsolationTests
     await using var providerB = CreateIdentityProvider(root, databaseName, scopeB, dataProtection);
     await using var serviceScopeA = providerA.CreateAsyncScope();
     await using var serviceScopeB = providerB.CreateAsyncScope();
-    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
-    var managerB = serviceScopeB.ServiceProvider.GetRequiredService<UserManager<BrunoMemberUser>>();
+    var managerA = serviceScopeA.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
+    var managerB = serviceScopeB.ServiceProvider.GetRequiredService<UserManager<PublicSiteUser>>();
     var userA = NewUser("shared@example.test");
     var userB = NewUser("shared@example.test");
     Assert.True((await managerA.CreateAsync(userA, "Password1!")).Succeeded);
@@ -203,12 +203,12 @@ public sealed class RestaurantPublicIdentityIsolationTests
     var scopeB = Scope(202, "restaurant-b", 2, "RFC-B", 22, "site-b");
     var principal = Principal(scopeA);
 
-    Assert.True(RestaurantPublicIdentityScopePolicy.Matches(principal, scopeA));
-    Assert.False(RestaurantPublicIdentityScopePolicy.Matches(principal, scopeB));
+    Assert.True(PublicIdentityScopePolicy.Matches(principal, scopeA));
+    Assert.False(PublicIdentityScopePolicy.Matches(principal, scopeB));
 
     ((ClaimsIdentity)principal.Identity!).AddClaim(
-      new Claim(RestaurantPublicIdentityClaimTypes.PublicSiteId, scopeA.PublicSiteId.ToString()));
-    Assert.False(RestaurantPublicIdentityScopePolicy.Matches(principal, scopeA));
+      new Claim(PublicIdentityClaimTypes.PublicSiteId, scopeA.PublicSiteId.ToString()));
+    Assert.False(PublicIdentityScopePolicy.Matches(principal, scopeA));
   }
 
   [Theory]
@@ -222,30 +222,30 @@ public sealed class RestaurantPublicIdentityIsolationTests
     var identity = (ClaimsIdentity)principal.Identity!;
     if (mutation == "foreign")
     {
-      var claim = identity.FindFirst(RestaurantPublicIdentityClaimTypes.PublicSiteId)!;
+      var claim = identity.FindFirst(PublicIdentityClaimTypes.PublicSiteId)!;
       identity.RemoveClaim(claim);
-      identity.AddClaim(new Claim(RestaurantPublicIdentityClaimTypes.PublicSiteId, "202"));
+      identity.AddClaim(new Claim(PublicIdentityClaimTypes.PublicSiteId, "202"));
     }
     else if (mutation == "missing")
     {
-      identity.RemoveClaim(identity.FindFirst(RestaurantPublicIdentityClaimTypes.SiteKey)!);
+      identity.RemoveClaim(identity.FindFirst(PublicIdentityClaimTypes.SiteKey)!);
     }
     else
     {
-      identity.AddClaim(new Claim(RestaurantPublicIdentityClaimTypes.CompanyRfc, current.CompanyRfc));
+      identity.AddClaim(new Claim(PublicIdentityClaimTypes.CompanyRfc, current.CompanyRfc));
     }
 
     var stampValidator = new RecordingSecurityStampValidator();
     var authentication = new RecordingAuthenticationService();
     var services = new ServiceCollection()
-      .AddSingleton<IRestaurantPublicIdentityScopeAccessor>(new FixedScopeAccessor(current))
+      .AddSingleton<IPublicIdentityScopeAccessor>(new FixedScopeAccessor(current))
       .AddSingleton<ISecurityStampValidator>(stampValidator)
       .AddSingleton<IAuthenticationService>(authentication)
       .BuildServiceProvider();
     var httpContext = new DefaultHttpContext { RequestServices = services };
     var context = CookieContext(httpContext, principal);
 
-    await RestaurantMemberCookieScopeValidator.ValidatePrincipalAsync(context);
+    await PublicSiteUserCookieScopeValidator.ValidatePrincipalAsync(context);
 
     Assert.True(stampValidator.Called);
     Assert.Null(context.Principal);
@@ -260,7 +260,7 @@ public sealed class RestaurantPublicIdentityIsolationTests
     httpContext.Request.Path = "/healthz";
     var context = CookieContext(httpContext, Principal(Scope(101, "restaurant-a", 1, "RFC-A", 11, "site-a")));
 
-    await RestaurantMemberCookieScopeValidator.ValidatePrincipalAsync(context);
+    await PublicSiteUserCookieScopeValidator.ValidatePrincipalAsync(context);
 
     Assert.NotNull(context.Principal);
   }
@@ -274,7 +274,7 @@ public sealed class RestaurantPublicIdentityIsolationTests
     httpContext.Request.QueryString = new QueryString("?rfc=RFC-B&publicSiteId=202&siteKey=site-b");
     httpContext.Request.Headers["X-Orion-Rfc"] = "RFC-B";
     httpContext.Items[PublicWebsiteBindingGateMiddleware.BindingItemKey] = Binding(definition, 101, 1, 11);
-    var accessor = new ConfiguredRestaurantIdentityScopeAccessor(
+    var accessor = new VerifiedPublicIdentityScopeAccessor(
       new HttpContextAccessor { HttpContext = httpContext },
       new StubWebsiteContext(definition));
 
@@ -290,7 +290,7 @@ public sealed class RestaurantPublicIdentityIsolationTests
   {
     var definition = new PublicWebsiteInstanceDefinition(
       "restaurant-a", "RFC-A", "site-a", PlatformModuleCodes.Restaurant, "a.example.test", 5020);
-    var accessor = new ConfiguredRestaurantIdentityScopeAccessor(
+    var accessor = new VerifiedPublicIdentityScopeAccessor(
       new HttpContextAccessor { HttpContext = new DefaultHttpContext() },
       new StubWebsiteContext(definition));
 
@@ -318,104 +318,52 @@ public sealed class RestaurantPublicIdentityIsolationTests
   }
 
   [Fact]
-  public void Readiness_requires_the_applied_restaurant_migration_with_its_current_checksum()
+  public void Readiness_requires_the_applied_neutral_identity_migration_with_its_frozen_checksum()
   {
     var sql = ReadReadinessConstant("ReadinessSql");
     var migrationId = ReadReadinessConstant("RequiredMigrationId");
     var configuredChecksum = ReadReadinessConstant("RequiredMigrationChecksum");
     var migrationBytes = File.ReadAllBytes(RepoPath(
-      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260903_restaurant_public_identity_scope_sandbox.sql"));
+      "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_identity.sql"));
 
-    Assert.Equal("20260903_restaurant_public_identity_scope_sandbox", migrationId);
+    Assert.Equal("20260911_public_identity", migrationId);
     Assert.Equal(Convert.ToHexString(SHA256.HashData(migrationBytes)), configuredChecksum);
-    Assert.Contains("OBJECT_ID(N'orion.SchemaMigration',N'U') IS NOT NULL", sql, StringComparison.Ordinal);
-    Assert.Contains("WHERE (MigrationId=@RequiredMigrationId", sql, StringComparison.Ordinal);
-    Assert.Contains("AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)", sql, StringComparison.Ordinal);
-    Assert.Contains("IF @LedgerReady=1", sql, StringComparison.Ordinal);
+    Assert.Contains("MigrationId=@RequiredMigrationId", sql, StringComparison.Ordinal);
+    Assert.Contains("UPPER(Checksum)=@RequiredMigrationChecksum", sql, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void Readiness_accepts_production_only_with_its_own_exact_migration_checksum()
+  public void Readiness_requires_the_neutral_policy_and_all_twenty_one_predicates()
   {
     var sql = ReadReadinessConstant("ReadinessSql");
-    var migrationId = ReadReadinessConstant("RequiredProductionMigrationId");
-    var configuredChecksum = ReadReadinessConstant("RequiredProductionMigrationChecksum");
-    var migrationBytes = File.ReadAllBytes(RepoPath(
-      "database/production/20260908/20260908_production_restaurant_public_identity_scope.sql"));
 
-    Assert.Equal("20260908_production_restaurant_public_identity_scope", migrationId);
-    Assert.Equal(Convert.ToHexString(SHA256.HashData(migrationBytes)), configuredChecksum);
-    Assert.NotEqual(ReadReadinessConstant("RequiredMigrationChecksum"), configuredChecksum);
-    var normalizedSql = System.Text.RegularExpressions.Regex.Replace(sql, @"\s+", " ");
-    Assert.Contains("(MigrationId=@RequiredMigrationId AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum))", normalizedSql, StringComparison.Ordinal);
-    Assert.Contains("OR (MigrationId=@RequiredProductionMigrationId AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum))", normalizedSql, StringComparison.Ordinal);
-    Assert.Contains("IF @LedgerReady=1", sql, StringComparison.Ordinal);
-    Assert.True(HasEveryReadinessDriftGuard(sql));
+    Assert.Contains("OBJECT_ID(N'orion.PublicIdentityScopePolicy')", sql, StringComparison.Ordinal);
+    Assert.Contains("is_enabled=1 AND is_schema_bound=1", sql, StringComparison.Ordinal);
+    Assert.Contains("=21", sql, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void Readiness_requires_not_null_scope_columns_and_enabled_after_triggers()
+  public void Readiness_requires_not_null_scope_columns_on_all_identity_tables()
   {
     var sql = ReadReadinessConstant("ReadinessSql");
 
-    Assert.Contains("FROM sys.columns identitySiteColumn", sql, StringComparison.Ordinal);
-    Assert.Contains("identitySiteColumn.name=N'PublicSiteId'", sql, StringComparison.Ordinal);
-    Assert.Contains("identitySiteColumn.is_nullable=0", sql, StringComparison.Ordinal);
-    Assert.Contains("FROM sys.columns memberSiteColumn", sql, StringComparison.Ordinal);
-    Assert.Contains("memberSiteColumn.name=N'PublicSiteId'", sql, StringComparison.Ordinal);
-    Assert.Contains("memberSiteColumn.is_nullable=0", sql, StringComparison.Ordinal);
-
-    Assert.Contains("FROM sys.triggers identityScopeTrigger", sql, StringComparison.Ordinal);
-    Assert.Contains("identityScopeTrigger.parent_id=OBJECT_ID(N'brunos_auth.AspNetUsers')", sql, StringComparison.Ordinal);
-    Assert.Contains("identityScopeTrigger.name=N'TR_AspNetUsers_RestaurantIdentityScope'", sql, StringComparison.Ordinal);
-    Assert.Contains("identityScopeTrigger.is_disabled=0", sql, StringComparison.Ordinal);
-    Assert.Contains("identityScopeTrigger.is_instead_of_trigger=0", sql, StringComparison.Ordinal);
-    Assert.Contains("FROM sys.triggers memberScopeTrigger", sql, StringComparison.Ordinal);
-    Assert.Contains("memberScopeTrigger.parent_id=OBJECT_ID(N'fidelidad.MemberAccount')", sql, StringComparison.Ordinal);
-    Assert.Contains("memberScopeTrigger.name=N'TR_MemberAccount_PublicIdentityScope'", sql, StringComparison.Ordinal);
-    Assert.Contains("memberScopeTrigger.is_disabled=0", sql, StringComparison.Ordinal);
-    Assert.Contains("memberScopeTrigger.is_instead_of_trigger=0", sql, StringComparison.Ordinal);
+    foreach (var table in new[]
+    {
+      "AspNetUsers", "AspNetRoles", "AspNetUserClaims", "AspNetRoleClaims",
+      "AspNetUserLogins", "AspNetUserRoles", "AspNetUserTokens"
+    })
+      Assert.Contains($"(N'{table}')", sql, StringComparison.Ordinal);
+    Assert.Contains("siteColumn.name=N'PublicSiteId'", sql, StringComparison.Ordinal);
+    Assert.Contains("siteColumn.is_nullable<>0", sql, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void Readiness_preserves_exact_index_and_foreign_key_composition_guards()
+  public void Readiness_rejects_forward_bridge_mode_for_the_new_writer()
   {
     var sql = ReadReadinessConstant("ReadinessSql");
 
-    Assert.Contains("indexInfo.name=N'UserNameIndex_Bruno'", sql, StringComparison.Ordinal);
-    Assert.Contains("firstColumn.name=N'PublicSiteId' AND secondColumn.name=N'NormalizedUserName'", sql, StringComparison.Ordinal);
-    Assert.Contains("indexInfo.name=N'EmailIndex_Bruno'", sql, StringComparison.Ordinal);
-    Assert.Contains("firstColumn.name=N'PublicSiteId' AND secondColumn.name=N'NormalizedEmail'", sql, StringComparison.Ordinal);
-    Assert.Contains("firstKey.key_ordinal=1", sql, StringComparison.Ordinal);
-    Assert.Contains("secondKey.key_ordinal=2", sql, StringComparison.Ordinal);
-    Assert.Contains("extraKey.key_ordinal>2", sql, StringComparison.Ordinal);
-    Assert.Contains("indexInfo.is_unique=1 AND indexInfo.is_disabled=0", sql, StringComparison.Ordinal);
-
-    Assert.Contains("foreignKey.name=N'FK_LoyaltyMember_IdentityScope'", sql, StringComparison.Ordinal);
-    Assert.Contains("COL_NAME(firstColumn.parent_object_id,firstColumn.parent_column_id)=N'IdentityUserId'", sql, StringComparison.Ordinal);
-    Assert.Contains("COL_NAME(secondColumn.parent_object_id,secondColumn.parent_column_id)=N'PublicSiteId'", sql, StringComparison.Ordinal);
-    Assert.Contains("foreignKey.name=N'FK_LoyaltyMember_PublicSite'", sql, StringComparison.Ordinal);
-    Assert.Contains("foreignKey.name=N'FK_BrunoAspNetUsers_PublicSite'", sql, StringComparison.Ordinal);
-    Assert.Contains("foreignKey.is_disabled=0 AND foreignKey.is_not_trusted=0", sql, StringComparison.Ordinal);
-  }
-
-  [Theory]
-  [InlineData("AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)")]
-  [InlineData("AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum)")]
-  [InlineData("AND identitySiteColumn.is_nullable=0")]
-  [InlineData("AND memberSiteColumn.is_nullable=0")]
-  [InlineData("AND indexInfo.is_unique=1 AND indexInfo.is_disabled=0")]
-  [InlineData("AND foreignKey.is_disabled=0 AND foreignKey.is_not_trusted=0")]
-  [InlineData("AND identityScopeTrigger.is_disabled=0")]
-  [InlineData("AND memberScopeTrigger.is_disabled=0")]
-  public void Readiness_contract_detects_each_required_schema_drift_guard(string removedGuard)
-  {
-    var sql = ReadReadinessConstant("ReadinessSql");
-    Assert.True(HasEveryReadinessDriftGuard(sql));
-
-    var driftedSql = sql.Replace(removedGuard, string.Empty, StringComparison.Ordinal);
-
-    Assert.False(HasEveryReadinessDriftGuard(driftedSql));
+    Assert.Contains("BridgeMode IN('Reverse','Off')", sql, StringComparison.Ordinal);
+    Assert.DoesNotContain("BridgeMode IN('Forward','Reverse','Off')", sql, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -433,30 +381,30 @@ public sealed class RestaurantPublicIdentityIsolationTests
   private static ServiceProvider CreateIdentityProvider(
     InMemoryDatabaseRoot root,
     string databaseName,
-    RestaurantPublicIdentityScope identityScope,
+    PublicIdentityScope identityScope,
     IDataProtectionProvider? dataProtection = null)
   {
     var services = new ServiceCollection();
     services.AddLogging();
     if (dataProtection is null) services.AddDataProtection();
     else services.AddSingleton(dataProtection);
-    services.AddSingleton<IRestaurantPublicIdentityScopeAccessor>(new FixedScopeAccessor(identityScope));
-    services.AddDbContext<BrunoIdentityDbContext>(options =>
+    services.AddSingleton<IPublicIdentityScopeAccessor>(new FixedScopeAccessor(identityScope));
+    services.AddDbContext<PublicIdentityDbContext>(options =>
       options.UseInMemoryDatabase(databaseName, root));
     services
-      .AddIdentityCore<BrunoMemberUser>(options =>
+      .AddIdentityCore<PublicSiteUser>(options =>
       {
         options.User.RequireUniqueEmail = true;
         options.Password.RequiredLength = 8;
       })
-      .AddRoles<IdentityRole>()
-      .AddEntityFrameworkStores<BrunoIdentityDbContext>()
-      .AddUserStore<RestaurantMemberUserStore>()
+      .AddRoles<PublicSiteRole>()
+      .AddEntityFrameworkStores<PublicIdentityDbContext>()
+      .AddUserStore<PublicSiteUserStore>()
       .AddDefaultTokenProviders();
     return services.BuildServiceProvider(validateScopes: true);
   }
 
-  private static BrunoMemberUser NewUser(string email) => new()
+  private static PublicSiteUser NewUser(string email) => new()
   {
     UserName = email,
     Email = email,
@@ -464,26 +412,27 @@ public sealed class RestaurantPublicIdentityIsolationTests
     LastName = "Test"
   };
 
-  private static RestaurantPublicIdentityScope Scope(
+  private static PublicIdentityScope Scope(
     long publicSiteId,
     string publicSiteKey,
     long companyId,
     string companyRfc,
     long siteId,
     string siteKey)
-    => new(publicSiteId, publicSiteKey, companyId, companyRfc, siteId, siteKey);
+    => new(publicSiteId, publicSiteKey, companyId, companyRfc, siteId, siteKey, PlatformModuleCodes.Restaurant);
 
-  private static ClaimsPrincipal Principal(RestaurantPublicIdentityScope scope)
+  private static ClaimsPrincipal Principal(PublicIdentityScope scope)
   {
     var claims = new[]
     {
       new Claim(ClaimTypes.NameIdentifier, "user-1"),
-      new Claim(RestaurantPublicIdentityClaimTypes.PublicSiteId, scope.PublicSiteId.ToString()),
-      new Claim(RestaurantPublicIdentityClaimTypes.PublicSiteKey, scope.PublicSiteKey),
-      new Claim(RestaurantPublicIdentityClaimTypes.CompanyId, scope.CompanyId.ToString()),
-      new Claim(RestaurantPublicIdentityClaimTypes.CompanyRfc, scope.CompanyRfc),
-      new Claim(RestaurantPublicIdentityClaimTypes.SiteId, scope.SiteId.ToString()),
-      new Claim(RestaurantPublicIdentityClaimTypes.SiteKey, scope.SiteKey)
+      new Claim(PublicIdentityClaimTypes.PublicSiteId, scope.PublicSiteId.ToString()),
+      new Claim(PublicIdentityClaimTypes.PublicSiteKey, scope.PublicSiteKey),
+      new Claim(PublicIdentityClaimTypes.CompanyId, scope.CompanyId.ToString()),
+      new Claim(PublicIdentityClaimTypes.CompanyRfc, scope.CompanyRfc),
+      new Claim(PublicIdentityClaimTypes.SiteId, scope.SiteId.ToString()),
+      new Claim(PublicIdentityClaimTypes.SiteKey, scope.SiteKey),
+      new Claim(PublicIdentityClaimTypes.ModuleCode, scope.ModuleCode)
     };
     return new ClaimsPrincipal(new ClaimsIdentity(claims, "restaurant-cookie"));
   }
@@ -545,25 +494,9 @@ public sealed class RestaurantPublicIdentityIsolationTests
       1,
       1);
 
-  private static bool HasEveryReadinessDriftGuard(string sql)
-  {
-    string[] requiredGuards =
-    [
-      "AND UPPER(Checksum)=UPPER(@RequiredMigrationChecksum)",
-      "AND UPPER(Checksum)=UPPER(@RequiredProductionMigrationChecksum)",
-      "AND identitySiteColumn.is_nullable=0",
-      "AND memberSiteColumn.is_nullable=0",
-      "AND indexInfo.is_unique=1 AND indexInfo.is_disabled=0",
-      "AND foreignKey.is_disabled=0 AND foreignKey.is_not_trusted=0",
-      "AND identityScopeTrigger.is_disabled=0",
-      "AND memberScopeTrigger.is_disabled=0"
-    ];
-    return requiredGuards.All(guard => sql.Contains(guard, StringComparison.Ordinal));
-  }
-
   private static string ReadReadinessConstant(string fieldName)
   {
-    var field = typeof(RestaurantPublicIdentityReadiness).GetField(
+    var field = typeof(PublicIdentityReadiness).GetField(
       fieldName,
       BindingFlags.NonPublic | BindingFlags.Static);
     return Assert.IsType<string>(field?.GetRawConstantValue());
@@ -583,10 +516,10 @@ public sealed class RestaurantPublicIdentityIsolationTests
   private static string ReadRepoFile(string relativePath)
     => File.ReadAllText(RepoPath(relativePath));
 
-  private sealed class FixedScopeAccessor(RestaurantPublicIdentityScope scope)
-    : IRestaurantPublicIdentityScopeAccessor
+  private sealed class FixedScopeAccessor(PublicIdentityScope scope)
+    : IPublicIdentityScopeAccessor
   {
-    public RestaurantPublicIdentityScope Current { get; } = scope;
+    public PublicIdentityScope Current { get; } = scope;
   }
 
   private sealed class StubWebsiteContext(PublicWebsiteInstanceDefinition definition)
@@ -638,24 +571,24 @@ public sealed class RestaurantPublicIdentityIsolationTests
     }
   }
 
-  private sealed class RecordingEmailSender : IEmailSender<BrunoMemberUser>
+  private sealed class RecordingEmailSender : IEmailSender<PublicSiteUser>
   {
     public List<string> ConfirmationUsers { get; } = [];
     public List<string> PasswordResetUsers { get; } = [];
 
-    public Task SendConfirmationLinkAsync(BrunoMemberUser user, string email, string confirmationLink)
+    public Task SendConfirmationLinkAsync(PublicSiteUser user, string email, string confirmationLink)
     {
       ConfirmationUsers.Add(user.Id);
       return Task.CompletedTask;
     }
 
-    public Task SendPasswordResetLinkAsync(BrunoMemberUser user, string email, string resetLink)
+    public Task SendPasswordResetLinkAsync(PublicSiteUser user, string email, string resetLink)
     {
       PasswordResetUsers.Add(user.Id);
       return Task.CompletedTask;
     }
 
-    public Task SendPasswordResetCodeAsync(BrunoMemberUser user, string email, string resetCode)
+    public Task SendPasswordResetCodeAsync(PublicSiteUser user, string email, string resetCode)
       => Task.CompletedTask;
   }
 

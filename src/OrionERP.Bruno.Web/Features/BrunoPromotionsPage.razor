@@ -1,5 +1,5 @@
 @page "/promociones"
-@inject IBrunoPublicCatalogService CatalogService
+@inject IRestaurantPublicCatalogService CatalogService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
 
@@ -41,7 +41,7 @@
 </section>
 
 @code {
-  private IReadOnlyList<BrunoPublicPromotionDto> promotions = [];
+  private IReadOnlyList<RestaurantPublicPromotionDto> promotions = [];
   private bool membershipEnabled;
 
   protected override async Task OnInitializedAsync()
@@ -50,7 +50,7 @@
     {
       var binding = await Website.ResolveRequiredAsync();
       var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
-      var catalog = await CatalogService.GetCatalogAsync(binding.CompanyRfc, binding.SiteKey, localNow);
+      var catalog = await CatalogService.GetCatalogAsync(binding, localNow);
       promotions = catalog?.Promotions ?? [];
       membershipEnabled = catalog?.Settings?.IsMembershipEnabled == true;
     }

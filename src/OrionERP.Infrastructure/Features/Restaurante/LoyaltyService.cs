@@ -10,7 +10,7 @@ using OrionERP.Application.Features.Restaurante;
 
 namespace OrionERP.Infrastructure.Features.Restaurante;
 
-public sealed class LoyaltyService : ILoyaltyService
+public sealed class LoyaltyService : IRestaurantLoyaltyService
 {
   private readonly IDbConnectionFactory _connectionFactory;
 
@@ -128,7 +128,7 @@ public sealed class LoyaltyService : ILoyaltyService
         SELECT CAST(CASE WHEN EXISTS
         (
           SELECT 1
-          FROM brunos_auth.AspNetUsers identityUser
+          FROM public_identity.AspNetUsers identityUser
           JOIN orion.PublicSite publicSite
             ON publicSite.PublicSiteId=identityUser.PublicSiteId
           JOIN orion.Company company
@@ -418,7 +418,7 @@ public sealed class LoyaltyService : ILoyaltyService
             PasswordHash=NULL,SecurityStamp=CONVERT(nvarchar(36),NEWID()),
             FirstName=N'Miembro',LastName=N'cerrado',
             ClosedAt=SYSUTCDATETIME(),LockoutEnd='9999-12-31T23:59:59+00:00'
-        FROM brunos_auth.AspNetUsers identityUser
+        FROM public_identity.AspNetUsers identityUser
         JOIN fidelidad.MemberAccount member
           ON member.IdentityUserId=identityUser.Id
         WHERE member.Rfc=@Rfc AND member.PublicSiteId=@PublicSiteId
@@ -783,7 +783,7 @@ public sealed class LoyaltyService : ILoyaltyService
              member.EmailVerified,member.PhoneVerified,member.[Status],
              member.PointsBalance,member.CreatedAt
       FROM fidelidad.MemberAccount member
-      JOIN brunos_auth.AspNetUsers userInfo
+      JOIN public_identity.AspNetUsers userInfo
         ON userInfo.Id=member.IdentityUserId
        AND userInfo.PublicSiteId=member.PublicSiteId
       WHERE member.Rfc=@Rfc

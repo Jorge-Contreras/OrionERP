@@ -3,7 +3,7 @@
 @using OrionERP.Application.Features.Logistica.Shared
 @using OrionERP.Application.Features.Restaurante
 @inject IRestaurantCatalogService CatalogService
-@inject IBrunoPublicCatalogService PublicCatalogService
+@inject IRestaurantPublicCatalogService PublicCatalogService
 @inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -96,7 +96,7 @@
 
 @code {
   private List<RestaurantSiteDto> sites = [];
-  private BrunoPublicSiteSettingsSaveRequest? settings;
+  private RestaurantPublicSiteSettingsSaveRequest? settings;
   private int? selectedSiteId;
   private bool isBusy;
   private string? message;
@@ -194,7 +194,7 @@
       return;
     }
 
-    settings = new BrunoPublicSiteSettingsSaveRequest
+    settings = new RestaurantPublicSiteSettingsSaveRequest
     {
       Rfc = CurrentRfc, SiteId = value.SiteId, LegalName = value.LegalName, PublicName = value.PublicName,
       HeroEyebrow = value.HeroEyebrow, HeroTitle = value.HeroTitle, HeroDescription = value.HeroDescription,

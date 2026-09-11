@@ -188,6 +188,48 @@ public sealed class DatabaseMigrationManifestTests
   }
 
   [Fact]
+  public void Manifest_DeclaresChecksumVerifiedReplacementsForRestoredSandboxHistory()
+  {
+    var productionManifest = JsonSerializer.Deserialize<MigrationManifest>(
+      RepoFile.Read("database/orion-production-migrations.json"),
+      JsonOptions.Indented) ?? throw new InvalidOperationException("El manifiesto productivo está vacío.");
+    var productionById = productionManifest.Migrations.ToDictionary(item => item.Id, StringComparer.Ordinal);
+    var expected = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+      ["20260902_platform_sandbox_bonhomia_bruno"] = "20260908_production_public_site_bindings",
+      ["20260903_hospitality_public_scope_sandbox"] = "20260908_production_hospitality_public_scope",
+      ["20260903_restaurant_public_identity_scope_sandbox"] = "20260908_production_restaurant_public_identity_scope",
+      ["20260904_public_site_presentation_transition_sandbox"] = "20260908_production_public_site_presentation_transition",
+      ["20260905_hospitality_legal_consent_sandbox"] = "20260908_production_hospitality_legal_consent",
+      ["20260908_hospitality_administration_scope_sandbox"] = "20260908_production_hospitality_administration_scope",
+      ["20260908_accounting_company_identity_sandbox"] = "20260908_production_accounting_company_identity",
+      ["20260908_accounting_cycle_sandbox"] = "20260908_production_accounting_cycle",
+      ["20260908_accounting_outbox_sandbox"] = "20260908_production_accounting_outbox",
+      ["20260908_published_reports_sandbox"] = "20260908_production_published_reports",
+      ["20260909_accounting_cycle_activation_sandbox"] = "20260909_production_accounting_cycle_activation",
+      ["20260909_bsu_opening_balance_counterpart_sandbox"] = "20260909_production_bsu_opening_balance_counterpart",
+      ["20260909_workforce_attendance_scope_sandbox"] = "20260909_production_workforce_attendance_scope",
+      ["20260909_calendar_owner_scope_sandbox"] = "20260909_production_calendar_owner_scope",
+      ["20260909_hospitality_legacy_mechanisms_sandbox"] = "20260910_production_hospitality_legacy_mechanisms",
+      ["20260909_hospitality_legacy_transaction_guards_sandbox"] = "20260910_production_hospitality_legacy_mechanisms",
+      ["20260909_hospitality_payment_policy_switch_sandbox"] = "20260910_production_hospitality_legacy_mechanisms"
+    };
+
+    var actual = Manifest.Migrations
+      .Where(item => item.SatisfiedBy is { Count: > 0 })
+      .ToDictionary(item => item.Id, item => Assert.Single(item.SatisfiedBy!), StringComparer.Ordinal);
+
+    Assert.Equal(expected.Keys.Order(), actual.Keys.Order());
+    foreach (var (migrationId, replacementId) in expected)
+    {
+      var replacement = actual[migrationId];
+      Assert.Equal(replacementId, replacement.Id);
+      Assert.Equal(productionById[replacementId].Path, replacement.Path);
+      Assert.True(File.Exists(Path.Combine(RepositoryRoot, replacement.Path)));
+    }
+  }
+
+  [Fact]
   public void Manifest_TracksEveryManagedPlatformAndTenantIsolationScript()
   {
     var declared = Manifest.Migrations
@@ -479,6 +521,83 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("CREATE SECURITY POLICY fiscal.DeclarationScopePolicy", sql, StringComparison.Ordinal);
           Assert.Contains("El predicado E8d no debe admitir bypass por NULL.", sql, StringComparison.Ordinal);
           Assert.DoesNotContain("ALTER SECURITY POLICY fiscal.ComprobanteScopePolicy", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_platform_execution_scope":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("OrionCompanyId", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicSiteId", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicSqlPrincipalBinding", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_public_identity":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("public_identity", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicIdentityScopePolicy", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicIdentityCompatibilityState", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_public_provisioning_profiles":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("PublicPermissionProfileEntry", sql, StringComparison.Ordinal);
+          Assert.Contains("CREATE OR ALTER PROCEDURE orion.ApplyPublicPermissionProfile", sql, StringComparison.Ordinal);
+          Assert.Contains("@ApplyChanges bit=0", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_public_principal_boundary":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("PublicSqlPrincipalBinding", sql, StringComparison.Ordinal);
+          Assert.Contains("ProfileVersion=2", sql, StringComparison.Ordinal);
+          Assert.Contains("SELECT @ProfileVersion=MAX(ProfileVersion)", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_public_rls_principal_binding":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("binding.PrincipalName=USER_NAME()", sql, StringComparison.Ordinal);
+          Assert.Contains("SESSION_CONTEXT(N'OrionERP.PublicSiteId')", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION orion.fn_PublicIdentityScopePredicate", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION orion.fn_HospitalityScopePredicate", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_sandbox_database_owner":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ALTER AUTHORIZATION ON DATABASE::[Orion_Sandbox] TO [sa]", sql, StringComparison.Ordinal);
+          Assert.Contains("EXECUTE AS USER=N'dbo'", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_rfc_rls_fail_closed":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("PublicSqlPrincipalBinding", sql, StringComparison.Ordinal);
+          Assert.Contains("SESSION_CONTEXT(N'OrionERP.CompanyId')", sql, StringComparison.Ordinal);
+          Assert.Contains("SESSION_CONTEXT(N'OrionERP.PublicSiteId')", sql, StringComparison.Ordinal);
+          Assert.Contains("WHERE USER_NAME()=N'dbo'", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_synthetic_dual_company":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("TST260910DUAL01", sql, StringComparison.Ordinal);
+          Assert.Contains("synthetic-hospitality-main", sql, StringComparison.Ordinal);
+          Assert.Contains("synthetic-restaurant-main", sql, StringComparison.Ordinal);
+          Assert.Contains("SetPublicIdentityBridgeMode", sql, StringComparison.Ordinal);
+          Assert.Contains("ApplyPublicPermissionProfile", sql, StringComparison.Ordinal);
+          Assert.Contains("@ExpectedDatabase<>N'Orion_Sandbox'", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260911_legacy_write_compatibility":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("TR_Site_LegacyBinding", sql, StringComparison.Ordinal);
+          Assert.Contains("TR_PublicSiteSettings_LegacyBinding", sql, StringComparison.Ordinal);
+          Assert.Contains("WHERE OrionCompanyId IS NOT NULL AND OrionSiteId IS NOT NULL", sql, StringComparison.Ordinal);
+          Assert.Contains("WHERE PublicSiteId IS NOT NULL", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
         default:

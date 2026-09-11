@@ -3,13 +3,13 @@
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
-@using OrionERP.Application.Features.Bonhomia.PublicBooking
+@using OrionERP.Application.Features.Hospitality.PublicBooking
 @using OrionERP.Application.Features.Reservaciones.Experiencias
 @using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout
 @implements IAsyncDisposable
-@inject IBonhomiaPublicBookingService BookingService
-@inject IBonhomiaQuoteTokenService QuoteTokenService
-@inject IOptions<BonhomiaCheckoutOptions> CheckoutOptions
+@inject IHospitalityPublicBookingService BookingService
+@inject IHospitalityQuoteTokenService QuoteTokenService
+@inject IOptions<HospitalityCheckoutOptions> CheckoutOptions
 @inject ProtectedSessionStorage SessionStorage
 @inject IJSRuntime Js
 @inject PublicWebsitePresentationDefinition Presentation
@@ -715,10 +715,10 @@
         new(CheckoutStep.Payment, "Pago", "PayPal")
     ];
 
-    private BonhomiaAvailabilityDto? Availability { get; set; }
-    private BonhomiaQuoteDto? Quote { get; set; }
-    private BonhomiaCustomerInfo Customer { get; set; } = new();
-    private BonhomiaConfirmPayPalOrderResponse? CompletedReservation { get; set; }
+    private HospitalityAvailabilityDto? Availability { get; set; }
+    private HospitalityQuoteDto? Quote { get; set; }
+    private HospitalityCustomerInfo Customer { get; set; } = new();
+    private HospitalityConfirmPayPalOrderResponse? CompletedReservation { get; set; }
     private BonhomiaSuiteGallery? ActiveGallery { get; set; }
     private string? QuoteToken { get; set; }
     private string SelectedRoomName { get; set; } = string.Empty;
@@ -765,7 +765,7 @@
     private string SelectedExtrasLabel => SelectedExtrasCount == 0
       ? "Sin extras seleccionados"
       : $"{SelectedExtrasCount} extra{(SelectedExtrasCount == 1 ? string.Empty : "s")} seleccionado{(SelectedExtrasCount == 1 ? string.Empty : "s")}";
-    private BonhomiaRoomAvailabilityDto? SelectedRoom => Availability?.Rooms.FirstOrDefault(room => string.Equals(room.RoomName, SelectedRoomName, StringComparison.OrdinalIgnoreCase));
+    private HospitalityRoomAvailabilityDto? SelectedRoom => Availability?.Rooms.FirstOrDefault(room => string.Equals(room.RoomName, SelectedRoomName, StringComparison.OrdinalIgnoreCase));
     private IReadOnlyList<ExperienceCatalogItemDto> StayExperiences
       => Availability?.Experiences.Where(IsExperienceAvailableForSelection).ToArray()
         ?? Array.Empty<ExperienceCatalogItemDto>();
@@ -858,7 +858,10 @@
 
     private void InitializeBookingDates()
     {
-        Today = BonhomiaBookingCutoffPolicy.GetEarliestCheckInDate(DateTimeOffset.UtcNow, CheckoutOptions.Value.TimeZone);
+        Today = HospitalityBookingCutoffPolicy.GetEarliestCheckInDate(
+          DateTimeOffset.UtcNow,
+          CheckoutOptions.Value.TimeZone,
+          CheckoutOptions.Value.SameDayCutoff);
         CheckIn = Today.AddDays(7);
         CheckOut = Today.AddDays(9);
         VisibleCalendarMonth = BonhomiaBookingCalendarRules.GetMonthStart(Today);
@@ -866,7 +869,10 @@
 
     private bool RefreshBookableDateWindow()
     {
-        var earliestCheckIn = BonhomiaBookingCutoffPolicy.GetEarliestCheckInDate(DateTimeOffset.UtcNow, CheckoutOptions.Value.TimeZone);
+        var earliestCheckIn = HospitalityBookingCutoffPolicy.GetEarliestCheckInDate(
+          DateTimeOffset.UtcNow,
+          CheckoutOptions.Value.TimeZone,
+          CheckoutOptions.Value.SameDayCutoff);
         Today = earliestCheckIn;
 
         var adjustedSelection = false;
@@ -1056,7 +1062,7 @@
         if (RefreshBookableDateWindow())
         {
             ActiveCheckoutStep = CheckoutStep.Dates;
-            CheckoutError = "Las reservaciones para llegada el mismo dia solo estan disponibles antes de las 17:00 hrs. Selecciona una fecha posterior.";
+            CheckoutError = $"Las reservaciones para llegada el mismo dia solo estan disponibles antes de las {CheckoutOptions.Value.SameDayCutoff:HH\\:mm} hrs. Selecciona una fecha posterior.";
             await ScrollCheckoutIntoViewAsync();
             return;
         }
@@ -1090,7 +1096,7 @@
             await PersistCheckoutAsync();
             ActiveCheckoutStep = CheckoutStep.Payment;
         }
-        catch (BonhomiaPublicBookingException ex)
+        catch (HospitalityPublicBookingException ex)
         {
             ClearQuoteState();
             ActiveCheckoutStep = CheckoutStep.Extras;
@@ -1109,7 +1115,7 @@
         }
     }
 
-    private BonhomiaQuoteRequest BuildQuoteRequest()
+    private HospitalityQuoteRequest BuildQuoteRequest()
       => new()
       {
           RoomName = SelectedRoomName,
@@ -1118,7 +1124,7 @@
           Guests = Guests,
           Extras = ExtraQuantities
             .Where(item => item.Value > 0)
-            .Select(item => new BonhomiaSelectedExtraRequest { Code = item.Key, Quantity = item.Value })
+            .Select(item => new HospitalitySelectedExtraRequest { Code = item.Key, Quantity = item.Value })
             .ToArray(),
           Experiences = BuildSelectedExperienceRequests()
       };
@@ -1369,16 +1375,16 @@
     private int GetExtraQuantity(string code)
       => ExtraQuantities.TryGetValue(code, out var quantity) ? quantity : 0;
 
-    private IReadOnlyList<BonhomiaSelectedExperienceRequest> BuildSelectedExperienceRequests()
+    private IReadOnlyList<HospitalitySelectedExperienceRequest> BuildSelectedExperienceRequests()
     {
         if (!IncludeExperience || PrimaryExperience is null || SelectedExperiencePackage is null)
         {
-            return Array.Empty<BonhomiaSelectedExperienceRequest>();
+            return Array.Empty<HospitalitySelectedExperienceRequest>();
         }
 
         var selectedAddOns = PrimaryExperience.AddOns
           .Where(addOn => SelectedExperienceAddOnCodes.Contains(addOn.Code))
-          .Select(addOn => new BonhomiaSelectedExperienceAddOnRequest
+          .Select(addOn => new HospitalitySelectedExperienceAddOnRequest
           {
               Code = addOn.Code,
               Quantity = 1
@@ -1387,7 +1393,7 @@
 
         return
         [
-          new BonhomiaSelectedExperienceRequest
+          new HospitalitySelectedExperienceRequest
           {
               Code = PrimaryExperience.Code,
               PackageCode = SelectedExperiencePackage.Code,
@@ -1524,10 +1530,10 @@
         return $"{formatted} baño{(value == 1m ? string.Empty : "s")}";
     }
 
-    private IReadOnlyList<DateOnly> GetUnavailableSuiteDates(BonhomiaRoomAvailabilityDto room)
+    private IReadOnlyList<DateOnly> GetUnavailableSuiteDates(HospitalityRoomAvailabilityDto room)
       => BonhomiaBookingCalendarRules.GetUnavailableDatesForStay(room, CheckIn, CheckOut);
 
-    private bool IsSuiteAvailableForStay(BonhomiaRoomAvailabilityDto room)
+    private bool IsSuiteAvailableForStay(HospitalityRoomAvailabilityDto room)
       => BonhomiaBookingCalendarRules.IsSuiteAvailableForStay(room, CheckIn, CheckOut);
 
     private string GetUnavailableSuiteNote(IReadOnlyList<DateOnly> unavailableDates)
@@ -1549,7 +1555,7 @@
         return string.Join(" ", classes);
     }
 
-    private string GetRoomOptionTitle(BonhomiaRoomAvailabilityDto room, IReadOnlyList<DateOnly> unavailableDates)
+    private string GetRoomOptionTitle(HospitalityRoomAvailabilityDto room, IReadOnlyList<DateOnly> unavailableDates)
       => unavailableDates.Count == 0
         ? $"{room.RoomName} disponible para las fechas seleccionadas"
         : $"{room.RoomName} {GetUnavailableSuiteNote(unavailableDates)}";
@@ -1558,7 +1564,7 @@
     {
         SelectedRoomName = BonhomiaBookingCalendarRules.ResolveSelectedRoomName(
           SelectedRoomName,
-          Availability?.Rooms ?? Array.Empty<BonhomiaRoomAvailabilityDto>(),
+          Availability?.Rooms ?? Array.Empty<HospitalityRoomAvailabilityDto>(),
           CheckIn,
           CheckOut);
     }
@@ -1571,7 +1577,7 @@
         }
 
         if (BonhomiaBookingCalendarRules.IsAnySuiteAvailableOnDate(
-          Availability?.Rooms ?? Array.Empty<BonhomiaRoomAvailabilityDto>(),
+          Availability?.Rooms ?? Array.Empty<HospitalityRoomAvailabilityDto>(),
           day))
         {
             return DayState.Available;
@@ -1631,7 +1637,7 @@
         }
     }
 
-    private string BuildReservationWhatsAppUrl(BonhomiaConfirmPayPalOrderResponse reservation)
+    private string BuildReservationWhatsAppUrl(HospitalityConfirmPayPalOrderResponse reservation)
     {
         var message = string.Join(
             Environment.NewLine,
@@ -1668,7 +1674,7 @@
             Guests = stored.Request.Guests;
             ExtraQuantities = stored.Request.Extras.ToDictionary(item => item.Code, item => item.Quantity, StringComparer.OrdinalIgnoreCase);
             RestoreExperienceSelection(stored.Request.Experiences);
-            Customer = stored.Customer ?? new BonhomiaCustomerInfo();
+            Customer = stored.Customer ?? new HospitalityCustomerInfo();
             AcceptedPolicies = stored.AcceptedPolicies
                 && string.Equals(stored.TermsVersion, Presentation.TermsVersion, StringComparison.Ordinal)
                 && string.Equals(stored.PrivacyVersion, Presentation.PrivacyVersion, StringComparison.Ordinal);
@@ -1725,7 +1731,7 @@
         }
     }
 
-    private void RestoreExperienceSelection(IReadOnlyList<BonhomiaSelectedExperienceRequest>? experiences)
+    private void RestoreExperienceSelection(IReadOnlyList<HospitalitySelectedExperienceRequest>? experiences)
     {
         var experience = experiences?.FirstOrDefault(item => item.AdultParticipants + item.ChildParticipants > 0);
         if (experience is null)
@@ -1897,7 +1903,7 @@
     }
 
     [JSInvokable]
-    public async Task OnBonhomiaPaymentCompleted(BonhomiaConfirmPayPalOrderResponse result)
+    public async Task OnBonhomiaPaymentCompleted(HospitalityConfirmPayPalOrderResponse result)
     {
         CompletedReservation = result;
         IsPaymentProcessing = false;
@@ -2075,8 +2081,8 @@
 
     private sealed class StoredCheckout
     {
-        public BonhomiaQuoteRequest Request { get; set; } = new();
-        public BonhomiaCustomerInfo? Customer { get; set; }
+        public HospitalityQuoteRequest Request { get; set; } = new();
+        public HospitalityCustomerInfo? Customer { get; set; }
         public bool AcceptedPolicies { get; set; }
         public string TermsVersion { get; set; } = string.Empty;
         public string PrivacyVersion { get; set; } = string.Empty;

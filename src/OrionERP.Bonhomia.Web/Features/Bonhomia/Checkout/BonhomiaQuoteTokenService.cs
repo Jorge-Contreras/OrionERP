@@ -1,27 +1,27 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
-public sealed class BonhomiaQuoteTokenService : IBonhomiaQuoteTokenService
+public sealed class HospitalityQuoteTokenService : IHospitalityQuoteTokenService
 {
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
   private readonly IDataProtector _protector;
 
-  public BonhomiaQuoteTokenService(IDataProtectionProvider dataProtectionProvider)
+  public HospitalityQuoteTokenService(IDataProtectionProvider dataProtectionProvider)
   {
     _protector = dataProtectionProvider.CreateProtector("Bonhomia.PublicQuote.v1");
   }
 
-  public string CreateToken(BonhomiaQuoteDto quote)
+  public string CreateToken(HospitalityQuoteDto quote)
   {
     ArgumentNullException.ThrowIfNull(quote);
     var json = JsonSerializer.Serialize(quote, JsonOptions);
     return _protector.Protect(json);
   }
 
-  public bool TryValidate(string? token, out BonhomiaQuoteDto? quote, out string errorMessage)
+  public bool TryValidate(string? token, out HospitalityQuoteDto? quote, out string errorMessage)
   {
     quote = null;
     errorMessage = string.Empty;
@@ -35,7 +35,7 @@ public sealed class BonhomiaQuoteTokenService : IBonhomiaQuoteTokenService
     try
     {
       var json = _protector.Unprotect(token);
-      quote = JsonSerializer.Deserialize<BonhomiaQuoteDto>(json, JsonOptions);
+      quote = JsonSerializer.Deserialize<HospitalityQuoteDto>(json, JsonOptions);
       if (quote is null)
       {
         errorMessage = "La cotizacion no se pudo leer.";
@@ -49,7 +49,7 @@ public sealed class BonhomiaQuoteTokenService : IBonhomiaQuoteTokenService
         return false;
       }
 
-      var expectedFingerprint = BonhomiaQuoteCalculator.CreateFingerprint(quote);
+      var expectedFingerprint = HospitalityQuoteCalculator.CreateFingerprint(quote);
       if (!string.Equals(expectedFingerprint, quote.Fingerprint, StringComparison.Ordinal))
       {
         quote = null;

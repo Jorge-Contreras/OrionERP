@@ -1,7 +1,7 @@
 using System.Reflection;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
-using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+using OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 using OrionERP.UnitTests.Common;
 
 namespace OrionERP.UnitTests.Bonhomia;
@@ -34,10 +34,10 @@ public sealed class HospitalityPublicIsolationTests
   [Fact]
   public void QuoteScopeGuard_RejectsQuoteFromAnotherPublicSite()
   {
-    var quote = new BonhomiaQuoteDto { PublicSiteKey = "another-hotel" };
+    var quote = new HospitalityQuoteDto { PublicSiteKey = "another-hotel" };
     var scope = new HospitalityWebsiteScope(9, 17, "OHM191112Q26", "bonhomia-main");
 
-    var exception = Assert.Throws<BonhomiaPublicBookingException>(() =>
+    var exception = Assert.Throws<HospitalityPublicBookingException>(() =>
       HospitalityWebsiteScopePolicy.EnsureQuoteBelongsToScope(quote, scope));
 
     Assert.Equal("quote_scope_mismatch", exception.ErrorCode);
@@ -50,8 +50,8 @@ public sealed class HospitalityPublicIsolationTests
     var second = CreateFingerprintQuote("another-hotel");
 
     Assert.NotEqual(
-      BonhomiaQuoteCalculator.CreateFingerprint(first),
-      BonhomiaQuoteCalculator.CreateFingerprint(second));
+      HospitalityQuoteCalculator.CreateFingerprint(first),
+      HospitalityQuoteCalculator.CreateFingerprint(second));
   }
 
   [Fact]
@@ -59,15 +59,15 @@ public sealed class HospitalityPublicIsolationTests
   {
     var quote = CreateFingerprintQuote("bonhomia-main");
     quote.QuoteId = Guid.Parse("36ec61bf-139e-4824-b6e5-d26c4dc40e96");
-    quote.Fingerprint = BonhomiaQuoteCalculator.CreateFingerprint(quote);
-    var foreignCapture = new BonhomiaPayPalCaptureResult
+    quote.Fingerprint = HospitalityQuoteCalculator.CreateFingerprint(quote);
+    var foreignCapture = new HospitalityPayPalCaptureResult
     {
-      CustomId = BonhomiaQuoteCalculator.CreateFingerprint(CreateFingerprintQuote("another-hotel")),
+      CustomId = HospitalityQuoteCalculator.CreateFingerprint(CreateFingerprintQuote("another-hotel")),
       ReferenceId = Guid.NewGuid().ToString("N")
     };
 
-    var exception = Assert.Throws<BonhomiaPublicBookingException>(() =>
-      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(foreignCapture, quote));
+    var exception = Assert.Throws<HospitalityPublicBookingException>(() =>
+      HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(foreignCapture, quote));
 
     Assert.Equal("paypal_quote_mismatch", exception.ErrorCode);
   }
@@ -77,21 +77,21 @@ public sealed class HospitalityPublicIsolationTests
   {
     var quote = CreateFingerprintQuote("bonhomia-main");
     quote.QuoteId = Guid.Parse("36ec61bf-139e-4824-b6e5-d26c4dc40e96");
-    quote.Fingerprint = BonhomiaQuoteCalculator.CreateFingerprint(quote);
-    var capture = new BonhomiaPayPalCaptureResult
+    quote.Fingerprint = HospitalityQuoteCalculator.CreateFingerprint(quote);
+    var capture = new HospitalityPayPalCaptureResult
     {
       CustomId = quote.Fingerprint,
       ReferenceId = quote.QuoteId.ToString("N")
     };
 
-    BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(capture, quote);
+    HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(capture, quote);
   }
 
   [Fact]
   public void PublicReader_RequiresCompositeScopeForEveryAggregate()
   {
     var source = RepoFile.Read(
-      "src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/BonhomiaScopedPublicDataReader.cs");
+      "src/OrionERP.Infrastructure/Features/Hospitality/PublicBooking/HospitalityPublicDataReader.cs");
 
     Assert.Contains("r.OrionCompanyId = @ScopeCompanyId", source, StringComparison.Ordinal);
     Assert.Contains("r.OrionSiteId = @ScopeSiteId", source, StringComparison.Ordinal);
@@ -110,7 +110,7 @@ public sealed class HospitalityPublicIsolationTests
   [Fact]
   public void PublicReader_EverySqlContractCarriesBothScopeParameters()
   {
-    var sqlContracts = typeof(BonhomiaScopedPublicDataReader)
+    var sqlContracts = typeof(HospitalityPublicDataReader)
       .GetFields(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
       .Where(field => field.FieldType == typeof(string) && field.Name.EndsWith("Sql", StringComparison.Ordinal))
       .Select(field => (field.Name, Sql: Assert.IsType<string>(field.GetRawConstantValue())))
@@ -127,7 +127,7 @@ public sealed class HospitalityPublicIsolationTests
   [Fact]
   public void SchemaReadiness_RequiresExactHospitalityOwnershipContract()
   {
-    var sql = Assert.IsType<string>(typeof(BonhomiaScopedPublicDataReader)
+    var sql = Assert.IsType<string>(typeof(HospitalityPublicDataReader)
       .GetField("SchemaReadinessSql", BindingFlags.Static | BindingFlags.NonPublic)
       ?.GetRawConstantValue());
 
@@ -185,10 +185,10 @@ public sealed class HospitalityPublicIsolationTests
   public void CheckoutWrites_AreScopedAndCannotUpdateAnotherSitesCalendar()
   {
     var source = RepoFile.Read(
-      "src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/BonhomiaPublicBookingService.cs");
+      "src/OrionERP.Infrastructure/Features/Hospitality/PublicBooking/HospitalityPublicBookingService.cs");
 
     Assert.Contains("HospitalityWebsiteScopePolicy.EnsureQuoteBelongsToScope", source, StringComparison.Ordinal);
-    Assert.Contains("BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote", source, StringComparison.Ordinal);
+    Assert.Contains("HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote", source, StringComparison.Ordinal);
     Assert.Contains("OrionCompanyId, OrionSiteId", source, StringComparison.Ordinal);
     Assert.Contains("AND OrionCompanyId = @ScopeCompanyId", source, StringComparison.Ordinal);
     Assert.Contains("AND OrionSiteId = @ScopeSiteId", source, StringComparison.Ordinal);
@@ -241,7 +241,7 @@ public sealed class HospitalityPublicIsolationTests
   {
     var program = RepoFile.Read("src/OrionERP.Bonhomia.Web/Program.cs");
 
-    Assert.Contains("IBonhomiaScopedPublicDataReader", program, StringComparison.Ordinal);
+    Assert.Contains("IHospitalityPublicDataReader", program, StringComparison.Ordinal);
     Assert.Contains("IHospitalityWebsiteScopeAccessor", program, StringComparison.Ordinal);
     Assert.DoesNotContain("IListaReservacionesService", program, StringComparison.Ordinal);
     Assert.DoesNotContain("IReservacionExperiencesService", program, StringComparison.Ordinal);
@@ -276,7 +276,7 @@ public sealed class HospitalityPublicIsolationTests
       1,
       1);
 
-  private static BonhomiaQuoteDto CreateFingerprintQuote(string publicSiteKey)
+  private static HospitalityQuoteDto CreateFingerprintQuote(string publicSiteKey)
     => new()
     {
       PublicSiteKey = publicSiteKey,

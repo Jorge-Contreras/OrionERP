@@ -13,19 +13,19 @@ namespace OrionERP.Bruno.Web.Pages.Account;
 [EnableRateLimiting("account")]
 public sealed class LoginModel : PageModel
 {
-  private readonly SignInManager<BrunoMemberUser> _signInManager;
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  private readonly ILoyaltyService _loyaltyService;
+  private readonly SignInManager<PublicSiteUser> _signInManager;
+  private readonly UserManager<PublicSiteUser> _userManager;
+  private readonly IRestaurantLoyaltyService _loyaltyService;
   private readonly IBrunoTurnstileService _turnstile;
   private readonly IPublicWebsiteInstanceContext _website;
-  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  private readonly IPublicIdentityScopeAccessor _identityScope;
   public LoginModel(
-    SignInManager<BrunoMemberUser> signInManager,
-    UserManager<BrunoMemberUser> userManager,
-    ILoyaltyService loyaltyService,
+    SignInManager<PublicSiteUser> signInManager,
+    UserManager<PublicSiteUser> userManager,
+    IRestaurantLoyaltyService loyaltyService,
     IBrunoTurnstileService turnstile,
     IPublicWebsiteInstanceContext website,
-    IRestaurantPublicIdentityScopeAccessor identityScope)
+    IPublicIdentityScopeAccessor identityScope)
   {
     _signInManager = signInManager;
     _userManager = userManager;

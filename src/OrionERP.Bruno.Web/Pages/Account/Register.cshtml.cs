@@ -16,26 +16,26 @@ namespace OrionERP.Bruno.Web.Pages.Account;
 [EnableRateLimiting("account")]
 public sealed class RegisterModel : PageModel
 {
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  private readonly IEmailSender<BrunoMemberUser> _emailSender;
-  private readonly ILoyaltyService _loyaltyService;
-  private readonly IBrunoPublicCatalogService _publicCatalog;
+  private readonly UserManager<PublicSiteUser> _userManager;
+  private readonly IEmailSender<PublicSiteUser> _emailSender;
+  private readonly IRestaurantLoyaltyService _loyaltyService;
+  private readonly IRestaurantPublicCatalogService _publicCatalog;
   private readonly IBrunoTurnstileService _turnstile;
   private readonly ILogger<RegisterModel> _logger;
   private readonly IPublicWebsiteInstanceContext _website;
   private readonly PublicWebsitePresentationDefinition _presentation;
-  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  private readonly IPublicIdentityScopeAccessor _identityScope;
 
   public RegisterModel(
-    UserManager<BrunoMemberUser> userManager,
-    IEmailSender<BrunoMemberUser> emailSender,
-    ILoyaltyService loyaltyService,
-    IBrunoPublicCatalogService publicCatalog,
+    UserManager<PublicSiteUser> userManager,
+    IEmailSender<PublicSiteUser> emailSender,
+    IRestaurantLoyaltyService loyaltyService,
+    IRestaurantPublicCatalogService publicCatalog,
     IBrunoTurnstileService turnstile,
     ILogger<RegisterModel> logger,
     IPublicWebsiteInstanceContext website,
     PublicWebsitePresentationDefinition presentation,
-    IRestaurantPublicIdentityScopeAccessor identityScope)
+    IPublicIdentityScopeAccessor identityScope)
   {
     _userManager = userManager;
     _emailSender = emailSender;
@@ -55,7 +55,7 @@ public sealed class RegisterModel : PageModel
   {
     ReturnUrl = returnUrl;
     var binding = await _website.ResolveRequiredAsync();
-    var settings = await _publicCatalog.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+    var settings = await _publicCatalog.GetSettingsAsync(binding);
     if (settings?.IsMembershipEnabled != true)
       return Redirect("/membresia");
     return Page();
@@ -65,7 +65,7 @@ public sealed class RegisterModel : PageModel
   {
     ReturnUrl = returnUrl;
     var binding = await _website.ResolveRequiredAsync(ct);
-    var settings = await _publicCatalog.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey, ct);
+    var settings = await _publicCatalog.GetSettingsAsync(binding, ct);
     if (settings?.IsMembershipEnabled != true)
       return Redirect("/membresia");
 
@@ -84,7 +84,7 @@ public sealed class RegisterModel : PageModel
     string phone;
     try { phone = NormalizePhone(Input.Phone); }
     catch (ValidationException ex) { ModelState.AddModelError("Input.Phone", ex.Message); return Page(); }
-    var user = new BrunoMemberUser
+    var user = new PublicSiteUser
     {
       PublicSiteId = _identityScope.Current.PublicSiteId,
       UserName = email,
@@ -151,7 +151,7 @@ public sealed class RegisterModel : PageModel
     return $"+{digits}";
   }
 
-  private async Task<bool> TryDeleteCreatedUserAsync(BrunoMemberUser user)
+  private async Task<bool> TryDeleteCreatedUserAsync(PublicSiteUser user)
   {
     try
     {

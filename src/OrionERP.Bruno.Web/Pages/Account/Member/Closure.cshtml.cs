@@ -12,17 +12,17 @@ namespace OrionERP.Bruno.Web.Pages.Account.Member;
 [Authorize]
 public sealed class ClosureModel : PageModel
 {
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  private readonly SignInManager<BrunoMemberUser> _signInManager;
-  private readonly ILoyaltyService _loyaltyService;
+  private readonly UserManager<PublicSiteUser> _userManager;
+  private readonly SignInManager<PublicSiteUser> _signInManager;
+  private readonly IRestaurantLoyaltyService _loyaltyService;
   private readonly IPublicWebsiteInstanceContext _website;
-  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  private readonly IPublicIdentityScopeAccessor _identityScope;
   public ClosureModel(
-    UserManager<BrunoMemberUser> userManager,
-    SignInManager<BrunoMemberUser> signInManager,
-    ILoyaltyService loyaltyService,
+    UserManager<PublicSiteUser> userManager,
+    SignInManager<PublicSiteUser> signInManager,
+    IRestaurantLoyaltyService loyaltyService,
     IPublicWebsiteInstanceContext website,
-    IRestaurantPublicIdentityScopeAccessor identityScope)
+    IPublicIdentityScopeAccessor identityScope)
   {
     _userManager = userManager;
     _signInManager = signInManager;

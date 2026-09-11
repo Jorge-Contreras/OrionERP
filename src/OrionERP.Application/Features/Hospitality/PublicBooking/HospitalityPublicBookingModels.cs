@@ -3,18 +3,18 @@ using System.Collections.Generic;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
-public sealed class BonhomiaAvailabilityDto
+public sealed class HospitalityAvailabilityDto
 {
   public DateOnly StartDate { get; set; }
   public DateOnly EndDateExclusive { get; set; }
-  public IReadOnlyList<BonhomiaRoomAvailabilityDto> Rooms { get; set; } = Array.Empty<BonhomiaRoomAvailabilityDto>();
-  public IReadOnlyList<BonhomiaExtraOptionDto> Extras { get; set; } = Array.Empty<BonhomiaExtraOptionDto>();
+  public IReadOnlyList<HospitalityRoomAvailabilityDto> Rooms { get; set; } = Array.Empty<HospitalityRoomAvailabilityDto>();
+  public IReadOnlyList<HospitalityExtraOptionDto> Extras { get; set; } = Array.Empty<HospitalityExtraOptionDto>();
   public IReadOnlyList<ExperienceCatalogItemDto> Experiences { get; set; } = Array.Empty<ExperienceCatalogItemDto>();
 }
 
-public sealed class BonhomiaRoomAvailabilityDto
+public sealed class HospitalityRoomAvailabilityDto
 {
   public int RoomId { get; set; }
   public string RoomName { get; set; } = string.Empty;
@@ -25,10 +25,10 @@ public sealed class BonhomiaRoomAvailabilityDto
   public int Bedrooms { get; set; }
   public decimal Bathrooms { get; set; }
   public decimal BasePrice { get; set; }
-  public IReadOnlyList<BonhomiaDayAvailabilityDto> Days { get; set; } = Array.Empty<BonhomiaDayAvailabilityDto>();
+  public IReadOnlyList<HospitalityDayAvailabilityDto> Days { get; set; } = Array.Empty<HospitalityDayAvailabilityDto>();
 }
 
-public sealed class BonhomiaDayAvailabilityDto
+public sealed class HospitalityDayAvailabilityDto
 {
   public DateOnly Date { get; set; }
   public bool IsAvailable { get; set; }
@@ -36,7 +36,7 @@ public sealed class BonhomiaDayAvailabilityDto
   public decimal Price { get; set; }
 }
 
-public sealed class BonhomiaExtraOptionDto
+public sealed class HospitalityExtraOptionDto
 {
   public string Code { get; set; } = string.Empty;
   public string Name { get; set; } = string.Empty;
@@ -47,39 +47,39 @@ public sealed class BonhomiaExtraOptionDto
   public int MaxQuantity { get; set; } = 1;
 }
 
-public sealed class BonhomiaQuoteRequest
+public sealed class HospitalityQuoteRequest
 {
   public string RoomName { get; set; } = string.Empty;
   public DateOnly CheckIn { get; set; }
   public DateOnly CheckOut { get; set; }
   public int Guests { get; set; }
-  public IReadOnlyList<BonhomiaSelectedExtraRequest> Extras { get; set; } = Array.Empty<BonhomiaSelectedExtraRequest>();
-  public IReadOnlyList<BonhomiaSelectedExperienceRequest> Experiences { get; set; } = Array.Empty<BonhomiaSelectedExperienceRequest>();
+  public IReadOnlyList<HospitalitySelectedExtraRequest> Extras { get; set; } = Array.Empty<HospitalitySelectedExtraRequest>();
+  public IReadOnlyList<HospitalitySelectedExperienceRequest> Experiences { get; set; } = Array.Empty<HospitalitySelectedExperienceRequest>();
 }
 
-public sealed class BonhomiaSelectedExtraRequest
+public sealed class HospitalitySelectedExtraRequest
 {
   public string Code { get; set; } = string.Empty;
   public int Quantity { get; set; }
 }
 
-public sealed class BonhomiaSelectedExperienceRequest
+public sealed class HospitalitySelectedExperienceRequest
 {
   public string Code { get; set; } = string.Empty;
   public string PackageCode { get; set; } = string.Empty;
   public DateOnly ExperienceDate { get; set; }
   public int AdultParticipants { get; set; }
   public int ChildParticipants { get; set; }
-  public IReadOnlyList<BonhomiaSelectedExperienceAddOnRequest> AddOns { get; set; } = Array.Empty<BonhomiaSelectedExperienceAddOnRequest>();
+  public IReadOnlyList<HospitalitySelectedExperienceAddOnRequest> AddOns { get; set; } = Array.Empty<HospitalitySelectedExperienceAddOnRequest>();
 }
 
-public sealed class BonhomiaSelectedExperienceAddOnRequest
+public sealed class HospitalitySelectedExperienceAddOnRequest
 {
   public string Code { get; set; } = string.Empty;
   public int Quantity { get; set; }
 }
 
-public sealed class BonhomiaQuoteDto
+public sealed class HospitalityQuoteDto
 {
   public Guid QuoteId { get; set; } = Guid.NewGuid();
   /// <summary>
@@ -88,7 +88,7 @@ public sealed class BonhomiaQuoteDto
   /// database scope.
   /// </summary>
   public string PublicSiteKey { get; set; } = string.Empty;
-  public BonhomiaQuoteRequest Request { get; set; } = new();
+  public HospitalityQuoteRequest Request { get; set; } = new();
   public string RoomName { get; set; } = string.Empty;
   public string RoomImage { get; set; } = string.Empty;
   public int Nights { get; set; }
@@ -105,11 +105,11 @@ public sealed class BonhomiaQuoteDto
   public string Currency { get; set; } = "MXN";
   public DateTimeOffset ExpiresAtUtc { get; set; }
   public string Fingerprint { get; set; } = string.Empty;
-  public IReadOnlyList<BonhomiaQuoteLineDto> Lines { get; set; } = Array.Empty<BonhomiaQuoteLineDto>();
+  public IReadOnlyList<HospitalityQuoteLineDto> Lines { get; set; } = Array.Empty<HospitalityQuoteLineDto>();
   public IReadOnlyList<int> RoomCalendarIds { get; set; } = Array.Empty<int>();
 }
 
-public sealed class BonhomiaQuoteLineDto
+public sealed class HospitalityQuoteLineDto
 {
   public string Type { get; set; } = string.Empty;
   public string Description { get; set; } = string.Empty;
@@ -118,21 +118,21 @@ public sealed class BonhomiaQuoteLineDto
   public decimal Total { get; set; }
 }
 
-public sealed class BonhomiaCustomerInfo
+public sealed class HospitalityCustomerInfo
 {
   public string FullName { get; set; } = string.Empty;
   public string Email { get; set; } = string.Empty;
   public string Phone { get; set; } = string.Empty;
 }
 
-public sealed record BonhomiaLegalAcceptance(
+public sealed record HospitalityLegalAcceptance(
   string PrivacyVersion,
   string TermsVersion,
   DateTimeOffset AcceptedAtUtc);
 
-public static class BonhomiaLegalConsentPolicy
+public static class HospitalityLegalConsentPolicy
 {
-  public static BonhomiaLegalAcceptance EnsureAccepted(
+  public static HospitalityLegalAcceptance EnsureAccepted(
     bool accepted,
     string? privacyVersion,
     string? termsVersion,
@@ -145,7 +145,7 @@ public static class BonhomiaLegalConsentPolicy
         || string.IsNullOrWhiteSpace(privacyVersion)
         || string.IsNullOrWhiteSpace(termsVersion))
     {
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "legal_consent_required",
         "Debes aceptar el aviso de privacidad y los terminos vigentes antes de continuar.");
     }
@@ -153,25 +153,25 @@ public static class BonhomiaLegalConsentPolicy
     if (!string.Equals(privacyVersion.Trim(), presentation.PrivacyVersion, StringComparison.Ordinal)
         || !string.Equals(termsVersion.Trim(), presentation.TermsVersion, StringComparison.Ordinal))
     {
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "legal_documents_changed",
         "El aviso de privacidad o los terminos cambiaron. Revisa y acepta las versiones vigentes.");
     }
 
-    return new BonhomiaLegalAcceptance(
+    return new HospitalityLegalAcceptance(
       presentation.PrivacyVersion,
       presentation.TermsVersion,
       acceptedAtUtc.ToUniversalTime());
   }
 }
 
-public sealed class BonhomiaPayPalOrderResult
+public sealed class HospitalityPayPalOrderResult
 {
   public string OrderId { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
 }
 
-public sealed class BonhomiaPayPalCaptureResult
+public sealed class HospitalityPayPalCaptureResult
 {
   public string OrderId { get; set; } = string.Empty;
   public string CustomId { get; set; } = string.Empty;
@@ -188,7 +188,7 @@ public sealed class BonhomiaPayPalCaptureResult
   public bool IsCompleted => string.Equals(Status, "COMPLETED", StringComparison.OrdinalIgnoreCase);
 }
 
-public sealed class BonhomiaPaidReservationResult
+public sealed class HospitalityPaidReservationResult
 {
   public int ReservationId { get; set; }
   public int TransaccionId { get; set; }
@@ -197,9 +197,9 @@ public sealed class BonhomiaPaidReservationResult
   public bool CreatedNewReservation { get; set; }
 }
 
-public sealed class BonhomiaPublicBookingException : Exception
+public sealed class HospitalityPublicBookingException : Exception
 {
-  public BonhomiaPublicBookingException(string errorCode, string message)
+  public HospitalityPublicBookingException(string errorCode, string message)
     : base(message)
   {
     ErrorCode = errorCode;

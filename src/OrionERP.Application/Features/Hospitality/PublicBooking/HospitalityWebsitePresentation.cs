@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Reservaciones;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
 /// <summary>
 /// Non-secret, hospitality-specific presentation layered on top of the common

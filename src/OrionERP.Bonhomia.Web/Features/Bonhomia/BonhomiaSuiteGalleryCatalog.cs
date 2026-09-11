@@ -1,4 +1,4 @@
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia;
 

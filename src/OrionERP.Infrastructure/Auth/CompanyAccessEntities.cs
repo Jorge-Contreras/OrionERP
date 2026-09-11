@@ -15,6 +15,7 @@ public static class IdentityRoleScopes
 public static class CompanyClaimTypes
 {
   public const string Rfc = "rfc";
+  public const string CompanyId = "company_id";
   public const string EmployeeId = "employee_id";
   public const string EmployeeRfc = "employee_rfc";
   public const string CompanyName = "company_name";
@@ -24,6 +25,7 @@ public static class CompanyClaimTypes
   public static readonly IReadOnlySet<string> ReservedUserClaims = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
   {
     Rfc,
+    CompanyId,
     EmployeeId,
     EmployeeRfc,
     CompanyName,
@@ -34,7 +36,10 @@ public static class CompanyClaimTypes
 
 public sealed class OrionCompany
 {
+  public long CompanyId { get; set; }
   public string Rfc { get; set; } = string.Empty;
+  public string? TaxRfc { get; set; }
+  public string? LegacyTenantKey { get; set; }
   public string DisplayName { get; set; } = string.Empty;
   public string? LegalName { get; set; }
   public bool IsActive { get; set; } = true;
@@ -51,6 +56,7 @@ public sealed class OrionCompany
 
 public sealed class UserCompany
 {
+  public long? CompanyId { get; set; }
   public string UserId { get; set; } = string.Empty;
   public string Rfc { get; set; } = string.Empty;
   public int? EmployeeId { get; set; }
@@ -70,6 +76,7 @@ public sealed class UserCompany
 
 public sealed class UserCompanyRole
 {
+  public long? CompanyId { get; set; }
   public string UserId { get; set; } = string.Empty;
   public string Rfc { get; set; } = string.Empty;
   public string RoleId { get; set; } = string.Empty;

@@ -1,21 +1,21 @@
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
 /// <summary>
 /// Read-only hospitality data surface for a public website. Implementations
 /// must resolve their company/site scope from IHospitalityWebsiteScopeAccessor;
 /// callers cannot supply a tenant identifier.
 /// </summary>
-public interface IBonhomiaScopedPublicDataReader
+public interface IHospitalityPublicDataReader
 {
   Task<RoomCalendarTimelineDto> GetCalendarTimelineAsync(
     DateOnly startDate,
     DateOnly endDateExclusive,
     CancellationToken ct = default);
 
-  Task<IReadOnlyList<BonhomiaExtraOptionDto>> GetExtraOptionsAsync(
+  Task<IReadOnlyList<HospitalityExtraOptionDto>> GetExtraOptionsAsync(
     CancellationToken ct = default);
 
   Task<IReadOnlyList<ExperienceCatalogItemDto>> GetExperienceCatalogAsync(

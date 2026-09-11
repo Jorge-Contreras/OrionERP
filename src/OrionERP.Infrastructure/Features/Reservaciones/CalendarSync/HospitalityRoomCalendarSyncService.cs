@@ -17,7 +17,7 @@ using OrionERP.Application.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
-public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncService
+public sealed class HospitalityRoomCalendarSyncService : IHospitalityRoomCalendarSyncService
 {
   private const string MappingScriptPath = "src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Sql/20260327_room_calendar_outlook_sync.sql";
   private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -25,14 +25,14 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
   private readonly IHospitalityScopeAccessor _scopeAccessor;
   private readonly HttpClient _httpClient;
   private readonly IOutlookRoomCalendarSyncRepository _repository;
-  private readonly IOptions<BonhomiaGraphCalendarSyncOptions> _options;
-  private readonly ILogger<BonhomiaRoomCalendarSyncService> _logger;
+  private readonly IOptions<HospitalityCalendarSyncOptions> _options;
+  private readonly ILogger<HospitalityRoomCalendarSyncService> _logger;
 
-  public BonhomiaRoomCalendarSyncService(
+  public HospitalityRoomCalendarSyncService(
     HttpClient httpClient,
     IOutlookRoomCalendarSyncRepository repository,
-    IOptions<BonhomiaGraphCalendarSyncOptions> options,
-    ILogger<BonhomiaRoomCalendarSyncService> logger,
+    IOptions<HospitalityCalendarSyncOptions> options,
+    ILogger<HospitalityRoomCalendarSyncService> logger,
     IHospitalityScopeAccessor scopeAccessor)
   {
     _scopeAccessor = scopeAccessor ?? throw new ArgumentNullException(nameof(scopeAccessor));
@@ -42,7 +42,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     _logger = logger;
   }
 
-  public async Task<BonhomiaRoomCalendarSyncResult> SyncAsync(
+  public async Task<HospitalityRoomCalendarSyncResult> SyncAsync(
     DateTime startDate,
     DateTime endDateExclusive,
     CancellationToken ct = default)
@@ -61,7 +61,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     EnsureConfigured(options, scope);
 
     var targetCalendars = options.GetTargetCalendars();
-    var result = new BonhomiaRoomCalendarSyncResult
+    var result = new HospitalityRoomCalendarSyncResult
     {
       StartDate = syncStartDate,
       EndDateExclusive = syncEndDateExclusive
@@ -90,12 +90,12 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     // Resolve and validate the local scope before any OAuth or Graph request.
     var accessToken = await RequestAccessTokenAsync(options, ct);
     var calendarLookup = await GetCalendarLookupAsync(options.MailboxAddress, accessToken, ct);
-    var roomResults = new List<BonhomiaRoomCalendarRoomResult>();
+    var roomResults = new List<HospitalityRoomCalendarRoomResult>();
     foreach (var roomName in targetCalendars)
     {
       if (!calendarLookup.TryGetValue(roomName, out var calendarId))
       {
-        roomResults.Add(new BonhomiaRoomCalendarRoomResult
+        roomResults.Add(new HospitalityRoomCalendarRoomResult
         {
           RoomName = roomName,
           ErrorMessage = $"No se encontró el calendario '{roomName}' en {options.MailboxAddress}."
@@ -103,7 +103,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
         continue;
       }
 
-      var roomResult = new BonhomiaRoomCalendarRoomResult
+      var roomResult = new HospitalityRoomCalendarRoomResult
       {
         RoomName = roomName,
         OutlookCalendarId = calendarId
@@ -134,7 +134,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
         roomResult.LocalBlockCount = roomLocalBlocks.Length;
         roomResult.RemoteOwnedEventCount = roomRemoteEvents.Count;
 
-        var operations = BonhomiaCalendarSyncReconciler.BuildOperations(
+        var operations = HospitalityCalendarSyncReconciler.BuildOperations(
           roomName,
           calendarId,
           roomLocalBlocks,
@@ -148,7 +148,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
         {
           switch (operation.Type)
           {
-            case BonhomiaCalendarSyncOperationType.Create:
+            case HospitalityCalendarSyncOperationType.Create:
             {
               var localBlock = operation.LocalBlock!;
               var createdEventId = await CreateEventAsync(options, accessToken, calendarId, localBlock, ct);
@@ -157,7 +157,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
               break;
             }
 
-            case BonhomiaCalendarSyncOperationType.Update:
+            case HospitalityCalendarSyncOperationType.Update:
             {
               var localBlock = operation.LocalBlock!;
               var remoteEvent = operation.RemoteEvent!;
@@ -167,7 +167,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
               break;
             }
 
-            case BonhomiaCalendarSyncOperationType.DeleteRemoteEvent:
+            case HospitalityCalendarSyncOperationType.DeleteRemoteEvent:
             {
               var remoteEvent = operation.RemoteEvent!;
               await DeleteEventAsync(options, accessToken, calendarId, remoteEvent.Id, ct);
@@ -180,7 +180,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
               break;
             }
 
-            case BonhomiaCalendarSyncOperationType.RecoverMapping:
+            case HospitalityCalendarSyncOperationType.RecoverMapping:
             {
               mappingUpserts.Add(operation.MappingUpsert!);
               roomResult.RecoveredMappingCount++;
@@ -188,7 +188,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
               break;
             }
 
-            case BonhomiaCalendarSyncOperationType.DeleteMapping:
+            case HospitalityCalendarSyncOperationType.DeleteMapping:
             {
               if (operation.Mapping?.Id > 0)
               {
@@ -199,7 +199,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
               break;
             }
 
-            case BonhomiaCalendarSyncOperationType.Skip:
+            case HospitalityCalendarSyncOperationType.Skip:
             {
               roomResult.SkippedCount++;
               break;
@@ -244,7 +244,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
   }
 
   private async Task<string> RequestAccessTokenAsync(
-    BonhomiaGraphCalendarSyncOptions options,
+    HospitalityCalendarSyncOptions options,
     CancellationToken ct)
   {
     using var request = new HttpRequestMessage(
@@ -267,11 +267,11 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     {
       var responseBody = await response.Content.ReadAsStringAsync(ct);
       _logger.LogError(
-        "Bonhomia Graph token request failed with status code {StatusCode}. Response: {ResponseBody}",
+        "Hospitality Graph token request failed with status code {StatusCode}. Response: {ResponseBody}",
         (int)response.StatusCode,
         responseBody);
 
-      throw new InvalidOperationException("No se pudo obtener el token de acceso de Bonhomia para Microsoft Graph.");
+      throw new InvalidOperationException("No se pudo obtener el token de acceso de Hospitality para Microsoft Graph.");
     }
 
     return payload.AccessToken!;
@@ -293,8 +293,8 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
       .ToDictionary(group => group.Key, group => group.First().Id!, StringComparer.OrdinalIgnoreCase);
   }
 
-  private async Task<IReadOnlyList<BonhomiaGraphCalendarRemoteEvent>> GetOwnedCalendarEventsAsync(
-    BonhomiaGraphCalendarSyncOptions options,
+  private async Task<IReadOnlyList<HospitalityGraphCalendarRemoteEvent>> GetOwnedCalendarEventsAsync(
+    HospitalityCalendarSyncOptions options,
     string accessToken,
     string calendarId,
     DateTime startDate,
@@ -323,14 +323,14 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
       .Select(MapRemoteEvent)
       .Where(item =>
         item is not null &&
-        (BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(item.BodyHtml, options.CompanyId, options.SiteId)
-          || (!BonhomiaCalendarSyncPayloadBuilder.HasScopeMarker(item.BodyHtml) && mappedIds.Contains(item.Id))))
-      .Cast<BonhomiaGraphCalendarRemoteEvent>()
+        (HospitalityCalendarSyncPayloadBuilder.BelongsToScope(item.BodyHtml, options.CompanyId, options.SiteId)
+          || (!HospitalityCalendarSyncPayloadBuilder.HasScopeMarker(item.BodyHtml) && mappedIds.Contains(item.Id))))
+      .Cast<HospitalityGraphCalendarRemoteEvent>()
       .ToArray();
   }
 
   private async Task<string> CreateEventAsync(
-    BonhomiaGraphCalendarSyncOptions options,
+    HospitalityCalendarSyncOptions options,
     string accessToken,
     string calendarId,
     OrionRoomCalendarBlock block,
@@ -359,7 +359,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
   }
 
   private async Task UpdateEventAsync(
-    BonhomiaGraphCalendarSyncOptions options,
+    HospitalityCalendarSyncOptions options,
     string accessToken,
     string calendarId,
     string eventId,
@@ -380,7 +380,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
   }
 
   private async Task DeleteEventAsync(
-    BonhomiaGraphCalendarSyncOptions options,
+    HospitalityCalendarSyncOptions options,
     string accessToken,
     string calendarId,
     string eventId,
@@ -429,7 +429,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     return items;
   }
 
-  private static BonhomiaGraphCalendarRemoteEvent? MapRemoteEvent(GraphEventPayload payload)
+  private static HospitalityGraphCalendarRemoteEvent? MapRemoteEvent(GraphEventPayload payload)
   {
     if (payload.Start is null || payload.End is null || string.IsNullOrWhiteSpace(payload.Id))
     {
@@ -437,9 +437,9 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
     }
 
     var bodyHtml = payload.Body?.Content;
-    BonhomiaCalendarSyncPayloadBuilder.TryExtractSourceKey(bodyHtml, out var sourceKey);
+    HospitalityCalendarSyncPayloadBuilder.TryExtractSourceKey(bodyHtml, out var sourceKey);
 
-    return new BonhomiaGraphCalendarRemoteEvent
+    return new HospitalityGraphCalendarRemoteEvent
     {
       Id = payload.Id,
       Subject = payload.Subject ?? string.Empty,
@@ -453,15 +453,15 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
   }
 
   private static GraphEventRequest BuildGraphEventRequest(
-    BonhomiaGraphCalendarSyncOptions options,
+    HospitalityCalendarSyncOptions options,
     OrionRoomCalendarBlock block)
   {
     var graphTimeZone = ResolveGraphTimeZoneId(options.TimeZone);
     return new GraphEventRequest(
-      BonhomiaCalendarSyncPayloadBuilder.Subject,
+      HospitalityCalendarSyncPayloadBuilder.Subject,
       true,
       "busy",
-      new GraphItemBody("HTML", BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block)),
+      new GraphItemBody("HTML", HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(block)),
       new GraphDateTimeValue(block.StartDate.ToString("yyyy-MM-dd'T'00:00:00", CultureInfo.InvariantCulture), graphTimeZone),
       new GraphDateTimeValue(block.EndDateExclusive.ToString("yyyy-MM-dd'T'00:00:00", CultureInfo.InvariantCulture), graphTimeZone));
   }
@@ -480,11 +480,11 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
       EndDateExclusive = block.EndDateExclusive,
       OutlookCalendarId = calendarId,
       OutlookEventId = eventId,
-      ContentHash = BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block)
+      ContentHash = HospitalityCalendarSyncPayloadBuilder.ComputeContentHash(block)
     };
   }
 
-  private static void EnsureConfigured(BonhomiaGraphCalendarSyncOptions options, HospitalityScope scope)
+  private static void EnsureConfigured(HospitalityCalendarSyncOptions options, HospitalityScope scope)
   {
     if (options.CompanyId <= 0 || options.SiteId <= 0 || string.IsNullOrWhiteSpace(options.CompanyRfc))
       throw new InvalidOperationException("La sincronización de Outlook requiere empresa y sede explícitas.");
@@ -500,7 +500,7 @@ public sealed class BonhomiaRoomCalendarSyncService : IBonhomiaRoomCalendarSyncS
         string.IsNullOrWhiteSpace(options.MailboxAddress))
     {
       throw new InvalidOperationException(
-        "BonhomiaGraphCalendarSync no está configurado completamente. Revisa TenantId, ClientId, ClientSecret y MailboxAddress.");
+        "Hospitality calendar sync no está configurado completamente. Revisa TenantId, ClientId, ClientSecret y MailboxAddress.");
     }
   }
 

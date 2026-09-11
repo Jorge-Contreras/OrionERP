@@ -54,7 +54,7 @@ public class BonhomiaCalendarSyncTests
       }
     };
 
-    var blocks = BonhomiaCalendarSyncBlockBuilder.BuildBlocks(rows);
+    var blocks = HospitalityCalendarSyncBlockBuilder.BuildBlocks(rows);
 
     Assert.Equal(2, blocks.Count);
 
@@ -82,17 +82,17 @@ public class BonhomiaCalendarSyncTests
       EndDateExclusive = new DateTime(2026, 3, 30)
     };
 
-    var bodyHtml = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block);
-    var extracted = BonhomiaCalendarSyncPayloadBuilder.TryExtractSourceKey(bodyHtml, out var sourceKey);
+    var bodyHtml = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(block);
+    var extracted = HospitalityCalendarSyncPayloadBuilder.TryExtractSourceKey(bodyHtml, out var sourceKey);
 
-    Assert.Equal("ORION BLOCKED", BonhomiaCalendarSyncPayloadBuilder.Subject);
+    Assert.Equal("ORION BLOCKED", HospitalityCalendarSyncPayloadBuilder.Subject);
     Assert.True(extracted);
     Assert.Equal(block.SourceKey, sourceKey);
 
-    var remoteEvent = new BonhomiaGraphCalendarRemoteEvent
+    var remoteEvent = new HospitalityGraphCalendarRemoteEvent
     {
       Id = "evt-1",
-      Subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
+      Subject = HospitalityCalendarSyncPayloadBuilder.Subject,
       BodyHtml = bodyHtml,
       StartDate = block.StartDate,
       EndDateExclusive = block.EndDateExclusive,
@@ -102,14 +102,14 @@ public class BonhomiaCalendarSyncTests
     };
 
     Assert.Equal(
-      BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block),
-      BonhomiaCalendarSyncPayloadBuilder.ComputeRemoteContentHash(remoteEvent));
+      HospitalityCalendarSyncPayloadBuilder.ComputeContentHash(block),
+      HospitalityCalendarSyncPayloadBuilder.ComputeRemoteContentHash(remoteEvent));
   }
 
   [Fact]
   public void CalendarOptions_UseSharedGraphCredentials_WhenTenantAndClientIdMatch()
   {
-    var options = new BonhomiaGraphCalendarSyncOptions
+    var options = new HospitalityCalendarSyncOptions
     {
       TenantId = "aea961c0-7e15-4be8-9f81-2388eb2f9e96",
       ClientId = "6bfe945f-8423-4eef-b78c-934cc41876b7",
@@ -129,7 +129,7 @@ public class BonhomiaCalendarSyncTests
   [Fact]
   public void CalendarOptions_KeepCalendarCredentials_WhenClientIdDiffers()
   {
-    var options = new BonhomiaGraphCalendarSyncOptions
+    var options = new HospitalityCalendarSyncOptions
     {
       TenantId = "calendar-tenant",
       ClientId = "calendar-client",
@@ -152,7 +152,7 @@ public class BonhomiaCalendarSyncTests
   [InlineData("other-tenant", "shared-client")]
   public void CalendarOptions_DoNotAdoptSharedIdentityWithoutExplicitMatchingTenant(string tenantId, string clientId)
   {
-    var options = new BonhomiaGraphCalendarSyncOptions { TenantId = tenantId, ClientId = clientId };
+    var options = new HospitalityCalendarSyncOptions { TenantId = tenantId, ClientId = clientId };
     options.ApplySharedGraphCredentials("shared-tenant", "shared-client", "fake-shared-secret");
     Assert.Equal(tenantId, options.TenantId);
     Assert.Equal(clientId, options.ClientId);
@@ -164,15 +164,15 @@ public class BonhomiaCalendarSyncTests
   {
     var localBlock = CreateLocalBlock();
 
-    var operations = BonhomiaCalendarSyncReconciler.BuildOperations(
+    var operations = HospitalityCalendarSyncReconciler.BuildOperations(
       "BERLIN",
       "cal-berlin",
       new[] { localBlock },
       Array.Empty<OutlookRoomCalendarSyncMapping>(),
-      Array.Empty<BonhomiaGraphCalendarRemoteEvent>());
+      Array.Empty<HospitalityGraphCalendarRemoteEvent>());
 
     var operation = Assert.Single(operations);
-    Assert.Equal(BonhomiaCalendarSyncOperationType.Create, operation.Type);
+    Assert.Equal(HospitalityCalendarSyncOperationType.Create, operation.Type);
     Assert.Equal(localBlock.SourceKey, operation.LocalBlock?.SourceKey);
   }
 
@@ -181,11 +181,11 @@ public class BonhomiaCalendarSyncTests
   {
     var localBlock = CreateLocalBlock();
     var mapping = CreateMapping(localBlock, "cal-berlin", "evt-1");
-    var remoteEvent = new BonhomiaGraphCalendarRemoteEvent
+    var remoteEvent = new HospitalityGraphCalendarRemoteEvent
     {
       Id = "evt-1",
-      Subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
-      BodyHtml = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(localBlock),
+      Subject = HospitalityCalendarSyncPayloadBuilder.Subject,
+      BodyHtml = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(localBlock),
       StartDate = localBlock.StartDate,
       EndDateExclusive = localBlock.EndDateExclusive.AddDays(-1),
       IsAllDay = true,
@@ -193,7 +193,7 @@ public class BonhomiaCalendarSyncTests
       SourceKey = localBlock.SourceKey
     };
 
-    var operations = BonhomiaCalendarSyncReconciler.BuildOperations(
+    var operations = HospitalityCalendarSyncReconciler.BuildOperations(
       "BERLIN",
       "cal-berlin",
       new[] { localBlock },
@@ -201,7 +201,7 @@ public class BonhomiaCalendarSyncTests
       new[] { remoteEvent });
 
     var operation = Assert.Single(operations);
-    Assert.Equal(BonhomiaCalendarSyncOperationType.Update, operation.Type);
+    Assert.Equal(HospitalityCalendarSyncOperationType.Update, operation.Type);
     Assert.Equal("evt-1", operation.RemoteEvent?.Id);
   }
 
@@ -210,11 +210,11 @@ public class BonhomiaCalendarSyncTests
   {
     var localBlock = CreateLocalBlock();
     var mapping = CreateMapping(localBlock, "cal-berlin", "evt-1");
-    var remoteEvent = new BonhomiaGraphCalendarRemoteEvent
+    var remoteEvent = new HospitalityGraphCalendarRemoteEvent
     {
       Id = "evt-1",
-      Subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
-      BodyHtml = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(localBlock),
+      Subject = HospitalityCalendarSyncPayloadBuilder.Subject,
+      BodyHtml = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(localBlock),
       StartDate = localBlock.StartDate,
       EndDateExclusive = localBlock.EndDateExclusive,
       IsAllDay = true,
@@ -222,7 +222,7 @@ public class BonhomiaCalendarSyncTests
       SourceKey = localBlock.SourceKey
     };
 
-    var operations = BonhomiaCalendarSyncReconciler.BuildOperations(
+    var operations = HospitalityCalendarSyncReconciler.BuildOperations(
       "BERLIN",
       "cal-berlin",
       Array.Empty<OrionRoomCalendarBlock>(),
@@ -230,7 +230,7 @@ public class BonhomiaCalendarSyncTests
       new[] { remoteEvent });
 
     var operation = Assert.Single(operations);
-    Assert.Equal(BonhomiaCalendarSyncOperationType.DeleteRemoteEvent, operation.Type);
+    Assert.Equal(HospitalityCalendarSyncOperationType.DeleteRemoteEvent, operation.Type);
     Assert.Equal(mapping.Id, operation.Mapping?.Id);
   }
 
@@ -238,11 +238,11 @@ public class BonhomiaCalendarSyncTests
   public void Reconciler_ReturnsRecoverMapping_WhenMarkerExistsButMappingIsMissing()
   {
     var localBlock = CreateLocalBlock();
-    var remoteEvent = new BonhomiaGraphCalendarRemoteEvent
+    var remoteEvent = new HospitalityGraphCalendarRemoteEvent
     {
       Id = "evt-1",
-      Subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
-      BodyHtml = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(localBlock),
+      Subject = HospitalityCalendarSyncPayloadBuilder.Subject,
+      BodyHtml = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(localBlock),
       StartDate = localBlock.StartDate,
       EndDateExclusive = localBlock.EndDateExclusive,
       IsAllDay = true,
@@ -250,7 +250,7 @@ public class BonhomiaCalendarSyncTests
       SourceKey = localBlock.SourceKey
     };
 
-    var operations = BonhomiaCalendarSyncReconciler.BuildOperations(
+    var operations = HospitalityCalendarSyncReconciler.BuildOperations(
       "BERLIN",
       "cal-berlin",
       new[] { localBlock },
@@ -258,7 +258,7 @@ public class BonhomiaCalendarSyncTests
       new[] { remoteEvent });
 
     var operation = Assert.Single(operations);
-    Assert.Equal(BonhomiaCalendarSyncOperationType.RecoverMapping, operation.Type);
+    Assert.Equal(HospitalityCalendarSyncOperationType.RecoverMapping, operation.Type);
     Assert.Equal("evt-1", operation.MappingUpsert?.OutlookEventId);
   }
 
@@ -274,10 +274,10 @@ public class BonhomiaCalendarSyncTests
     handler.EnqueueJson("""{"id":"evt-100","subject":"ORION BLOCKED"}""");
 
     using var httpClient = new HttpClient(handler);
-    var service = new BonhomiaRoomCalendarSyncService(
+    var service = new HospitalityRoomCalendarSyncService(
       httpClient,
       repository,
-      Options.Create(new BonhomiaGraphCalendarSyncOptions
+      Options.Create(new HospitalityCalendarSyncOptions
       {
         Enabled = true,
         CompanyId = 1,
@@ -290,7 +290,7 @@ public class BonhomiaCalendarSyncTests
         TimeZone = "America/Mexico_City",
         TargetCalendars = new List<string> { "BERLIN" }
       }),
-      NullLogger<BonhomiaRoomCalendarSyncService>.Instance,
+      NullLogger<HospitalityRoomCalendarSyncService>.Instance,
       new FakeScopeAccessor());
 
     var result = await service.SyncAsync(new DateTime(2026, 3, 27), new DateTime(2027, 1, 1));
@@ -356,8 +356,8 @@ public class BonhomiaCalendarSyncTests
     handler.EnqueueJson("""{"access_token":"fake-token"}""");
     handler.EnqueueJson("""{"value":[{"id":"cal-berlin","name":"BERLIN"}]}""");
     handler.EnqueueJson(JsonSerializer.Serialize(new { value = new[] { new {
-      id = "foreign-event", subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
-      body = new { content = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block) },
+      id = "foreign-event", subject = HospitalityCalendarSyncPayloadBuilder.Subject,
+      body = new { content = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(block) },
       start = new { dateTime = "2026-03-27T00:00:00", timeZone = "UTC" },
       end = new { dateTime = "2026-03-30T00:00:00", timeZone = "UTC" },
       isAllDay = true, showAs = "busy"
@@ -380,14 +380,14 @@ public class BonhomiaCalendarSyncTests
     var block = CreateLocalBlock();
     block.CompanyId = 1;
     block.SiteId = 10;
-    var body = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block);
-    Assert.True(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body, 1, 10));
-    Assert.False(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body, 2, 10));
-    Assert.False(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body, 1, 20));
-    Assert.False(BonhomiaCalendarSyncPayloadBuilder.BelongsToScope(body + "<!-- OrionScope:1:10 -->", 1, 10));
-    var hash = BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block);
+    var body = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(block);
+    Assert.True(HospitalityCalendarSyncPayloadBuilder.BelongsToScope(body, 1, 10));
+    Assert.False(HospitalityCalendarSyncPayloadBuilder.BelongsToScope(body, 2, 10));
+    Assert.False(HospitalityCalendarSyncPayloadBuilder.BelongsToScope(body, 1, 20));
+    Assert.False(HospitalityCalendarSyncPayloadBuilder.BelongsToScope(body + "<!-- OrionScope:1:10 -->", 1, 10));
+    var hash = HospitalityCalendarSyncPayloadBuilder.ComputeContentHash(block);
     block.SiteId = 20;
-    Assert.NotEqual(hash, BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block));
+    Assert.NotEqual(hash, HospitalityCalendarSyncPayloadBuilder.ComputeContentHash(block));
   }
 
   [Theory]
@@ -408,8 +408,8 @@ public class BonhomiaCalendarSyncTests
     handler.EnqueueJson("""{"access_token":"fake-token"}""");
     handler.EnqueueJson("""{"value":[{"id":"cal-berlin","name":"BERLIN"}]}""");
     handler.EnqueueJson(JsonSerializer.Serialize(new { value = new[] { new {
-      id = "existing-event", subject = BonhomiaCalendarSyncPayloadBuilder.Subject,
-      body = new { content = BonhomiaCalendarSyncPayloadBuilder.BuildBodyHtml(block) },
+      id = "existing-event", subject = HospitalityCalendarSyncPayloadBuilder.Subject,
+      body = new { content = HospitalityCalendarSyncPayloadBuilder.BuildBodyHtml(block) },
       start = new { dateTime = "2026-03-27T00:00:00", timeZone = "UTC" },
       end = new { dateTime = "2026-03-30T00:00:00", timeZone = "UTC" },
       isAllDay = true, showAs = "busy"
@@ -433,23 +433,23 @@ public class BonhomiaCalendarSyncTests
   [Fact]
   public void CalendarOptions_HaveNoEnabledOrNamedTenantFallback()
   {
-    var options = new BonhomiaGraphCalendarSyncOptions();
+    var options = new HospitalityCalendarSyncOptions();
     Assert.False(options.Enabled);
     Assert.Empty(options.MailboxAddress);
     Assert.Empty(options.GetTargetCalendars());
   }
 
-  private static BonhomiaGraphCalendarSyncOptions CreateOptions() => new()
+  private static HospitalityCalendarSyncOptions CreateOptions() => new()
   {
     Enabled = true, CompanyId = 1, SiteId = 10, CompanyRfc = "TEST010101AAA",
     TenantId = "fake-tenant", ClientId = "fake-client", ClientSecret = "fake-secret",
     MailboxAddress = "calendar@example.test", TargetCalendars = ["BERLIN"]
   };
 
-  private static BonhomiaRoomCalendarSyncService CreateService(
-    HttpClient http, FakeSyncRepository repository, BonhomiaGraphCalendarSyncOptions options)
+  private static HospitalityRoomCalendarSyncService CreateService(
+    HttpClient http, FakeSyncRepository repository, HospitalityCalendarSyncOptions options)
     => new(http, repository, Options.Create(options),
-      NullLogger<BonhomiaRoomCalendarSyncService>.Instance, new FakeScopeAccessor());
+      NullLogger<HospitalityRoomCalendarSyncService>.Instance, new FakeScopeAccessor());
 
   private sealed class FakeScopeAccessor : IHospitalityScopeAccessor
   {
@@ -478,7 +478,7 @@ public class BonhomiaCalendarSyncTests
       EndDateExclusive = block.EndDateExclusive,
       OutlookCalendarId = calendarId,
       OutlookEventId = eventId,
-      ContentHash = BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(block),
+      ContentHash = HospitalityCalendarSyncPayloadBuilder.ComputeContentHash(block),
       LastSyncedUtc = new DateTime(2026, 3, 27, 12, 0, 0, DateTimeKind.Utc)
     };
 

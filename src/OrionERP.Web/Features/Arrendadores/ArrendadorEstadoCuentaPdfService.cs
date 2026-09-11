@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using OrionERP.Web.Features.Documents;
 
 namespace OrionERP.Web.Features.Arrendadores;
 
@@ -12,16 +13,17 @@ public sealed class ArrendadorEstadoCuentaPdfService : IArrendadorEstadoCuentaPd
   private const string BrandMuted = "#6B7E83";
   private const string BrandBorder = "#D7E2E0";
   private const string BrandSurface = "#F8FBFA";
-  private readonly string _logoSvg;
+  private readonly ICompanyDocumentPresentation _presentation;
 
   public ArrendadorEstadoCuentaPdfService(IWebHostEnvironment environment)
+    : this(CompanyDocumentPresentation.CreateNeutral(environment))
+  {
+  }
+
+  public ArrendadorEstadoCuentaPdfService(ICompanyDocumentPresentation presentation)
   {
     QuestPDF.Settings.License = LicenseType.Community;
-
-    var logoPath = Path.Combine(environment.WebRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
-    _logoSvg = File.Exists(logoPath)
-      ? File.ReadAllText(logoPath)
-      : FallbackLogoSvg;
+    _presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
   }
 
   public byte[] Generate(ArrendadorEstadoCuentaPdfDocumentModel model)
@@ -50,7 +52,7 @@ public sealed class ArrendadorEstadoCuentaPdfService : IArrendadorEstadoCuentaPd
 
       column.Item().Row(row =>
       {
-        row.ConstantItem(62).Height(62).Svg(_logoSvg);
+        row.ConstantItem(62).Height(62).Svg(_presentation.LogoSvg);
         row.RelativeItem().PaddingLeft(12).Column(textColumn =>
         {
           textColumn.Spacing(2);
@@ -58,7 +60,7 @@ public sealed class ArrendadorEstadoCuentaPdfService : IArrendadorEstadoCuentaPd
             .FontSize(19)
             .SemiBold()
             .FontColor(BrandPrimaryDark);
-          textColumn.Item().Text("Bonhomia Suites - Arrendadores")
+          textColumn.Item().Text($"{_presentation.DisplayName} - Arrendadores")
             .FontSize(11)
             .FontColor(BrandPrimary);
           textColumn.Item().Text(model.Propiedad)

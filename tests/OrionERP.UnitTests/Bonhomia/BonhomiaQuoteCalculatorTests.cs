@@ -1,17 +1,17 @@
 using Microsoft.AspNetCore.DataProtection;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
 namespace OrionERP.UnitTests.Bonhomia;
 
-public class BonhomiaQuoteCalculatorTests
+public class HospitalityQuoteCalculatorTests
 {
   [Fact]
   public void BuildQuote_ComputesFullReservationTotal()
   {
-    var quote = BonhomiaQuoteCalculator.BuildQuote(
-      new BonhomiaQuoteRequest
+    var quote = HospitalityQuoteCalculator.BuildQuote(
+      new HospitalityQuoteRequest
       {
         RoomName = "Suite Paris",
         CheckIn = new DateOnly(2026, 6, 10),
@@ -19,7 +19,7 @@ public class BonhomiaQuoteCalculatorTests
         Guests = 2,
         Extras =
         [
-          new BonhomiaSelectedExtraRequest { Code = "early-checkin", Quantity = 1 }
+          new HospitalitySelectedExtraRequest { Code = "early-checkin", Quantity = 1 }
         ]
       },
       CreateRoom(),
@@ -45,12 +45,12 @@ public class BonhomiaQuoteCalculatorTests
     var room = CreateRoom();
     room.Days = room.Days
       .Select(day => day.Date == new DateOnly(2026, 6, 11)
-        ? new BonhomiaDayAvailabilityDto { Date = day.Date, IsAvailable = false, StateCode = "reserved", Price = day.Price }
+        ? new HospitalityDayAvailabilityDto { Date = day.Date, IsAvailable = false, StateCode = "reserved", Price = day.Price }
         : day)
       .ToArray();
 
-    var ex = Assert.Throws<BonhomiaPublicBookingException>(() => BonhomiaQuoteCalculator.BuildQuote(
-      new BonhomiaQuoteRequest
+    var ex = Assert.Throws<HospitalityPublicBookingException>(() => HospitalityQuoteCalculator.BuildQuote(
+      new HospitalityQuoteRequest
       {
         RoomName = "Suite Paris",
         CheckIn = new DateOnly(2026, 6, 10),
@@ -70,8 +70,8 @@ public class BonhomiaQuoteCalculatorTests
   [Fact]
   public void BuildQuote_RejectsCapacityExceeded()
   {
-    var ex = Assert.Throws<BonhomiaPublicBookingException>(() => BonhomiaQuoteCalculator.BuildQuote(
-      new BonhomiaQuoteRequest
+    var ex = Assert.Throws<HospitalityPublicBookingException>(() => HospitalityQuoteCalculator.BuildQuote(
+      new HospitalityQuoteRequest
       {
         RoomName = "Suite Paris",
         CheckIn = new DateOnly(2026, 6, 10),
@@ -94,11 +94,11 @@ public class BonhomiaQuoteCalculatorTests
     var room = CreateRoom();
     room.Days =
     [
-      new BonhomiaDayAvailabilityDto { Date = new DateOnly(2026, 6, 15), IsAvailable = true, StateCode = "available", Price = 1250m }
+      new HospitalityDayAvailabilityDto { Date = new DateOnly(2026, 6, 15), IsAvailable = true, StateCode = "available", Price = 1250m }
     ];
 
-    var quote = BonhomiaQuoteCalculator.BuildQuote(
-      new BonhomiaQuoteRequest
+    var quote = HospitalityQuoteCalculator.BuildQuote(
+      new HospitalityQuoteRequest
       {
         RoomName = "Suite Paris",
         CheckIn = new DateOnly(2026, 6, 15),
@@ -106,7 +106,7 @@ public class BonhomiaQuoteCalculatorTests
         Guests = 2,
         Experiences =
         [
-          new BonhomiaSelectedExperienceRequest
+          new HospitalitySelectedExperienceRequest
           {
             Code = "luciernagas-calpulalpan",
             PackageCode = "clasico",
@@ -114,7 +114,7 @@ public class BonhomiaQuoteCalculatorTests
             AdultParticipants = 2,
             AddOns =
             [
-              new BonhomiaSelectedExperienceAddOnRequest { Code = "tecoaque", Quantity = 1 }
+              new HospitalitySelectedExperienceAddOnRequest { Code = "tecoaque", Quantity = 1 }
             ]
           }
         ]
@@ -135,7 +135,7 @@ public class BonhomiaQuoteCalculatorTests
   [Fact]
   public void QuoteTokenService_RoundTripsCurrentQuote()
   {
-    var service = new BonhomiaQuoteTokenService(new EphemeralDataProtectionProvider());
+    var service = new HospitalityQuoteTokenService(new EphemeralDataProtectionProvider());
     var quote = CreateQuote();
 
     var token = service.CreateToken(quote);
@@ -150,7 +150,7 @@ public class BonhomiaQuoteCalculatorTests
   [Fact]
   public void QuoteTokenService_RejectsExpiredQuote()
   {
-    var service = new BonhomiaQuoteTokenService(new EphemeralDataProtectionProvider());
+    var service = new HospitalityQuoteTokenService(new EphemeralDataProtectionProvider());
     var quote = CreateQuote();
     quote.ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
 
@@ -168,14 +168,14 @@ public class BonhomiaQuoteCalculatorTests
     var before = quote.Fingerprint;
 
     quote.Total += 1m;
-    var after = BonhomiaQuoteCalculator.CreateFingerprint(quote);
+    var after = HospitalityQuoteCalculator.CreateFingerprint(quote);
 
     Assert.NotEqual(before, after);
   }
 
-  private static BonhomiaQuoteDto CreateQuote()
-    => BonhomiaQuoteCalculator.BuildQuote(
-      new BonhomiaQuoteRequest
+  private static HospitalityQuoteDto CreateQuote()
+    => HospitalityQuoteCalculator.BuildQuote(
+      new HospitalityQuoteRequest
       {
         RoomName = "Suite Paris",
         CheckIn = new DateOnly(2026, 6, 10),
@@ -189,7 +189,7 @@ public class BonhomiaQuoteCalculatorTests
       "MXN",
       60);
 
-  private static BonhomiaRoomAvailabilityDto CreateRoom()
+  private static HospitalityRoomAvailabilityDto CreateRoom()
     => new()
     {
       RoomId = 1,
@@ -202,15 +202,15 @@ public class BonhomiaQuoteCalculatorTests
       Ideal = "Prueba",
       Days =
       [
-        new BonhomiaDayAvailabilityDto { Date = new DateOnly(2026, 6, 10), IsAvailable = true, StateCode = "available", Price = 1250m },
-        new BonhomiaDayAvailabilityDto { Date = new DateOnly(2026, 6, 11), IsAvailable = true, StateCode = "available", Price = 1250m }
+        new HospitalityDayAvailabilityDto { Date = new DateOnly(2026, 6, 10), IsAvailable = true, StateCode = "available", Price = 1250m },
+        new HospitalityDayAvailabilityDto { Date = new DateOnly(2026, 6, 11), IsAvailable = true, StateCode = "available", Price = 1250m }
       ]
     };
 
-  private static IReadOnlyList<BonhomiaExtraOptionDto> CreateExtras()
+  private static IReadOnlyList<HospitalityExtraOptionDto> CreateExtras()
     =>
     [
-      new BonhomiaExtraOptionDto
+      new HospitalityExtraOptionDto
       {
         Code = "early-checkin",
         Name = "Early check-in",

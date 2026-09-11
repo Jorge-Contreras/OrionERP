@@ -4,7 +4,7 @@ using OrionERP.Infrastructure.Features.Platform.Data;
 
 namespace OrionERP.Infrastructure.Features.Platform;
 
-public sealed class PublicSiteResolver : IPublicSiteResolver
+public sealed class PublicSiteResolver : IPublicSiteResolver, IPlatformExecutionScopeResolver
 {
   private readonly PlatformDbContext _db;
   private readonly TimeProvider _timeProvider;
@@ -91,4 +91,9 @@ public sealed class PublicSiteResolver : IPublicSiteResolver
       candidate,
       _timeProvider.GetUtcNow().UtcDateTime);
   }
+
+  public async Task<PlatformExecutionScope> ResolvePublicSiteAsync(
+    PublicSiteResolutionRequest request,
+    CancellationToken ct = default)
+    => PlatformExecutionScope.FromPublicSite(await ResolveRequiredAsync(request, ct));
 }

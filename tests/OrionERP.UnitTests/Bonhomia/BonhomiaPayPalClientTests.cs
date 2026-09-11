@@ -2,12 +2,12 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
-using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
+using OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.UnitTests.Bonhomia;
 
-public class BonhomiaPayPalClientTests
+public class HospitalityPayPalClientTests
 {
   [Fact]
   public async Task CreateOrder_UsesLivePayPalBaseUri_WhenEnvironmentIsLive()
@@ -33,7 +33,7 @@ public class BonhomiaPayPalClientTests
       });
     var client = CreateClient(
       handler,
-      new BonhomiaCheckoutOptions
+      new HospitalityCheckoutOptions
       {
         Environment = "Live",
         Currency = "MXN",
@@ -42,7 +42,7 @@ public class BonhomiaPayPalClientTests
       });
 
     var result = await client.CreateOrderAsync(
-      new BonhomiaQuoteDto
+      new HospitalityQuoteDto
       {
         QuoteId = Guid.Parse("b962a5d8-f60f-4e7a-9bb8-8599679df0c2"),
         RoomName = "Suite Paris",
@@ -401,7 +401,7 @@ public class BonhomiaPayPalClientTests
       });
     var client = CreateClient(handler);
 
-    var exception = await Assert.ThrowsAsync<BonhomiaPublicBookingException>(() =>
+    var exception = await Assert.ThrowsAsync<HospitalityPublicBookingException>(() =>
       client.CaptureOrderAsync("PAYPAL-ORDER-FOREIGN", CreateQuote(), "cap-foreign"));
 
     Assert.Equal("paypal_quote_mismatch", exception.ErrorCode);
@@ -432,7 +432,7 @@ public class BonhomiaPayPalClientTests
       });
     var client = CreateClient(handler);
 
-    var exception = await Assert.ThrowsAsync<BonhomiaPublicBookingException>(() =>
+    var exception = await Assert.ThrowsAsync<HospitalityPublicBookingException>(() =>
       client.CaptureOrderAsync("PAYPAL-ORDER-UNVERIFIED", CreateQuote(), "cap-unverified"));
 
     Assert.Equal("paypal_order_validation_failed", exception.ErrorCode);
@@ -444,24 +444,24 @@ public class BonhomiaPayPalClientTests
       handler.Requests);
   }
 
-  private static BonhomiaQuoteDto CreateQuote()
+  private static HospitalityQuoteDto CreateQuote()
     => new()
     {
       QuoteId = Guid.Parse("b962a5d8-f60f-4e7a-9bb8-8599679df0c2"),
       Fingerprint = "quote-fingerprint"
     };
 
-  private static BonhomiaPayPalClient CreateClient(HttpMessageHandler handler, BonhomiaCheckoutOptions? options = null)
+  private static HospitalityPayPalClient CreateClient(HttpMessageHandler handler, HospitalityCheckoutOptions? options = null)
     => new(
       new HttpClient(handler),
-      Options.Create(options ?? new BonhomiaCheckoutOptions
+      Options.Create(options ?? new HospitalityCheckoutOptions
       {
         Environment = "Sandbox",
         Currency = "MXN",
         PayPalClientId = "client-id",
         PayPalClientSecret = "client-secret"
       }),
-      NullLogger<BonhomiaPayPalClient>.Instance);
+      NullLogger<HospitalityPayPalClient>.Instance);
 
   private static StringContent JsonContent(string json)
     => new(json, Encoding.UTF8, "application/json");

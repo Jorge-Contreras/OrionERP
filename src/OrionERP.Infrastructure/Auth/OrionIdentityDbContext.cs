@@ -43,7 +43,10 @@ namespace OrionERP.Infrastructure.Auth
                     table.UseSqlOutputClause(false);
                 });
                 entity.HasKey(company => company.Rfc);
+                entity.Property(company => company.CompanyId).ValueGeneratedOnAdd();
                 entity.Property(company => company.Rfc).HasMaxLength(50).IsUnicode(false);
+                entity.Property(company => company.TaxRfc).HasMaxLength(13).IsUnicode(false);
+                entity.Property(company => company.LegacyTenantKey).HasMaxLength(50).IsUnicode(false);
                 entity.Property(company => company.DisplayName).HasMaxLength(200);
                 entity.Property(company => company.LegalName).HasMaxLength(300);
                 entity.Property(company => company.LogoContentType).HasMaxLength(50).IsUnicode(false);
@@ -52,9 +55,17 @@ namespace OrionERP.Infrastructure.Auth
 
             b.Entity<UserCompany>(entity =>
             {
-                entity.ToTable("AspNetUserCompanies", "auth");
+                entity.ToTable("AspNetUserCompanies", "auth", table =>
+                {
+                    table.HasTrigger("TR_AspNetUserCompanies_CompanyIdentity");
+                    table.UseSqlOutputClause(false);
+                });
                 entity.HasKey(membership => new { membership.UserId, membership.Rfc });
                 entity.Property(membership => membership.Rfc).HasMaxLength(50).IsUnicode(false);
+                entity.HasIndex(membership => new { membership.UserId, membership.CompanyId })
+                    .IsUnique()
+                    .HasDatabaseName("UX_AspNetUserCompanies_UserCompanyId")
+                    .HasFilter("[CompanyId] IS NOT NULL");
                 entity.Property(membership => membership.RowVersion).IsRowVersion();
                 entity.HasIndex(membership => membership.EmployeeId)
                     .IsUnique()
@@ -71,9 +82,17 @@ namespace OrionERP.Infrastructure.Auth
 
             b.Entity<UserCompanyRole>(entity =>
             {
-                entity.ToTable("AspNetUserCompanyRoles", "auth");
+                entity.ToTable("AspNetUserCompanyRoles", "auth", table =>
+                {
+                    table.HasTrigger("TR_AspNetUserCompanyRoles_CompanyIdentity");
+                    table.UseSqlOutputClause(false);
+                });
                 entity.HasKey(link => new { link.UserId, link.Rfc, link.RoleId });
                 entity.Property(link => link.Rfc).HasMaxLength(50).IsUnicode(false);
+                entity.HasIndex(link => new { link.UserId, link.CompanyId, link.RoleId })
+                    .IsUnique()
+                    .HasDatabaseName("UX_AspNetUserCompanyRoles_UserCompanyRole")
+                    .HasFilter("[CompanyId] IS NOT NULL");
                 entity.HasOne(link => link.Membership)
                     .WithMany(membership => membership.Roles)
                     .HasForeignKey(link => new { link.UserId, link.Rfc })

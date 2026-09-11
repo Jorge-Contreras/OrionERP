@@ -1,9 +1,9 @@
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
-public interface IBonhomiaQuoteTokenService
+public interface IHospitalityQuoteTokenService
 {
-  string CreateToken(BonhomiaQuoteDto quote);
-  bool TryValidate(string? token, out BonhomiaQuoteDto? quote, out string errorMessage);
+  string CreateToken(HospitalityQuoteDto quote);
+  bool TryValidate(string? token, out HospitalityQuoteDto? quote, out string errorMessage);
 }

@@ -1,7 +1,7 @@
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
 
-namespace OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 
 public sealed class HospitalityWebsiteScopeAccessor : IHospitalityWebsiteScopeAccessor
 {

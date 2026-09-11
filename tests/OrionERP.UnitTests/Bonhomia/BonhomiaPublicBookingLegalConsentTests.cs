@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
-using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+using OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.UnitTests.Bonhomia;
 
@@ -20,18 +20,18 @@ public sealed class BonhomiaPublicBookingLegalConsentTests
     var scopeAccessor = new NeverCalledScopeAccessor();
     var service = CreateService(scopeAccessor);
 
-    var exception = await Assert.ThrowsAsync<BonhomiaPublicBookingException>(() =>
+    var exception = await Assert.ThrowsAsync<HospitalityPublicBookingException>(() =>
       service.CreatePaidReservationAsync(
-        new BonhomiaQuoteDto(),
-        new BonhomiaCustomerInfo(),
-        new BonhomiaPayPalCaptureResult(),
-        new BonhomiaLegalAcceptance(privacyVersion, termsVersion, DateTimeOffset.UtcNow)));
+        new HospitalityQuoteDto(),
+        new HospitalityCustomerInfo(),
+        new HospitalityPayPalCaptureResult(),
+        new HospitalityLegalAcceptance(privacyVersion, termsVersion, DateTimeOffset.UtcNow)));
 
     Assert.Equal("legal_documents_changed", exception.ErrorCode);
     Assert.Equal(0, scopeAccessor.ResolveCallCount);
   }
 
-  private static BonhomiaPublicBookingService CreateService(
+  private static HospitalityPublicBookingService CreateService(
     NeverCalledScopeAccessor scopeAccessor)
   {
     var presentation = HospitalityPresentationTestData.CreatePresentation();
@@ -46,13 +46,13 @@ public sealed class BonhomiaPublicBookingLegalConsentTests
       })
       .Build();
 
-    return new BonhomiaPublicBookingService(
+    return new HospitalityPublicBookingService(
       configuration,
       new NeverCalledPublicDataReader(),
       scopeAccessor,
       website,
-      Options.Create(new BonhomiaCheckoutOptions()),
-      NullLogger<BonhomiaPublicBookingService>.Instance);
+      Options.Create(new HospitalityCheckoutOptions()),
+      NullLogger<HospitalityPublicBookingService>.Instance);
   }
 
   private sealed class NeverCalledScopeAccessor : IHospitalityWebsiteScopeAccessor
@@ -66,7 +66,7 @@ public sealed class BonhomiaPublicBookingLegalConsentTests
     }
   }
 
-  private sealed class NeverCalledPublicDataReader : IBonhomiaScopedPublicDataReader
+  private sealed class NeverCalledPublicDataReader : IHospitalityPublicDataReader
   {
     public Task<RoomCalendarTimelineDto> GetCalendarTimelineAsync(
       DateOnly startDate,
@@ -74,7 +74,7 @@ public sealed class BonhomiaPublicBookingLegalConsentTests
       CancellationToken ct = default)
       => throw UnexpectedCall();
 
-    public Task<IReadOnlyList<BonhomiaExtraOptionDto>> GetExtraOptionsAsync(
+    public Task<IReadOnlyList<HospitalityExtraOptionDto>> GetExtraOptionsAsync(
       CancellationToken ct = default)
       => throw UnexpectedCall();
 

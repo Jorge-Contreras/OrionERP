@@ -35,7 +35,7 @@ public sealed class HospitalityProjectConcurrencyTests
     Assert.True(calendarId > 0);
     builder.ApplicationName = marker;
     var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:OrionDb"] = builder.ConnectionString }).Build();
-    var catalog = new CatalogoService(configuration, companyContext: new FixedCompany(scope.CompanyRfc));
+    var catalog = new CatalogoService(configuration, companyContext: new FixedCompany(scope));
     var projectId = 0;
     Task<AjustesCommandResult>? mutation = null;
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -124,7 +124,7 @@ public sealed class HospitalityProjectConcurrencyTests
     {
       ["ConnectionStrings:OrionDb"] = new SqlConnectionStringBuilder(builder.ConnectionString) { ApplicationName = marker + "-catalog" }.ConnectionString
     }).Build();
-    var catalog = new CatalogoService(configuration, companyContext: new FixedCompany(scope.CompanyRfc));
+    var catalog = new CatalogoService(configuration, companyContext: new FixedCompany(scope));
     var projectId = 0;
     Task<int>? linkTask = null;
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -225,14 +225,14 @@ public sealed class HospitalityProjectConcurrencyTests
     catch { await connection.DisposeAsync(); throw; }
   }
 
-  private sealed class FixedCompany(string rfc) : ICurrentCompanyContext
+  private sealed class FixedCompany(HospitalityScope scope) : ICurrentCompanyContext
   {
-    public string? CurrentRfc => rfc;
+    public string? CurrentRfc => scope.CompanyRfc;
     public string? DisplayName => "Sandbox concurrency fixture";
     public int? EmployeeId => null;
-    public string RequireRfc() => rfc;
+    public string RequireRfc() => scope.CompanyRfc;
     public void EnsureRfc(string requested)
-    { if (!string.Equals(rfc, requested, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException(); }
-    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(1L);
+    { if (!string.Equals(scope.CompanyRfc, requested, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException(); }
+    public Task<long> RequireCompanyIdAsync(CancellationToken ct = default) => Task.FromResult(scope.CompanyId);
   }
 }

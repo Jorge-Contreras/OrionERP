@@ -22,7 +22,7 @@ public partial class ListaReservacionesPage : ComponentBase
   private const int QueryTake = PageSize + 1;
 
   [Inject] public IListaReservacionesService ReservacionesService { get; set; } = default!;
-  [Inject] public IBonhomiaRoomCalendarSyncService BonhomiaRoomCalendarSyncService { get; set; } = default!;
+  [Inject] public IHospitalityRoomCalendarSyncService HospitalityRoomCalendarSyncService { get; set; } = default!;
   [Inject] public IUiMessageService UiMessages { get; set; } = default!;
   [Inject] public IJSRuntime Js { get; set; } = default!;
   [Inject] public NavigationManager Nav { get; set; } = default!;
@@ -222,7 +222,7 @@ public partial class ListaReservacionesPage : ComponentBase
     {
       var today = DateTime.Today;
       var endDateExclusive = new DateTime(today.Year + 1, 1, 1);
-      var result = await BonhomiaRoomCalendarSyncService.SyncAsync(today, endDateExclusive);
+      var result = await HospitalityRoomCalendarSyncService.SyncAsync(today, endDateExclusive);
       var summary = BuildSyncSummary(result);
 
       if (result.ErrorCount >= result.Rooms.Count && result.Rooms.Count > 0)
@@ -359,7 +359,7 @@ public partial class ListaReservacionesPage : ComponentBase
     return DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
   }
 
-  private static string BuildSyncSummary(BonhomiaRoomCalendarSyncResult result)
+  private static string BuildSyncSummary(HospitalityRoomCalendarSyncResult result)
   {
     var summary = $"Sync Outlook/Airbnb: {result.CreatedCount} creados, {result.UpdatedCount} actualizados, {result.DeletedCount} borrados, {result.SkippedCount} sin cambios.";
     if (result.RecoveredMappingCount > 0)

@@ -51,14 +51,13 @@ public sealed class PlatformSandboxProvisioningSqlTests
     using var bonhomiaBaseSettings = JsonDocument.Parse(
       RepoFile.Read("src/OrionERP.Bonhomia.Web/appsettings.json"));
     var bonhomiaTimeZone = bonhomiaBaseSettings.RootElement
-      .GetProperty("BonhomiaCheckout").GetProperty("TimeZone").GetString();
+      .GetProperty("HospitalityCheckout").GetProperty("TimeZone").GetString();
 
     using var brunoSettings = JsonDocument.Parse(
       RepoFile.Read("src/OrionERP.Bruno.Web/appsettings.Development.json"));
     var brunoPublicSite = brunoSettings.RootElement.GetProperty("PublicWebsite");
-    var brunoConstants = RepoFile.Read("src/OrionERP.Application/Features/Restaurante/BrunoRestaurantConstants.cs");
-    var brunoRfc = Constant(brunoConstants, "Rfc");
-    var brunoSiteCode = Constant(brunoConstants, "SiteCode");
+    const string brunoRfc = "BRUNOS260707L26";
+    const string brunoSiteCode = "BRUNOS-01";
 
     AssertPublicSiteConfigurationIsInSql(bonhomiaPublicSite);
     Assert.Contains($"N'{bonhomiaTimeZone}'", Sql, StringComparison.Ordinal);
@@ -115,16 +114,6 @@ public sealed class PlatformSandboxProvisioningSqlTests
         Sql,
         @"(?is)INSERT\s+(?:INTO\s+)?orion\.PublicSite\b",
         RegexOptions.CultureInvariant).Count);
-  }
-
-  private static string Constant(string source, string name)
-  {
-    var match = Regex.Match(
-      source,
-      $"public\\s+const\\s+string\\s+{Regex.Escape(name)}\\s*=\\s*\"(?<value>[^\"]+)\"",
-      RegexOptions.CultureInvariant);
-    Assert.True(match.Success, $"No se encontró {name} en BrunoRestaurantConstants.");
-    return match.Groups["value"].Value;
   }
 
   private static void AssertPublicSiteConfigurationIsInSql(JsonElement publicSite)

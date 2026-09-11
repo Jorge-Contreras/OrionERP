@@ -5,15 +5,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
-public static class BonhomiaCheckoutApi
+public static class HospitalityCheckoutApi
 {
-  public static IEndpointRouteBuilder MapBonhomiaCheckoutApi(this IEndpointRouteBuilder endpoints)
+  public static IEndpointRouteBuilder MapHospitalityCheckoutApi(this IEndpointRouteBuilder endpoints)
   {
     endpoints.MapPost("/api/hospitality/checkout/orders", CreatePayPalOrderAsync).AllowAnonymous();
     endpoints.MapPost("/api/hospitality/checkout/orders/{orderId}", ConfirmPayPalOrderAsync).AllowAnonymous();
@@ -22,10 +22,10 @@ public static class BonhomiaCheckoutApi
   }
 
   private static async Task<IResult> CreatePayPalOrderAsync(
-    BonhomiaCreatePayPalOrderRequest request,
-    IBonhomiaQuoteTokenService quoteTokenService,
-    IBonhomiaPublicBookingService bookingService,
-    IBonhomiaPayPalClient payPalClient,
+    HospitalityCreatePayPalOrderRequest request,
+    IHospitalityQuoteTokenService quoteTokenService,
+    IHospitalityPublicBookingService bookingService,
+    IHospitalityPayPalClient payPalClient,
     PublicWebsitePresentationDefinition presentation,
     CancellationToken ct)
   {
@@ -36,7 +36,7 @@ public static class BonhomiaCheckoutApi
 
     try
     {
-      _ = BonhomiaLegalConsentPolicy.EnsureAccepted(
+      _ = HospitalityLegalConsentPolicy.EnsureAccepted(
         request.Accepted,
         request.PrivacyVersion,
         request.TermsVersion,
@@ -58,13 +58,13 @@ public static class BonhomiaCheckoutApi
         quote,
         BuildPayPalRequestId("ord", request.PaymentAttemptId, quote.QuoteId, quote.Fingerprint),
         ct);
-      return Results.Ok(new BonhomiaCreatePayPalOrderResponse
+      return Results.Ok(new HospitalityCreatePayPalOrderResponse
       {
         Id = order.OrderId,
         Status = order.Status
       });
     }
-    catch (BonhomiaPublicBookingException ex)
+    catch (HospitalityPublicBookingException ex)
     {
       return MapBookingException(ex);
     }
@@ -72,19 +72,19 @@ public static class BonhomiaCheckoutApi
 
   private static async Task<IResult> ConfirmPayPalOrderAsync(
     string orderId,
-    BonhomiaConfirmPayPalOrderRequest request,
-    IBonhomiaQuoteTokenService quoteTokenService,
-    IBonhomiaPublicBookingService bookingService,
-    IBonhomiaPayPalClient payPalClient,
-    IBonhomiaReservationPdfTokenService pdfTokenService,
-    IBonhomiaReservationConfirmationEmailSender confirmationEmailSender,
+    HospitalityConfirmPayPalOrderRequest request,
+    IHospitalityQuoteTokenService quoteTokenService,
+    IHospitalityPublicBookingService bookingService,
+    IHospitalityPayPalClient payPalClient,
+    IHospitalityReservationPdfTokenService pdfTokenService,
+    IHospitalityReservationConfirmationEmailSender confirmationEmailSender,
     PublicWebsitePresentationDefinition presentation,
-    IOptions<BonhomiaCheckoutOptions> options,
+    IOptions<HospitalityCheckoutOptions> options,
     ILoggerFactory loggerFactory,
     HttpContext httpContext,
     CancellationToken ct)
   {
-    var logger = loggerFactory.CreateLogger("BonhomiaCheckoutApi");
+    var logger = loggerFactory.CreateLogger("HospitalityCheckoutApi");
 
     if (string.IsNullOrWhiteSpace(orderId))
     {
@@ -101,7 +101,7 @@ public static class BonhomiaCheckoutApi
 
     try
     {
-      var legalAcceptance = BonhomiaLegalConsentPolicy.EnsureAccepted(
+      var legalAcceptance = HospitalityLegalConsentPolicy.EnsureAccepted(
         request.Accepted,
         request.PrivacyVersion,
         request.TermsVersion,
@@ -128,7 +128,7 @@ public static class BonhomiaCheckoutApi
         quote,
         BuildPayPalRequestId("cap", request.PaymentAttemptId, quote.QuoteId, quote.Fingerprint),
         ct);
-      BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(capture, quote);
+      HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(capture, quote);
       var customer = BuildCustomerFromPayPal(request.Customer, capture);
       var result = await bookingService.CreatePaidReservationAsync(
         liveQuote,
@@ -143,7 +143,7 @@ public static class BonhomiaCheckoutApi
         result.ReservationId,
         pdfTokenService.CreateToken(result.ReservationId));
 
-      var response = new BonhomiaConfirmPayPalOrderResponse
+      var response = new HospitalityConfirmPayPalOrderResponse
       {
         ReservationId = result.ReservationId,
         TransaccionId = result.TransaccionId,
@@ -182,7 +182,7 @@ public static class BonhomiaCheckoutApi
         try
         {
           await confirmationEmailSender.SendConfirmationAsync(
-            new BonhomiaReservationConfirmationEmail
+            new HospitalityReservationConfirmationEmail
             {
               ReservationId = result.ReservationId,
               TransaccionId = result.TransaccionId,
@@ -204,7 +204,7 @@ public static class BonhomiaCheckoutApi
 
       return Results.Ok(response);
     }
-    catch (BonhomiaPublicBookingException ex)
+    catch (HospitalityPublicBookingException ex)
     {
       return MapBookingException(ex);
     }
@@ -223,12 +223,12 @@ public static class BonhomiaCheckoutApi
     }
   }
 
-  private static BonhomiaCustomerInfo BuildCustomerFromPayPal(
-    BonhomiaCustomerInfo? fallbackCustomer,
-    BonhomiaPayPalCaptureResult capture)
+  private static HospitalityCustomerInfo BuildCustomerFromPayPal(
+    HospitalityCustomerInfo? fallbackCustomer,
+    HospitalityPayPalCaptureResult capture)
   {
     var email = FirstPresent(capture.PayerEmail, fallbackCustomer?.Email);
-    return new BonhomiaCustomerInfo
+    return new HospitalityCustomerInfo
     {
       FullName = FirstPresent(capture.PayerName, fallbackCustomer?.FullName, email, "Cliente PayPal"),
       Email = email,
@@ -242,11 +242,11 @@ public static class BonhomiaCheckoutApi
   private static async Task<IResult> DownloadReservationPdfAsync(
     int reservationId,
     string? token,
-    IBonhomiaReservationPdfTokenService pdfTokenService,
-    IBonhomiaPublicBookingService bookingService,
+    IHospitalityReservationPdfTokenService pdfTokenService,
+    IHospitalityPublicBookingService bookingService,
     IReservacionPdfDocumentFactory pdfDocumentFactory,
     IReservacionPdfService pdfService,
-    IOptions<BonhomiaCheckoutOptions> options,
+    IOptions<HospitalityCheckoutOptions> options,
     CancellationToken ct)
   {
     if (!pdfTokenService.TryValidate(reservationId, token, out var errorMessage))
@@ -270,8 +270,8 @@ public static class BonhomiaCheckoutApi
   private static bool TryReadQuote(
     string? token,
     string? quoteFingerprint,
-    IBonhomiaQuoteTokenService quoteTokenService,
-    out BonhomiaQuoteDto? quote,
+    IHospitalityQuoteTokenService quoteTokenService,
+    out HospitalityQuoteDto? quote,
     out IResult? errorResult)
   {
     errorResult = null;
@@ -297,7 +297,7 @@ public static class BonhomiaCheckoutApi
     return true;
   }
 
-  private static IResult MapBookingException(BonhomiaPublicBookingException ex)
+  private static IResult MapBookingException(HospitalityPublicBookingException ex)
   {
     var statusCode = ex.ErrorCode switch
     {
@@ -344,7 +344,7 @@ public static class BonhomiaCheckoutApi
     return $"{prefix}-{digest[..32]}";
   }
 
-  private static string BuildReservationPdfUrl(HttpContext httpContext, BonhomiaCheckoutOptions options, int reservationId, string token)
+  private static string BuildReservationPdfUrl(HttpContext httpContext, HospitalityCheckoutOptions options, int reservationId, string token)
   {
     var path = $"/api/hospitality/checkout/reservations/{reservationId}/pdf?token={Uri.EscapeDataString(token)}";
     var configuredBaseUrl = options.PublicBaseUrl?.Trim();
@@ -358,7 +358,7 @@ public static class BonhomiaCheckoutApi
   }
 }
 
-public sealed class BonhomiaCreatePayPalOrderRequest
+public sealed class HospitalityCreatePayPalOrderRequest
 {
   public string QuoteToken { get; set; } = string.Empty;
   public string QuoteFingerprint { get; set; } = string.Empty;
@@ -368,13 +368,13 @@ public sealed class BonhomiaCreatePayPalOrderRequest
   public string TermsVersion { get; set; } = string.Empty;
 }
 
-public sealed class BonhomiaCreatePayPalOrderResponse
+public sealed class HospitalityCreatePayPalOrderResponse
 {
   public string Id { get; set; } = string.Empty;
   public string Status { get; set; } = string.Empty;
 }
 
-public sealed class BonhomiaConfirmPayPalOrderRequest
+public sealed class HospitalityConfirmPayPalOrderRequest
 {
   public string QuoteToken { get; set; } = string.Empty;
   public string QuoteFingerprint { get; set; } = string.Empty;
@@ -382,10 +382,10 @@ public sealed class BonhomiaConfirmPayPalOrderRequest
   public bool Accepted { get; set; }
   public string PrivacyVersion { get; set; } = string.Empty;
   public string TermsVersion { get; set; } = string.Empty;
-  public BonhomiaCustomerInfo Customer { get; set; } = new();
+  public HospitalityCustomerInfo Customer { get; set; } = new();
 }
 
-public sealed class BonhomiaConfirmPayPalOrderResponse
+public sealed class HospitalityConfirmPayPalOrderResponse
 {
   public int ReservationId { get; set; }
   public int TransaccionId { get; set; }
@@ -406,7 +406,7 @@ public sealed class BonhomiaConfirmPayPalOrderResponse
   public decimal Ish { get; set; }
   public decimal Total { get; set; }
   public string Currency { get; set; } = "MXN";
-  public IReadOnlyList<BonhomiaQuoteLineDto> Lines { get; set; } = Array.Empty<BonhomiaQuoteLineDto>();
+  public IReadOnlyList<HospitalityQuoteLineDto> Lines { get; set; } = Array.Empty<HospitalityQuoteLineDto>();
   public string PayPalOrderId { get; set; } = string.Empty;
   public string PayPalCaptureId { get; set; } = string.Empty;
   public string PayPalOrderStatus { get; set; } = string.Empty;

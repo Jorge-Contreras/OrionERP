@@ -7,7 +7,7 @@ using OrionERP.Application.Features.Reservaciones.CalendarSync;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
-public static class BonhomiaCalendarSyncPayloadBuilder
+public static class HospitalityCalendarSyncPayloadBuilder
 {
   public const string Subject = "ORION BLOCKED";
   private const string MarkerPrefix = "<!-- OrionSync:";
@@ -47,7 +47,7 @@ public static class BonhomiaCalendarSyncPayloadBuilder
       showAs: "busy");
   }
 
-  public static string ComputeRemoteContentHash(BonhomiaGraphCalendarRemoteEvent remoteEvent)
+  public static string ComputeRemoteContentHash(HospitalityGraphCalendarRemoteEvent remoteEvent)
   {
     ArgumentNullException.ThrowIfNull(remoteEvent);
     return ComputeHash(

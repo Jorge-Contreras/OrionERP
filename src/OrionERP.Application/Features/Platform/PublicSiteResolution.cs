@@ -117,10 +117,10 @@ public static class PublicSiteResolutionPolicy
 
     return new PublicSiteResolutionRequest(
       NormalizeKey(request.PublicSiteKey, nameof(request.PublicSiteKey), 3, 100),
-      NormalizeRfc(request.ExpectedCompanyRfc),
-      NormalizeKey(request.ExpectedSiteKey, nameof(request.ExpectedSiteKey), 2, 100),
+      NormalizeOptionalRfc(request.ExpectedCompanyRfc),
+      NormalizeOptionalKey(request.ExpectedSiteKey, nameof(request.ExpectedSiteKey), 2, 100),
       NormalizeModuleCode(request.ExpectedModuleCode),
-      NormalizeCanonicalHost(request.ExpectedCanonicalHost));
+      NormalizeOptionalCanonicalHost(request.ExpectedCanonicalHost));
   }
 
   public static PublicSiteBinding Resolve(
@@ -190,13 +190,13 @@ public static class PublicSiteResolutionPolicy
     if (!candidate.SiteCapabilityIsEnabled)
       throw Failure(PublicSiteResolutionFailure.SiteCapabilityInactive, "The site module capability is inactive.");
 
-    if (!string.Equals(candidateCompanyRfc, expectedCompanyRfc, StringComparison.Ordinal))
+    if (expectedCompanyRfc.Length > 0 && !string.Equals(candidateCompanyRfc, expectedCompanyRfc, StringComparison.Ordinal))
       throw Failure(PublicSiteResolutionFailure.CompanyMismatch, "PublicSiteKey does not belong to the expected company.");
-    if (!string.Equals(candidateSiteKey, expectedSiteKey, StringComparison.Ordinal))
+    if (expectedSiteKey.Length > 0 && !string.Equals(candidateSiteKey, expectedSiteKey, StringComparison.Ordinal))
       throw Failure(PublicSiteResolutionFailure.SiteMismatch, "PublicSiteKey does not belong to the expected site.");
     if (!string.Equals(candidateModuleCode, expectedModuleCode, StringComparison.Ordinal))
       throw Failure(PublicSiteResolutionFailure.ModuleMismatch, "PublicSiteKey does not belong to the expected module.");
-    if (!string.Equals(candidateCanonicalHost, expectedCanonicalHost, StringComparison.Ordinal))
+    if (expectedCanonicalHost.Length > 0 && !string.Equals(candidateCanonicalHost, expectedCanonicalHost, StringComparison.Ordinal))
       throw Failure(PublicSiteResolutionFailure.CanonicalHostMismatch, "PublicSiteKey does not belong to the expected canonical host.");
 
     if (candidate.ConfigurationVersion <= 0
@@ -222,7 +222,7 @@ public static class PublicSiteResolutionPolicy
       candidate.PublicSiteId,
       publicSiteKey,
       candidate.CompanyId,
-      expectedCompanyRfc,
+      candidateCompanyRfc,
       NullIfWhiteSpace(candidate.TaxRfc),
       NullIfWhiteSpace(candidate.LegacyTenantKey),
       candidate.SiteId,
@@ -264,6 +264,18 @@ public static class PublicSiteResolutionPolicy
     return normalized;
   }
 
+  private static string NormalizeOptionalRfc(string? value)
+    => string.IsNullOrWhiteSpace(value) ? string.Empty : NormalizeRfc(value);
+
+  private static string NormalizeOptionalKey(
+    string? value,
+    string parameterName,
+    int minLength,
+    int maxLength)
+    => string.IsNullOrWhiteSpace(value)
+      ? string.Empty
+      : NormalizeKey(value, parameterName, minLength, maxLength);
+
   private static string NormalizeModuleCode(string value)
   {
     var normalized = value?.Trim().ToUpperInvariant() ?? string.Empty;
@@ -303,6 +315,9 @@ public static class PublicSiteResolutionPolicy
       throw new ArgumentException("ExpectedCanonicalHost must be a fully-qualified DNS host.", nameof(value));
     return asciiHost;
   }
+
+  private static string NormalizeOptionalCanonicalHost(string? value)
+    => string.IsNullOrWhiteSpace(value) ? string.Empty : NormalizeCanonicalHost(value);
 
   private static string? NullIfWhiteSpace(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

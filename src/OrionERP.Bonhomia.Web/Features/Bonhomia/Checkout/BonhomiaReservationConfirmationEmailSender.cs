@@ -1,22 +1,22 @@
 using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Infrastructure.Features.Mail;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
-public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReservationConfirmationEmailSender
+public sealed class HospitalityReservationConfirmationEmailSender : IHospitalityReservationConfirmationEmailSender
 {
-  private readonly IMicrosoftGraphMailClient<BonhomiaGraphMailOptions> _mailClient;
-  private readonly BonhomiaGraphMailOptions _mailOptions;
+  private readonly IMicrosoftGraphMailClient<HospitalityMailOptions> _mailClient;
+  private readonly HospitalityMailOptions _mailOptions;
   private readonly PublicWebsitePresentationDefinition _presentation;
   private readonly CultureInfo _culture;
 
-  public BonhomiaReservationConfirmationEmailSender(
-    IMicrosoftGraphMailClient<BonhomiaGraphMailOptions> mailClient,
-    IOptions<BonhomiaGraphMailOptions> mailOptions,
+  public HospitalityReservationConfirmationEmailSender(
+    IMicrosoftGraphMailClient<HospitalityMailOptions> mailClient,
+    IOptions<HospitalityMailOptions> mailOptions,
     PublicWebsitePresentationDefinition presentation)
   {
     _mailClient = mailClient;
@@ -26,7 +26,7 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
   }
 
   public Task SendConfirmationAsync(
-    BonhomiaReservationConfirmationEmail confirmation,
+    HospitalityReservationConfirmationEmail confirmation,
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(confirmation);
@@ -49,7 +49,7 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
       ct);
   }
 
-  private string BuildHtml(BonhomiaReservationConfirmationEmail confirmation)
+  private string BuildHtml(HospitalityReservationConfirmationEmail confirmation)
   {
     var quote = confirmation.Quote;
     var payment = confirmation.Payment;
@@ -111,7 +111,7 @@ public sealed class BonhomiaReservationConfirmationEmailSender : IBonhomiaReserv
 """;
   }
 
-  private string BuildLineRows(BonhomiaQuoteDto quote)
+  private string BuildLineRows(HospitalityQuoteDto quote)
   {
     if (quote.Lines.Count == 0)
     {

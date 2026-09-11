@@ -5,7 +5,7 @@ using OrionERP.Application.Features.Reservaciones.CalendarSync;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
-public enum BonhomiaCalendarSyncOperationType
+public enum HospitalityCalendarSyncOperationType
 {
   Create,
   Update,
@@ -15,23 +15,23 @@ public enum BonhomiaCalendarSyncOperationType
   Skip
 }
 
-public sealed class BonhomiaCalendarSyncOperation
+public sealed class HospitalityCalendarSyncOperation
 {
-  public BonhomiaCalendarSyncOperationType Type { get; init; }
+  public HospitalityCalendarSyncOperationType Type { get; init; }
   public OrionRoomCalendarBlock? LocalBlock { get; init; }
   public OutlookRoomCalendarSyncMapping? Mapping { get; init; }
-  public BonhomiaGraphCalendarRemoteEvent? RemoteEvent { get; init; }
+  public HospitalityGraphCalendarRemoteEvent? RemoteEvent { get; init; }
   public OutlookRoomCalendarSyncMappingUpsert? MappingUpsert { get; init; }
 }
 
-public static class BonhomiaCalendarSyncReconciler
+public static class HospitalityCalendarSyncReconciler
 {
-  public static IReadOnlyList<BonhomiaCalendarSyncOperation> BuildOperations(
+  public static IReadOnlyList<HospitalityCalendarSyncOperation> BuildOperations(
     string roomName,
     string calendarId,
     IEnumerable<OrionRoomCalendarBlock> localBlocks,
     IEnumerable<OutlookRoomCalendarSyncMapping> mappings,
-    IEnumerable<BonhomiaGraphCalendarRemoteEvent> remoteEvents)
+    IEnumerable<HospitalityGraphCalendarRemoteEvent> remoteEvents)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(roomName);
     ArgumentException.ThrowIfNullOrWhiteSpace(calendarId);
@@ -39,7 +39,7 @@ public static class BonhomiaCalendarSyncReconciler
     ArgumentNullException.ThrowIfNull(mappings);
     ArgumentNullException.ThrowIfNull(remoteEvents);
 
-    var operations = new List<BonhomiaCalendarSyncOperation>();
+    var operations = new List<HospitalityCalendarSyncOperation>();
     var localBySourceKey = localBlocks
       .GroupBy(block => block.SourceKey, StringComparer.OrdinalIgnoreCase)
       .ToDictionary(group => group.Key, group => group.OrderBy(block => block.StartDate).First(), StringComparer.OrdinalIgnoreCase);
@@ -63,7 +63,7 @@ public static class BonhomiaCalendarSyncReconciler
     foreach (var localBlock in localBySourceKey.Values.OrderBy(item => item.StartDate).ThenBy(item => item.RoomName, StringComparer.OrdinalIgnoreCase))
     {
       mappingsBySourceKey.TryGetValue(localBlock.SourceKey, out var mapping);
-      BonhomiaGraphCalendarRemoteEvent? remoteEvent = null;
+      HospitalityGraphCalendarRemoteEvent? remoteEvent = null;
 
       if (mapping is not null && remoteById.TryGetValue(mapping.OutlookEventId, out var mappedRemoteEvent))
       {
@@ -81,9 +81,9 @@ public static class BonhomiaCalendarSyncReconciler
 
       if (remoteEvent is null)
       {
-        operations.Add(new BonhomiaCalendarSyncOperation
+        operations.Add(new HospitalityCalendarSyncOperation
         {
-          Type = BonhomiaCalendarSyncOperationType.Create,
+          Type = HospitalityCalendarSyncOperationType.Create,
           LocalBlock = localBlock
         });
         continue;
@@ -91,16 +91,16 @@ public static class BonhomiaCalendarSyncReconciler
 
       matchedRemoteIds.Add(remoteEvent.Id);
 
-      var desiredHash = BonhomiaCalendarSyncPayloadBuilder.ComputeContentHash(localBlock);
+      var desiredHash = HospitalityCalendarSyncPayloadBuilder.ComputeContentHash(localBlock);
       var mappingUpsert = BuildMappingUpsert(localBlock, calendarId, remoteEvent.Id, desiredHash);
-      var remoteHash = BonhomiaCalendarSyncPayloadBuilder.ComputeRemoteContentHash(remoteEvent);
+      var remoteHash = HospitalityCalendarSyncPayloadBuilder.ComputeRemoteContentHash(remoteEvent);
       var mappingNeedsRefresh = MappingNeedsRefresh(mapping, mappingUpsert);
 
       if (!string.Equals(remoteHash, desiredHash, StringComparison.Ordinal))
       {
-        operations.Add(new BonhomiaCalendarSyncOperation
+        operations.Add(new HospitalityCalendarSyncOperation
         {
-          Type = BonhomiaCalendarSyncOperationType.Update,
+          Type = HospitalityCalendarSyncOperationType.Update,
           LocalBlock = localBlock,
           Mapping = mapping,
           RemoteEvent = remoteEvent,
@@ -111,9 +111,9 @@ public static class BonhomiaCalendarSyncReconciler
 
       if (mappingNeedsRefresh)
       {
-        operations.Add(new BonhomiaCalendarSyncOperation
+        operations.Add(new HospitalityCalendarSyncOperation
         {
-          Type = BonhomiaCalendarSyncOperationType.RecoverMapping,
+          Type = HospitalityCalendarSyncOperationType.RecoverMapping,
           LocalBlock = localBlock,
           Mapping = mapping,
           RemoteEvent = remoteEvent,
@@ -122,9 +122,9 @@ public static class BonhomiaCalendarSyncReconciler
         continue;
       }
 
-      operations.Add(new BonhomiaCalendarSyncOperation
+      operations.Add(new HospitalityCalendarSyncOperation
       {
-        Type = BonhomiaCalendarSyncOperationType.Skip,
+        Type = HospitalityCalendarSyncOperationType.Skip,
         LocalBlock = localBlock,
         Mapping = mapping,
         RemoteEvent = remoteEvent
@@ -141,18 +141,18 @@ public static class BonhomiaCalendarSyncReconciler
       if (remoteById.TryGetValue(mapping.OutlookEventId, out var remoteEvent))
       {
         matchedRemoteIds.Add(remoteEvent.Id);
-        operations.Add(new BonhomiaCalendarSyncOperation
+        operations.Add(new HospitalityCalendarSyncOperation
         {
-          Type = BonhomiaCalendarSyncOperationType.DeleteRemoteEvent,
+          Type = HospitalityCalendarSyncOperationType.DeleteRemoteEvent,
           Mapping = mapping,
           RemoteEvent = remoteEvent
         });
       }
       else
       {
-        operations.Add(new BonhomiaCalendarSyncOperation
+        operations.Add(new HospitalityCalendarSyncOperation
         {
-          Type = BonhomiaCalendarSyncOperationType.DeleteMapping,
+          Type = HospitalityCalendarSyncOperationType.DeleteMapping,
           Mapping = mapping
         });
       }
@@ -170,9 +170,9 @@ public static class BonhomiaCalendarSyncReconciler
         continue;
       }
 
-      operations.Add(new BonhomiaCalendarSyncOperation
+      operations.Add(new HospitalityCalendarSyncOperation
       {
-        Type = BonhomiaCalendarSyncOperationType.DeleteRemoteEvent,
+        Type = HospitalityCalendarSyncOperationType.DeleteRemoteEvent,
         RemoteEvent = remoteEvent
       });
     }

@@ -1,4 +1,4 @@
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
 using OrionERP.UnitTests.Common;
 
@@ -75,7 +75,7 @@ public class BonhomiaSiteContentTests
   public void PublicExtras_UseTheScopedCatalogPriceAndRejectAmbiguousAliases()
   {
     var page = RepoFile.Read("src/OrionERP.Bonhomia.Web/Features/Bonhomia/BonhomiaServicesPage.razor");
-    var reader = RepoFile.Read("src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/BonhomiaScopedPublicDataReader.cs");
+    var reader = RepoFile.Read("src/OrionERP.Infrastructure/Features/Hospitality/PublicBooking/HospitalityPublicDataReader.cs");
 
     Assert.Contains("HospitalityData.GetExtraOptionsAsync", page, StringComparison.Ordinal);
     Assert.Contains("extra.UnitPrice", page, StringComparison.Ordinal);

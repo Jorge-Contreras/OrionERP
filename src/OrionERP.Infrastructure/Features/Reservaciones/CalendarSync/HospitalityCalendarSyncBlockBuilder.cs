@@ -16,7 +16,7 @@ public sealed class OrionRoomCalendarLockRow
   public string? Status { get; set; }
 }
 
-public static class BonhomiaCalendarSyncBlockBuilder
+public static class HospitalityCalendarSyncBlockBuilder
 {
   public static IReadOnlyList<OrionRoomCalendarBlock> BuildBlocks(IEnumerable<OrionRoomCalendarLockRow> rows)
   {

@@ -4,9 +4,9 @@ using System.Threading.Tasks;
 
 namespace OrionERP.Application.Features.Reservaciones.CalendarSync;
 
-public interface IBonhomiaRoomCalendarSyncService
+public interface IHospitalityRoomCalendarSyncService
 {
-  Task<BonhomiaRoomCalendarSyncResult> SyncAsync(
+  Task<HospitalityRoomCalendarSyncResult> SyncAsync(
     DateTime startDate,
     DateTime endDateExclusive,
     CancellationToken ct = default);

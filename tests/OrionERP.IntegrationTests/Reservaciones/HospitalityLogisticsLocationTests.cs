@@ -25,16 +25,16 @@ public sealed class HospitalityLogisticsLocationTests
     await using var bootstrap=new SqlConnection(cs);
     await bootstrap.OpenAsync();
     Assert.Equal("Orion_Sandbox",await bootstrap.ExecuteScalarAsync<string>("SELECT DB_NAME()"),ignoreCase:true);
-    var rows=(await bootstrap.QueryAsync<ScopeRow>("SELECT p.PublicSiteKey,p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey IN ('bonhomia-main','brunos-main')")).ToList();
-    var a=rows.Single(x=>x.PublicSiteKey=="bonhomia-main").Scope;
-    var b=rows.Single(x=>x.PublicSiteKey=="brunos-main").Scope;
+    var rows=(await bootstrap.QueryAsync<ScopeRow>("SELECT p.PublicSiteKey,p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey IN ('synthetic-hospitality-main','bonhomia-main')")).ToList();
+    var a=rows.Single(x=>x.PublicSiteKey=="synthetic-hospitality-main").Scope;
+    var b=rows.Single(x=>x.PublicSiteKey=="bonhomia-main").Scope;
     var factoryA=new CompanyConnectionFactory(cfg,new CompanyRfc(a.CompanyRfc));
     var factoryB=new CompanyConnectionFactory(cfg,new CompanyRfc(b.CompanyRfc));
     var serviceA=new LocationService(factoryA,new FixedScope(a));
     var serviceB=new LocationService(factoryB,new FixedScope(b));
     var generalService=new LocationService(factoryA);
     var marker="LRLS-"+Guid.NewGuid().ToString("N");
-    var idsA=new List<int>(); var idsB=new List<int>(); var countIds=new List<int>(); var balanceIds=new List<int>(); int roomId=0; int restaurantSiteId=0; var orderIds=new List<Guid>(); var reservationIds=new List<long>();
+    var idsA=new List<int>(); var idsB=new List<int>(); var countIds=new List<int>(); var balanceIds=new List<int>(); int roomId=0; int materialId=0; int restaurantSiteId=0; long restaurantPlatformSiteId=0; var orderIds=new List<Guid>(); var reservationIds=new List<long>();
     try
     {
       await HospitalityConnectionFactory.InitializeAsync(bootstrap,a);
@@ -93,7 +93,8 @@ public sealed class HospitalityLogisticsLocationTests
       Assert.Null(await generalService.GetLocationAsync(legacy));
 
       // Physical-count snapshots inherit privacy from every location/ancestor in every line.
-      var materialId=await bootstrap.ExecuteScalarAsync<int>("SELECT TOP (1) Id FROM logistica.Material WHERE IsActive=1 ORDER BY Id;");
+      var unitId=await bootstrap.ExecuteScalarAsync<int>("SELECT TOP (1) Id FROM logistica.UnitOfMeasure WHERE IsActive=1 ORDER BY Id;");
+      materialId=await bootstrap.ExecuteScalarAsync<int>("INSERT logistica.Material(Rfc,MaterialCode,[Description],BaseUnitId) VALUES(@Rfc,@Code,@Description,@UnitId); SELECT CONVERT(int,SCOPE_IDENTITY());",new { Rfc=a.CompanyRfc,Code=marker[..20],Description=marker,UnitId=unitId });
       Assert.True(materialId>0);
       foreach(var locationId in new[] { grandchild.EntityId!.Value,general.EntityId!.Value })
         balanceIds.Add(await bootstrap.ExecuteScalarAsync<int>("INSERT logistica.StockBalance(LocationId,MaterialId,Quantity) VALUES(@LocationId,@MaterialId,1); SELECT CONVERT(int,SCOPE_IDENTITY());",new { LocationId=locationId,MaterialId=materialId }));
@@ -144,7 +145,9 @@ public sealed class HospitalityLogisticsLocationTests
       Assert.Equal(2m,await bootstrap.ExecuteScalarAsync<decimal>("SELECT Quantity FROM logistica.StockBalance WHERE Id=@Id",new { Id=balanceIds[0] }));
 
       // POS cannot reveal or mutate an order if any reserved/consumed location is hidden.
-      restaurantSiteId=await bootstrap.ExecuteScalarAsync<int>("INSERT restaurante.Site(Rfc,SiteCode,[Name]) VALUES(@Rfc,@Code,@Name); SELECT CONVERT(int,SCOPE_IDENTITY());",new { Rfc=a.CompanyRfc,Code=marker[..25],Name=marker });
+      restaurantPlatformSiteId=await bootstrap.ExecuteScalarAsync<long>("INSERT orion.Site(CompanyId,SiteKey,DisplayName,TimeZoneId) VALUES(@CompanyId,@Code,@Name,'America/Mexico_City'); SELECT CONVERT(bigint,SCOPE_IDENTITY());",new { a.CompanyId,Code=marker[..25].ToLowerInvariant(),Name=marker });
+      await bootstrap.ExecuteAsync("INSERT orion.SiteCapability(CompanyId,SiteId,ModuleCode,IsEnabled,UpdatedBy) VALUES(@CompanyId,@SiteId,'HOSPITALITY',1,N'SqlIntegration'),(@CompanyId,@SiteId,'RESTAURANT',1,N'SqlIntegration');",new { a.CompanyId,SiteId=restaurantPlatformSiteId });
+      restaurantSiteId=await bootstrap.ExecuteScalarAsync<int>("INSERT restaurante.Site(Rfc,SiteCode,[Name]) VALUES(@Rfc,@Code,@Name); SELECT CONVERT(int,SCOPE_IDENTITY());",new { Rfc=a.CompanyRfc,Code=marker[..25].ToLowerInvariant(),Name=marker });
       foreach(var privateInventory in new[] { true,false })
       {
         var orderId=Guid.NewGuid(); orderIds.Add(orderId);
@@ -202,6 +205,8 @@ DELETE restaurante.[Order] WHERE Id=@Id AND CustomerName=@Marker;
         await bootstrap.ExecuteAsync("DELETE logistica.InventoryReservationLine WHERE ReservationId=@Id; DELETE logistica.InventoryReservation WHERE Id=@Id;",new { Id=reservationId });
       if(restaurantSiteId>0)
         await bootstrap.ExecuteAsync("DELETE restaurante.Site WHERE Id=@Id AND [Name]=@Marker",new { Id=restaurantSiteId,Marker=marker });
+      if(restaurantPlatformSiteId>0)
+        await bootstrap.ExecuteAsync("DELETE orion.SiteCapability WHERE CompanyId=@CompanyId AND SiteId=@SiteId; DELETE orion.Site WHERE CompanyId=@CompanyId AND SiteId=@SiteId AND SiteKey=@SiteKey;",new { a.CompanyId,SiteId=restaurantPlatformSiteId,SiteKey=marker[..25].ToLowerInvariant() });
       foreach(var countId in countIds)
         await bootstrap.ExecuteAsync("""
 DELETE attachment FROM logistica.PhysicalCountAttachment attachment JOIN logistica.PhysicalCountLine line ON line.Id=attachment.PhysicalCountLineId WHERE line.SessionId=@Id;
@@ -211,6 +216,8 @@ DELETE FROM logistica.PhysicalCountSession WHERE Id=@Id AND Notes=@Marker;
 """,new { Id=countId,Marker=marker });
       foreach(var balanceId in balanceIds)
         await bootstrap.ExecuteAsync("DELETE logistica.StockTransaction WHERE StockBalanceId=@Id; DELETE logistica.StockBalance WHERE Id=@Id;",new { Id=balanceId });
+      if(materialId>0)
+        await bootstrap.ExecuteAsync("DELETE logistica.Material WHERE Id=@Id AND MaterialCode=@Code;",new { Id=materialId,Code=marker[..20] });
       foreach(var id in idsA.AsEnumerable().Reverse())
         await bootstrap.ExecuteAsync("DELETE logistica.Location WHERE Id=@Id AND LocationName LIKE @Marker",new { Id=id,Marker=marker+"%" });
       await bootstrap.ExecuteAsync("EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc",new { Rfc=b.CompanyRfc });

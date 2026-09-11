@@ -28,7 +28,7 @@ public sealed class HospitalityStockMaterialScopeTests
     await setup.OpenAsync();
     Assert.Equal("Orion_Sandbox", await setup.ExecuteScalarAsync<string>("SELECT DB_NAME()"), ignoreCase: true);
     var scope = await setup.QuerySingleAsync<HospitalityScope>("SELECT p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='bonhomia-main'");
-    var other = await setup.QuerySingleAsync<HospitalityScope>("SELECT p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='brunos-main'");
+    var other = await setup.QuerySingleAsync<HospitalityScope>("SELECT p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='synthetic-hospitality-main'");
     await HospitalityConnectionFactory.InitializeAsync(setup, scope);
     await setup.ExecuteAsync("EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc", new { Rfc = scope.CompanyRfc });
     var factory = new CompanyConnectionFactory(cfg, new CompanyRfc(scope.CompanyRfc));
@@ -44,6 +44,7 @@ public sealed class HospitalityStockMaterialScopeTests
     try
     {
       siteB = await setup.ExecuteScalarAsync<long>("INSERT orion.Site(CompanyId,SiteKey,DisplayName,TimeZoneId) VALUES(@CompanyId,@Marker,@Marker,'America/Mexico_City'); SELECT CONVERT(bigint,SCOPE_IDENTITY());", new { scope.CompanyId, Marker = marker });
+      await setup.ExecuteAsync("INSERT orion.SiteCapability(CompanyId,SiteId,ModuleCode,IsEnabled,UpdatedBy) VALUES(@CompanyId,@SiteId,'HOSPITALITY',1,N'SqlIntegration');",new { scope.CompanyId,SiteId=siteB });
       room = await setup.ExecuteScalarAsync<int>("INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE) VALUES(@Marker,'SUITE'); SELECT CONVERT(int,SCOPE_IDENTITY());", new { Marker = marker });
       var root = await locations.SaveLocationAsync(new() { LocationName = marker + "-room", RoomId = room });
       Assert.True(root.Success, root.Message); ids.Add(root.EntityId!.Value);
@@ -160,7 +161,7 @@ public sealed class HospitalityStockMaterialScopeTests
     {
       await setup.ExecuteAsync("DELETE f FROM restaurante.DiagnosticoHallazgo f JOIN restaurante.DiagnosticoCorrida r ON r.Id=f.CorridaId WHERE r.SiteId=@SiteId AND r.EjecutadoPor=@Marker; DELETE restaurante.DiagnosticoCorrida WHERE SiteId=@SiteId AND EjecutadoPor=@Marker; DELETE restaurante.Site WHERE Id=@SiteId AND SiteCode=@Marker; DELETE logistica.LotBalance WHERE MaterialId=@MaterialId; DELETE logistica.MaterialLot WHERE MaterialId=@MaterialId; DELETE logistica.LocationMaterialAttachment WHERE MaterialId=@MaterialId; DELETE logistica.StockTransaction WHERE MaterialId=@MaterialId; DELETE logistica.StockBalance WHERE MaterialId=@MaterialId; DELETE logistica.Material WHERE Id=@MaterialId AND MaterialCode=@Marker;", new { MaterialId = material, Marker = marker, SiteId = restaurantSite });
       foreach (var id in ids.AsEnumerable().Reverse()) await setup.ExecuteAsync("DELETE logistica.Location WHERE Id=@Id AND LocationName LIKE @Marker", new { Id = id, Marker = marker + "%" });
-      await setup.ExecuteAsync("DELETE dbo.ROOM WHERE ID=@Id AND ROOM_NAME=@Marker; DELETE orion.Site WHERE SiteId=@SiteId AND SiteKey=@Marker;", new { Id = room, SiteId = siteB, Marker = marker });
+      await setup.ExecuteAsync("DELETE dbo.ROOM WHERE ID=@Id AND ROOM_NAME=@Marker; DELETE orion.SiteCapability WHERE CompanyId=@CompanyId AND SiteId=@SiteId AND ModuleCode='HOSPITALITY'; DELETE orion.Site WHERE SiteId=@SiteId AND SiteKey=@Marker;", new { Id = room, scope.CompanyId, SiteId = siteB, Marker = marker });
     }
   }
 

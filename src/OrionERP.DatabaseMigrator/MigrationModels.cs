@@ -10,7 +10,12 @@ internal sealed record MigrationDefinition(
   string Id,
   string Path,
   string Description,
-  IReadOnlyList<string> AllowedDatabases);
+  IReadOnlyList<string> AllowedDatabases,
+  IReadOnlyList<MigrationSatisfaction>? SatisfiedBy = null);
+
+internal sealed record MigrationSatisfaction(
+  string Id,
+  string Path);
 
 internal sealed record AppliedMigration(
   string MigrationId,

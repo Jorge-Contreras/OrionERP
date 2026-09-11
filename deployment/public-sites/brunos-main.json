@@ -47,7 +47,7 @@
       "membership-decoration": "/Images/Brunos/bruno-club-mascot.png"
     }
   },
-  "BrunoGraphMail": {
+  "PublicIntegrations:Mail": {
     "SenderAddress": "info@brunosgarden.com"
   }
 }

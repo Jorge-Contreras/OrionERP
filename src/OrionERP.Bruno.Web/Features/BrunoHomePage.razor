@@ -1,5 +1,5 @@
 @page "/"
-@inject IBrunoPublicCatalogService CatalogService
+@inject IRestaurantPublicCatalogService CatalogService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
 
@@ -110,7 +110,7 @@ else
 }
 
 @code {
-  private BrunoPublicSiteSettingsDto? settings;
+  private RestaurantPublicSiteSettingsDto? settings;
   private List<RestaurantProductDto> featuredProducts = [];
   private bool membershipEnabled;
   private string timeZoneId = "UTC";
@@ -139,7 +139,7 @@ else
       var binding = await Website.ResolveRequiredAsync();
       timeZoneId = binding.TimeZoneId;
       var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
-      var catalog = await CatalogService.GetCatalogAsync(binding.CompanyRfc, binding.SiteKey, localNow);
+      var catalog = await CatalogService.GetCatalogAsync(binding, localNow);
       if (catalog is null)
       {
         return;

@@ -1,6 +1,6 @@
 namespace OrionERP.Application.Features.Restaurante;
 
-public interface ILoyaltyService : IBrunoMemberService
+public interface IRestaurantLoyaltyService : IRestaurantMembershipService
 {
   Task<LoyaltyMemberDto?> FindMemberAsync(string rfc, string identifier, CancellationToken ct = default);
   Task<LoyaltyMemberProfileDto?> GetMemberProfileAsync(string rfc, Guid memberId, CancellationToken ct = default);

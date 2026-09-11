@@ -2,28 +2,28 @@ using System.Threading;
 using System.Threading.Tasks;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
-public interface IBonhomiaPublicBookingService
+public interface IHospitalityPublicBookingService
 {
-  Task<BonhomiaAvailabilityDto> GetAvailabilityAsync(
+  Task<HospitalityAvailabilityDto> GetAvailabilityAsync(
     DateOnly startDate,
     DateOnly endDateExclusive,
     CancellationToken ct = default);
 
-  Task<BonhomiaQuoteDto> CreateQuoteAsync(
-    BonhomiaQuoteRequest request,
+  Task<HospitalityQuoteDto> CreateQuoteAsync(
+    HospitalityQuoteRequest request,
     CancellationToken ct = default);
 
   Task ValidateQuoteAvailabilityAsync(
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     CancellationToken ct = default);
 
-  Task<BonhomiaPaidReservationResult> CreatePaidReservationAsync(
-    BonhomiaQuoteDto quote,
-    BonhomiaCustomerInfo customer,
-    BonhomiaPayPalCaptureResult payment,
-    BonhomiaLegalAcceptance legalAcceptance,
+  Task<HospitalityPaidReservationResult> CreatePaidReservationAsync(
+    HospitalityQuoteDto quote,
+    HospitalityCustomerInfo customer,
+    HospitalityPayPalCaptureResult payment,
+    HospitalityLegalAcceptance legalAcceptance,
     CancellationToken ct = default);
 
   Task<ReservacionDetailDto?> GetReservationDetailAsync(

@@ -1,6 +1,6 @@
 namespace OrionERP.Application.Features.Reservaciones.CalendarSync;
 
-public sealed class BonhomiaRoomCalendarRoomResult
+public sealed class HospitalityRoomCalendarRoomResult
 {
   public string RoomName { get; set; } = string.Empty;
   public string? OutlookCalendarId { get; set; }

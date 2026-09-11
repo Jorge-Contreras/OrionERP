@@ -6,12 +6,12 @@ using OrionERP.Infrastructure.Auth;
 
 namespace OrionERP.Web.Identity;
 
-public sealed class BrunoAdminClaimsPrincipalFactory
+public sealed class EmployeeCompanyClaimsPrincipalFactory
   : UserClaimsPrincipalFactory<ApplicationUser, IdentityRole>
 {
   private readonly IConfiguration _configuration;
 
-  public BrunoAdminClaimsPrincipalFactory(
+  public EmployeeCompanyClaimsPrincipalFactory(
     UserManager<ApplicationUser> userManager,
     RoleManager<IdentityRole> roleManager,
     IOptions<IdentityOptions> optionsAccessor,
@@ -33,13 +33,21 @@ public sealed class BrunoAdminClaimsPrincipalFactory
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT NULLIF(LTRIM(RTRIM(RFC)),'') FROM dbo.Capital_Humano WHERE ID=@EmployeeId;";
+        command.CommandText = """
+          SELECT company.CompanyId,company.Rfc
+          FROM dbo.Capital_Humano employee
+          JOIN orion.Company company ON company.Rfc=NULLIF(LTRIM(RTRIM(employee.RFC)),'')
+          WHERE employee.ID=@EmployeeId AND company.IsActive=1;
+          """;
         command.Parameters.AddWithValue("@EmployeeId", user.EmployeeId.Value);
-        var employeeRfc = Convert.ToString(await command.ExecuteScalarAsync())?.Trim();
-        if (!string.IsNullOrWhiteSpace(employeeRfc))
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
         {
+          var companyId = reader.GetInt64(0);
+          var employeeRfc = reader.GetString(1).Trim();
           if (!identity.HasClaim("rfc", employeeRfc)) identity.AddClaim(new Claim("rfc", employeeRfc));
           identity.AddClaim(new Claim("employee_rfc", employeeRfc));
+          identity.AddClaim(new Claim("company_id", companyId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
       }
     }

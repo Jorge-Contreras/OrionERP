@@ -48,6 +48,10 @@ public sealed class HospitalityPurchasingScopeTests
         INSERT orion.Site(CompanyId,SiteKey,DisplayName,TimeZoneId)
         VALUES(@CompanyId,@Marker,@Marker,'America/Mexico_City'); SELECT CONVERT(bigint,SCOPE_IDENTITY());
         """, new { a.CompanyId, Marker = marker });
+      await setup.ExecuteAsync("""
+        INSERT orion.SiteCapability(CompanyId,SiteId,ModuleCode,IsEnabled,UpdatedBy)
+        VALUES(@CompanyId,@SiteId,'HOSPITALITY',1,N'SqlIntegration');
+        """, new { a.CompanyId, SiteId = siteB });
       var roomLocation = await AddLocation(roomId, null, marker + "room");
       var childLocation = await AddLocation(null, roomLocation, marker + "child");
       var generalLocation = await AddLocation(null, null, marker + "general");
@@ -142,7 +146,10 @@ public sealed class HospitalityPurchasingScopeTests
           """, new { Id = id });
       foreach (var id in locationIds.AsEnumerable().Reverse())
         await setup.ExecuteAsync("DELETE logistica.Location WHERE Id=@Id;", new { Id = id });
-      if (siteB > 0) await setup.ExecuteAsync("DELETE orion.Site WHERE SiteId=@SiteId;", new { SiteId = siteB });
+      if (siteB > 0) await setup.ExecuteAsync("""
+        DELETE orion.SiteCapability WHERE CompanyId=@CompanyId AND SiteId=@SiteId AND ModuleCode='HOSPITALITY';
+        DELETE orion.Site WHERE SiteId=@SiteId;
+        """, new { a.CompanyId, SiteId = siteB });
     }
 
     async Task<int> AddLocation(int? room, int? parent, string code)

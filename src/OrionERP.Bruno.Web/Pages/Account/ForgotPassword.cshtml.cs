@@ -12,9 +12,9 @@ namespace OrionERP.Bruno.Web.Pages.Account;
 [EnableRateLimiting("account")]
 public sealed class ForgotPasswordModel : PageModel
 {
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  private readonly IEmailSender<BrunoMemberUser> _emailSender;
-  public ForgotPasswordModel(UserManager<BrunoMemberUser> userManager, IEmailSender<BrunoMemberUser> emailSender) { _userManager = userManager; _emailSender = emailSender; }
+  private readonly UserManager<PublicSiteUser> _userManager;
+  private readonly IEmailSender<PublicSiteUser> _emailSender;
+  public ForgotPasswordModel(UserManager<PublicSiteUser> userManager, IEmailSender<PublicSiteUser> emailSender) { _userManager = userManager; _emailSender = emailSender; }
   [BindProperty]
   [Required(ErrorMessage = "El correo es obligatorio.")]
   [EmailAddress(ErrorMessage = "Escribe un correo válido.")]

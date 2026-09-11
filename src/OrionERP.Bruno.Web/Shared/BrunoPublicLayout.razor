@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@inject IBrunoPublicCatalogService CatalogService
+@inject IRestaurantPublicCatalogService CatalogService
 @inject NavigationManager Navigation
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
@@ -75,7 +75,7 @@
 @code {
   private bool menuOpen;
   private bool membershipEnabled;
-  private BrunoPublicSiteSettingsDto? settings;
+  private RestaurantPublicSiteSettingsDto? settings;
   private string MembershipName => Presentation.MembershipProgramName ?? "Membresía";
   private string WhatsAppUrl => Presentation.WhatsAppUrl($"Hola, {Presentation.ShortName}.");
   private bool IsHomePage => string.Equals(new Uri(Navigation.Uri).AbsolutePath, "/", StringComparison.Ordinal);
@@ -94,7 +94,7 @@
     try
     {
       var binding = await Website.ResolveRequiredAsync();
-      settings = await CatalogService.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+      settings = await CatalogService.GetSettingsAsync(binding);
       membershipEnabled = Presentation.MembershipProgramName is not null
         && settings?.IsMembershipEnabled == true;
     }

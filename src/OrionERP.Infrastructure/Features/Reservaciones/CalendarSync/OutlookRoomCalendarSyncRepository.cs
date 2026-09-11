@@ -91,7 +91,7 @@ ORDER BY rc.ROOM, rc.ROOM_DATE;
         },
         cancellationToken: ct));
 
-    return BonhomiaCalendarSyncBlockBuilder.BuildBlocks(rows);
+    return HospitalityCalendarSyncBlockBuilder.BuildBlocks(rows);
   }
 
   public async Task<IReadOnlyList<OutlookRoomCalendarSyncMapping>> GetMappingsAsync(

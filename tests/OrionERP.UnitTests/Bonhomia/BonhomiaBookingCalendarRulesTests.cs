@@ -1,5 +1,5 @@
 using System.Globalization;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Bonhomia.Web.Features.Bonhomia;
 
 namespace OrionERP.UnitTests.Bonhomia;
@@ -169,14 +169,14 @@ public class BonhomiaBookingCalendarRulesTests
     Assert.Equal("Suite Manhattan", preserved);
   }
 
-  private static BonhomiaRoomAvailabilityDto CreateRoom(
+  private static HospitalityRoomAvailabilityDto CreateRoom(
     string name,
     params (DateOnly Date, bool IsAvailable)[] days)
     => new()
     {
       RoomName = name,
       Days = days
-        .Select(day => new BonhomiaDayAvailabilityDto
+        .Select(day => new HospitalityDayAvailabilityDto
         {
           Date = day.Date,
           IsAvailable = day.IsAvailable

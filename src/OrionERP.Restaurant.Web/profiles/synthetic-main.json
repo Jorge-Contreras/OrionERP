@@ -1,0 +1,33 @@
+{
+  "PublicWebsitePresentation": {
+    "PublicSiteKey": "synthetic-restaurant-main",
+    "BrandingVersion": 1,
+    "ContentVersion": 1,
+    "PublicName": "Restaurant Synthetic",
+    "ShortName": "Restaurant",
+    "MembershipProgramName": "Synthetic Club",
+    "LegalName": "Empresa dual sintética de validación",
+    "LocationName": "Campus dual",
+    "Tagline": "Perfil neutro de validación",
+    "FooterSummary": "Contenido sintético sin identidad comercial real.",
+    "SeoDescription": "Host Restaurant genérico para validación.",
+    "Locale": "es-MX",
+    "PublicEmail": "restaurant@synthetic-dual.invalid",
+    "WhatsAppE164": "+520000000001",
+    "WhatsAppDisplay": "+52 000 000 0001",
+    "OperatingAddress": "Avenida de Prueba 100",
+    "FiscalAddress": "Avenida de Prueba 100",
+    "PrivacyEmail": "privacy@synthetic-dual.invalid",
+    "PrivacyVersion": "synthetic-privacy-v1",
+    "PrivacyUpdatedDisplay": "septiembre de 2026",
+    "TermsVersion": "synthetic-terms-v1",
+    "TermsUpdatedDisplay": "septiembre de 2026",
+    "PrimaryColor": "#7a3f2b",
+    "PrimaryDarkColor": "#321b16",
+    "AccentColor": "#f0c66d",
+    "Assets": {
+      "logo": "/assets/synthetic-logo.svg",
+      "favicon": "/assets/synthetic-logo.svg"
+    }
+  }
+}

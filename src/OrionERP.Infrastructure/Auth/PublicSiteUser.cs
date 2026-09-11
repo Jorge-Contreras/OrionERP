@@ -2,10 +2,10 @@ using Microsoft.AspNetCore.Identity;
 
 namespace OrionERP.Infrastructure.Auth;
 
-public sealed class BrunoMemberUser : IdentityUser
+public sealed class PublicSiteUser : IdentityUser
 {
   /// <summary>
-  /// Immutable binding to the database-verified public restaurant instance.
+  /// Immutable binding to the database-verified public website instance.
   /// orion.PublicSite in turn fixes the company, site and module.
   /// </summary>
   public long PublicSiteId { get; set; }

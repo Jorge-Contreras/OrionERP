@@ -75,6 +75,21 @@ internal sealed class MigrationRunner(MigratorOptions options)
         throw new InvalidOperationException(
           $"{migration.Id} contiene una base repetida, desconocida o con casing no canónico.");
       }
+
+      var satisfiers = migration.SatisfiedBy ?? [];
+      if (satisfiers.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != satisfiers.Count)
+        throw new InvalidOperationException($"{migration.Id} contiene equivalencias repetidas.");
+
+      foreach (var satisfier in satisfiers)
+      {
+        if (!Regex.IsMatch(satisfier.Id, "^[0-9]{8}_[a-z0-9_]+$", RegexOptions.CultureInvariant) ||
+            string.Equals(satisfier.Id, migration.Id, StringComparison.Ordinal))
+        {
+          throw new InvalidOperationException($"{migration.Id} contiene una equivalencia inválida: {satisfier.Id}.");
+        }
+
+        ValidateManagedSqlPath(migration.Id, satisfier.Path, "equivalencia");
+      }
     }
 
     return manifest;
@@ -166,9 +181,22 @@ internal sealed class MigrationRunner(MigratorOptions options)
     foreach (var migration in selected)
     {
       var (_, checksum) = ReadScript(migration);
-      var status = applied.TryGetValue(migration.Id, out var existing)
-        ? string.Equals(existing.Checksum, checksum, StringComparison.OrdinalIgnoreCase) ? "APPLIED" : "CHECKSUM_MISMATCH"
-        : "PENDING";
+      string status;
+      if (applied.TryGetValue(migration.Id, out var existing))
+      {
+        status = string.Equals(existing.Checksum, checksum, StringComparison.OrdinalIgnoreCase)
+          ? "APPLIED"
+          : "CHECKSUM_MISMATCH";
+      }
+      else
+      {
+        var satisfaction = ResolveSatisfaction(migration, applied);
+        status = satisfaction is null
+          ? "PENDING"
+          : satisfaction.ChecksumMatches
+            ? $"SATISFIED_BY:{satisfaction.Definition.Id}"
+            : $"SATISFIER_CHECKSUM_MISMATCH:{satisfaction.Definition.Id}";
+      }
       Console.WriteLine($"{migration.Id}  {status}  {checksum[..12]}  {migration.Description}");
     }
 
@@ -187,8 +215,21 @@ internal sealed class MigrationRunner(MigratorOptions options)
       var (_, checksum) = ReadScript(migration);
       if (!applied.TryGetValue(migration.Id, out var existing))
       {
-        failed = true;
-        Console.WriteLine($"{migration.Id}: PENDING");
+        var satisfaction = ResolveSatisfaction(migration, applied);
+        if (satisfaction is null)
+        {
+          failed = true;
+          Console.WriteLine($"{migration.Id}: PENDING");
+        }
+        else if (!satisfaction.ChecksumMatches)
+        {
+          failed = true;
+          Console.WriteLine($"{migration.Id}: SATISFIER_CHECKSUM_MISMATCH ({satisfaction.Definition.Id})");
+        }
+        else
+        {
+          Console.WriteLine($"{migration.Id}: SATISFIED_BY ({satisfaction.Definition.Id})");
+        }
         continue;
       }
 
@@ -220,6 +261,19 @@ internal sealed class MigrationRunner(MigratorOptions options)
         throw new InvalidOperationException($"La migración aplicada {migration.Id} cambió de checksum.");
 
       Console.WriteLine($"{migration.Id}: ya aplicada; se omite.");
+      return;
+    }
+
+    var satisfaction = ResolveSatisfaction(migration, applied);
+    if (satisfaction is not null)
+    {
+      if (!satisfaction.ChecksumMatches)
+      {
+        throw new InvalidOperationException(
+          $"La migración equivalente aplicada {satisfaction.Definition.Id} cambió de checksum.");
+      }
+
+      Console.WriteLine($"{migration.Id}: satisfecha por {satisfaction.Definition.Id}; se omite.");
       return;
     }
 
@@ -394,18 +448,57 @@ internal sealed class MigrationRunner(MigratorOptions options)
   }
 
   private (string Script, string Checksum) ReadScript(MigrationDefinition migration)
+    => ReadManagedSql(migration.Id, migration.Path);
+
+  private (string Script, string Checksum) ReadManagedSql(string ownerId, string relativeSqlPath)
   {
-    var path = Path.GetFullPath(Path.Combine(options.RepositoryRoot, migration.Path));
+    var path = Path.GetFullPath(Path.Combine(options.RepositoryRoot, relativeSqlPath));
     var relative = Path.GetRelativePath(options.RepositoryRoot, path);
     if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
-      throw new InvalidOperationException($"La ruta de {migration.Id} sale del repositorio.");
+      throw new InvalidOperationException($"La ruta declarada por {ownerId} sale del repositorio.");
     if (!File.Exists(path))
-      throw new FileNotFoundException($"No se encontró el script de {migration.Id}.", path);
+      throw new FileNotFoundException($"No se encontró el script declarado por {ownerId}.", path);
 
     var bytes = File.ReadAllBytes(path);
     var checksum = Convert.ToHexString(SHA256.HashData(bytes));
     return (Encoding.UTF8.GetString(bytes), checksum);
   }
+
+  private MigrationSatisfactionResult? ResolveSatisfaction(
+    MigrationDefinition migration,
+    IReadOnlyDictionary<string, AppliedMigration> applied)
+  {
+    foreach (var definition in migration.SatisfiedBy ?? [])
+    {
+      if (!applied.TryGetValue(definition.Id, out var existing))
+        continue;
+
+      var (_, checksum) = ReadManagedSql(migration.Id, definition.Path);
+      return new MigrationSatisfactionResult(
+        definition,
+        string.Equals(existing.Checksum, checksum, StringComparison.OrdinalIgnoreCase));
+    }
+
+    return null;
+  }
+
+  private void ValidateManagedSqlPath(string ownerId, string relativeSqlPath, string kind)
+  {
+    if (string.IsNullOrWhiteSpace(relativeSqlPath) ||
+        !relativeSqlPath.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+    {
+      throw new InvalidOperationException($"La ruta de {kind} de {ownerId} debe terminar en .sql.");
+    }
+
+    var path = Path.GetFullPath(Path.Combine(options.RepositoryRoot, relativeSqlPath));
+    var relative = Path.GetRelativePath(options.RepositoryRoot, path);
+    if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative) || !File.Exists(path))
+      throw new InvalidOperationException($"La ruta de {kind} de {ownerId} no es un SQL administrado del repositorio.");
+  }
+
+  private sealed record MigrationSatisfactionResult(
+    MigrationSatisfaction Definition,
+    bool ChecksumMatches);
 
   private async Task WritePreviewReceiptAsync(
     MigrationDefinition migration,

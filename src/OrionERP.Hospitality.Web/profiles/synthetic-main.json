@@ -1,0 +1,32 @@
+{
+  "PublicWebsitePresentation": {
+    "PublicSiteKey": "synthetic-hospitality-main",
+    "BrandingVersion": 1,
+    "ContentVersion": 1,
+    "PublicName": "Hospitality Synthetic",
+    "ShortName": "Hospitality",
+    "LegalName": "Empresa dual sintética de validación",
+    "LocationName": "Campus dual",
+    "Tagline": "Perfil neutro de validación",
+    "FooterSummary": "Contenido sintético sin identidad comercial real.",
+    "SeoDescription": "Host Hospitality genérico para validación.",
+    "Locale": "es-MX",
+    "PublicEmail": "hospitality@synthetic-dual.invalid",
+    "WhatsAppE164": "+520000000000",
+    "WhatsAppDisplay": "+52 000 000 0000",
+    "OperatingAddress": "Avenida de Prueba 100",
+    "FiscalAddress": "Avenida de Prueba 100",
+    "PrivacyEmail": "privacy@synthetic-dual.invalid",
+    "PrivacyVersion": "synthetic-privacy-v1",
+    "PrivacyUpdatedDisplay": "septiembre de 2026",
+    "TermsVersion": "synthetic-terms-v1",
+    "TermsUpdatedDisplay": "septiembre de 2026",
+    "PrimaryColor": "#356859",
+    "PrimaryDarkColor": "#173f35",
+    "AccentColor": "#e6c36a",
+    "Assets": {
+      "logo": "/assets/synthetic-logo.svg",
+      "favicon": "/assets/synthetic-logo.svg"
+    }
+  }
+}

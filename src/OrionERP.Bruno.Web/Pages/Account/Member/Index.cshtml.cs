@@ -12,17 +12,17 @@ namespace OrionERP.Bruno.Web.Pages.Account.Member;
 [Authorize]
 public sealed class IndexModel : PageModel
 {
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  private readonly ILoyaltyService _loyaltyService;
+  private readonly UserManager<PublicSiteUser> _userManager;
+  private readonly IRestaurantLoyaltyService _loyaltyService;
   private readonly IPublicWebsiteInstanceContext _website;
   private readonly PublicWebsitePresentationDefinition _presentation;
-  private readonly IRestaurantPublicIdentityScopeAccessor _identityScope;
+  private readonly IPublicIdentityScopeAccessor _identityScope;
   public IndexModel(
-    UserManager<BrunoMemberUser> userManager,
-    ILoyaltyService loyaltyService,
+    UserManager<PublicSiteUser> userManager,
+    IRestaurantLoyaltyService loyaltyService,
     IPublicWebsiteInstanceContext website,
     PublicWebsitePresentationDefinition presentation,
-    IRestaurantPublicIdentityScopeAccessor identityScope)
+    IPublicIdentityScopeAccessor identityScope)
   {
     _userManager = userManager;
     _loyaltyService = loyaltyService;

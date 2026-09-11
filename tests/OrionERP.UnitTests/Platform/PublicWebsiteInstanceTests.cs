@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using OrionERP.Application.Common;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.UnitTests.Common;
@@ -36,15 +36,24 @@ public sealed class PublicWebsiteInstanceTests
   }
 
   [Theory]
-  [InlineData("")]
   [InlineData("ACCOUNTING_CORE")]
   [InlineData("RESTAURANT")]
-  public void Create_RejectsMissingOrWrongFixedModule(string configuredModule)
+  public void Create_RejectsWrongFixedModule(string configuredModule)
   {
     var options = Options(moduleCode: configuredModule);
 
     Assert.Throws<InvalidOperationException>(() =>
       PublicWebsiteInstancePolicy.Create(options, PlatformModuleCodes.Hospitality));
+  }
+
+  [Fact]
+  public void Create_UsesTheHostsFixedModuleWhenConfigurationOmitsIt()
+  {
+    var instance = PublicWebsiteInstancePolicy.Create(
+      Options(moduleCode: string.Empty),
+      PlatformModuleCodes.Hospitality);
+
+    Assert.Equal(PlatformModuleCodes.Hospitality, instance.ModuleCode);
   }
 
   [Theory]
@@ -150,7 +159,7 @@ public sealed class PublicWebsiteInstanceTests
     Assert.NotEmpty(hospitality.GetProperty("Rooms").EnumerateArray());
     Assert.Equal(
       "recepcion@bonhomiasuites.com",
-      bonhomia.RootElement.GetProperty("BonhomiaGraphMail").GetProperty("SenderAddress").GetString());
+      bonhomia.RootElement.GetProperty("PublicIntegrations:Mail").GetProperty("SenderAddress").GetString());
 
     AssertDeploymentIdentity(
       bruno.RootElement,
@@ -162,7 +171,7 @@ public sealed class PublicWebsiteInstanceTests
       5020);
     Assert.Equal(
       "info@brunosgarden.com",
-      bruno.RootElement.GetProperty("BrunoGraphMail").GetProperty("SenderAddress").GetString());
+      bruno.RootElement.GetProperty("PublicIntegrations:Mail").GetProperty("SenderAddress").GetString());
 
     AssertNoSecretProperties(bonhomia.RootElement);
     AssertNoSecretProperties(bruno.RootElement);

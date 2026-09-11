@@ -5,9 +5,9 @@ public sealed class RestaurantTenantNeutralityTests
   [Fact]
   public void Restaurant_administration_uses_the_company_from_the_active_session()
   {
-    var claimsFactory = ReadRepoFile("src/OrionERP.Web/Identity/BrunoAdminClaimsPrincipalFactory.cs");
+    var claimsFactory = ReadRepoFile("src/OrionERP.Web/Identity/EmployeeCompanyClaimsPrincipalFactory.cs");
     var promotions = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPromotionsPage.razor");
-    var publicSite = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantBrunoSitePage.razor");
+    var publicSite = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPublicSitePage.razor");
     var legacyRoute = ReadRepoFile("src/OrionERP.Web/Pages/RestaurantPublicSiteLegacy.cshtml.cs");
 
     Assert.DoesNotContain("BrunoRestaurantConstants", claimsFactory, StringComparison.Ordinal);
@@ -45,7 +45,8 @@ public sealed class RestaurantTenantNeutralityTests
       "StatusCode(StatusCodes.Status503ServiceUnavailable)",
       pageModel,
       StringComparison.Ordinal);
-    Assert.Contains("BrunoRestaurantConstants.Rfc", pageModel, StringComparison.Ordinal);
+    Assert.Contains("Signage:DefaultPublicSiteKey", pageModel, StringComparison.Ordinal);
+    Assert.DoesNotContain("BrunoRestaurantConstants", pageModel, StringComparison.Ordinal);
     Assert.DoesNotContain("Bruno's", page, StringComparison.OrdinalIgnoreCase);
   }
 
@@ -56,7 +57,7 @@ public sealed class RestaurantTenantNeutralityTests
     {
       "src/OrionERP.Web/Shared/NavigationCatalog.cs",
       "src/OrionERP.Web/Features/Restaurante/RestaurantPromotionsPage.razor",
-      "src/OrionERP.Web/Features/Restaurante/RestaurantBrunoSitePage.razor",
+      "src/OrionERP.Web/Features/Restaurante/RestaurantPublicSitePage.razor",
       "src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor",
       "src/OrionERP.Web/Features/Restaurante/RestaurantReceiptPdfService.cs",
       "src/OrionERP.Web/Features/Restaurante/RestaurantKitchenPage.razor"

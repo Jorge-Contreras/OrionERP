@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using OrionERP.Web.Features.Documents;
 
 namespace OrionERP.Web.Features.Logistica.Purchasing;
 
@@ -13,16 +14,17 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
   private const string BrandMuted = "#6B7E83";
   private const string BrandBorder = "#D7E2E0";
   private const string BrandSurface = "#F8FBFA";
-  private readonly string _logoSvg;
+  private readonly ICompanyDocumentPresentation _presentation;
 
   public PurchaseOrderPdfService(IWebHostEnvironment environment)
+    : this(CompanyDocumentPresentation.CreateNeutral(environment))
+  {
+  }
+
+  public PurchaseOrderPdfService(ICompanyDocumentPresentation presentation)
   {
     QuestPDF.Settings.License = LicenseType.Community;
-
-    var logoPath = Path.Combine(environment.WebRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
-    _logoSvg = File.Exists(logoPath)
-      ? File.ReadAllText(logoPath)
-      : FallbackLogoSvg;
+    _presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
   }
 
   public byte[] Generate(PurchaseOrderPdfDocumentModel model)
@@ -50,7 +52,7 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
 
       column.Item().Row(row =>
       {
-        row.ConstantItem(58).Height(58).Svg(_logoSvg);
+        row.ConstantItem(58).Height(58).Svg(_presentation.LogoSvg);
         row.RelativeItem().PaddingLeft(10).Column(textColumn =>
         {
           textColumn.Spacing(1);
@@ -64,7 +66,7 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
             .SemiBold()
             .FontColor(BrandPrimary);
 
-          textColumn.Item().Text("Bonhomia Suites")
+          textColumn.Item().Text(_presentation.DisplayName)
             .FontSize(9)
             .FontColor(BrandMuted);
         });

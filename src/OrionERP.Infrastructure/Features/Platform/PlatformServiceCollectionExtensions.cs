@@ -21,7 +21,14 @@ public static class PlatformServiceCollectionExtensions
 
     services.AddDbContext<PlatformDbContext>(options => options.UseSqlServer(connectionString));
     services.TryAddSingleton(TimeProvider.System);
-    services.AddScoped<IPublicSiteResolver, PublicSiteResolver>();
+    services.AddScoped<PublicSiteResolver>();
+    services.AddScoped<IPublicSiteResolver>(provider => provider.GetRequiredService<PublicSiteResolver>());
+    services.AddScoped<IPlatformExecutionScopeResolver>(provider => provider.GetRequiredService<PublicSiteResolver>());
+    services.AddScoped<IOrionSqlSessionFactory>(_ => new OrionSqlSessionFactory(connectionString));
+    services.AddScoped<IModuleSiteBindingResolver, ModuleSiteBindingResolver>();
+    services.AddScoped<IEnabledModuleSiteEnumerator, EnabledModuleSiteEnumerator>();
+    services.AddScoped<IModuleJobLeaseManager, ModuleJobLeaseManager>();
+    services.AddScoped<IPublicIntegrationSettingsResolver, PublicIntegrationSettingsResolver>();
     return services;
   }
 
@@ -38,6 +45,7 @@ public static class PlatformServiceCollectionExtensions
     services.AddScoped<IPlatformAdministrationScopeAccessor, PlatformAdministrationScopeAccessor>();
     services.AddScoped<IPlatformAdministrationReader, PlatformAdministrationReader>();
     services.AddScoped<IPlatformAdministrationService, PlatformAdministrationService>();
+    services.AddScoped<IPublicSiteProvisioner, PublicSiteProvisioner>();
     return services;
   }
 }

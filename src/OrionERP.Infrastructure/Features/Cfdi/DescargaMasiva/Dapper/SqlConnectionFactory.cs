@@ -19,17 +19,24 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
   public IDbConnection Create()
   {
     var connection = new SqlConnection(_cs);
-    StateChangeEventHandler? handler = null;
-    handler = (_, args) =>
+    connection.StateChange += (_, args) =>
     {
       if (args.CurrentState != ConnectionState.Open)
       {
         return;
       }
 
-      connection.StateChange -= handler;
       using var command = connection.CreateCommand();
       command.CommandText = """
+        EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.SiteId', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.ModuleCode', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.PublicSiteId', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId', @value=NULL, @read_only=0;
+        EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityRfc', @value=NULL, @read_only=0;
+
         DECLARE @CompanyId bigint =
         (
           SELECT CompanyId FROM orion.Company
@@ -43,7 +50,6 @@ public sealed class SqlConnectionFactory : IDbConnectionFactory
       command.Parameters.AddWithValue("@Rfc", NormalizeRfc(_rfcAccessor.CurrentRfc));
       command.ExecuteNonQuery();
     };
-    connection.StateChange += handler;
     return connection;
   }
 

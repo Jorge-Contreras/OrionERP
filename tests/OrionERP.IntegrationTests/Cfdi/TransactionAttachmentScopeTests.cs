@@ -13,7 +13,7 @@ public sealed class TransactionAttachmentScopeTests
   [Fact]
   public async Task MissingCompany_IsRejectedBeforeOpeningSql()
   {
-    var company = new TestCompany(null);
+    var company = new TestCompany(0,null);
     var repository = Repository("Server=unavailable.invalid;Database=Orion_Sandbox;Integrated Security=true;Connect Timeout=1", company);
 
     await Assert.ThrowsAsync<UnauthorizedAccessException>(() => repository.GetAttachmentAsync(1));
@@ -30,15 +30,16 @@ public sealed class TransactionAttachmentScopeTests
     await observer.OpenAsync();
     Assert.Equal("Orion_Sandbox", await observer.ExecuteScalarAsync<string>("SELECT DB_NAME();"), ignoreCase: true);
 
-    var companies = (await observer.QueryAsync<string>("""
-      SELECT Rfc FROM orion.Company WHERE Rfc IN ('OHM191112Q26', 'BSU210121M77');
+    var companies = (await observer.QueryAsync<CompanyRow>("""
+      SELECT CompanyId,Rfc FROM orion.Company WHERE Rfc IN ('OHM191112Q26', 'BSU210121M77', 'TST260910DUAL01');
       """)).ToArray();
-    Assert.Equal(2, companies.Length);
-    var companyA = new TestCompany("OHM191112Q26");
-    var companyB = new TestCompany("BSU210121M77");
+    Assert.Equal(3, companies.Length);
+    var companyA = new TestCompany(companies.Single(company=>company.Rfc=="OHM191112Q26").CompanyId,"OHM191112Q26");
+    var companyB = new TestCompany(companies.Single(company=>company.Rfc=="BSU210121M77").CompanyId,"BSU210121M77");
     var repositoryA = Repository(builder.ConnectionString, companyA);
     var repositoryB = Repository(builder.ConnectionString, companyB);
-    var unrelated = Repository(builder.ConnectionString, new TestCompany("TST010101AAA"));
+    var unrelatedCompany=companies.Single(company=>company.Rfc=="TST260910DUAL01");
+    var unrelated = Repository(builder.ConnectionString, new TestCompany(unrelatedCompany.CompanyId,unrelatedCompany.Rfc));
     var marker = "attachment-scope-" + Guid.NewGuid().ToString("N");
     var content = Encoding.UTF8.GetBytes(marker);
     var transactionIds = new List<int>();
@@ -46,8 +47,8 @@ public sealed class TransactionAttachmentScopeTests
     var comprobanteIds = new List<int>();
     try
     {
-      var transactionA = await CreateTransactionAsync(companyA.RequireRfc());
-      var transactionB = await CreateTransactionAsync(companyB.RequireRfc());
+      var transactionA = await CreateTransactionAsync(companyA);
+      var transactionB = await CreateTransactionAsync(companyB);
       var privateA = await CreateAttachmentAsync(transactionA);
       var privateB = await CreateAttachmentAsync(transactionB);
       var canonical = await CreateAttachmentAsync(null);
@@ -68,7 +69,7 @@ public sealed class TransactionAttachmentScopeTests
       Assert.Null(await repositoryB.GetAttachmentAsync(unassigned));
       Assert.Null(await repositoryA.GetAttachmentAsync(-1));
       await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-        Repository(builder.ConnectionString, new TestCompany(null)).GetAttachmentAsync(canonical));
+        Repository(builder.ConnectionString, new TestCompany(0,null)).GetAttachmentAsync(canonical));
 
       // Revalidate on each operation, including when a repository outlives session loss.
       companyA.Rfc = null;
@@ -78,21 +79,26 @@ public sealed class TransactionAttachmentScopeTests
     {
       // Cleanup is restricted to identities created by this run; existing rows are untouched.
       await observer.ExecuteAsync("""
+        EXECUTE AS USER=N'dbo';
         DELETE FROM cfdi.Emisor WHERE Comprobante_ID IN @ComprobanteIds;
         DELETE FROM cfdi.Receptor WHERE Comprobante_ID IN @ComprobanteIds;
         DELETE FROM cfdi.Comprobante WHERE Comprobante_Id IN @ComprobanteIds;
         DELETE FROM dbo.TRANSACTION_ATTACHMENT WHERE ID IN @AttachmentIds AND AttachmentName=@Marker;
         DELETE FROM dbo.Transacciones WHERE ID IN @TransactionIds AND Concepto=@Marker;
+        REVERT;
         """, new { ComprobanteIds = comprobanteIds, AttachmentIds = attachmentIds, TransactionIds = transactionIds, Marker = marker });
     }
 
-    async Task<int> CreateTransactionAsync(string rfc)
+    async Task<int> CreateTransactionAsync(TestCompany company)
     {
+      var companyId=await company.RequireCompanyIdAsync();
+      await OrionERP.Infrastructure.Features.Contabilidad.Transacciones.AccountingConnectionFactory.InitializeAsync(
+        observer,company.RequireRfc(),companyId);
       var id = await observer.ExecuteScalarAsync<int>("""
-        INSERT dbo.Transacciones (Concepto, Monto, RFC)
-        VALUES (@Marker, 1, @Rfc);
+        INSERT dbo.Transacciones (Concepto, Monto, RFC, CompanyId)
+        VALUES (@Marker, 1, @Rfc, @CompanyId);
         SELECT CONVERT(int, SCOPE_IDENTITY());
-        """, new { Marker = marker, Rfc = rfc });
+        """, new { Marker = marker, Rfc = company.RequireRfc(), CompanyId=companyId });
       transactionIds.Add(id);
       return id;
     }
@@ -133,7 +139,13 @@ public sealed class TransactionAttachmentScopeTests
     return new TransactionAttachmentRepository(new SqlConnectionFactory(configuration, company), company);
   }
 
-  private sealed class TestCompany(string? rfc) : ICurrentCompanyContext
+  private sealed class CompanyRow
+  {
+    public long CompanyId { get; set; }
+    public string Rfc { get; set; } = "";
+  }
+
+  private sealed class TestCompany(long companyId,string? rfc) : ICurrentCompanyContext
   {
     public string? Rfc { get; set; } = rfc;
     public string? CurrentRfc => Rfc;
@@ -146,6 +158,6 @@ public sealed class TransactionAttachmentScopeTests
         throw new UnauthorizedAccessException("Company mismatch.");
     }
     public Task<long> RequireCompanyIdAsync(CancellationToken ct = default)
-    { RequireRfc(); return Task.FromResult(1L); }
+    { RequireRfc(); return Task.FromResult(companyId); }
   }
 }

@@ -2,7 +2,7 @@ using System;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
-public sealed class BonhomiaGraphCalendarRemoteEvent
+public sealed class HospitalityGraphCalendarRemoteEvent
 {
   public string Id { get; set; } = string.Empty;
   public string Subject { get; set; } = string.Empty;

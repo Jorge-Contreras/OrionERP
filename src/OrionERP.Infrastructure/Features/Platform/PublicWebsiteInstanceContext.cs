@@ -19,6 +19,7 @@ public sealed class PublicWebsiteInstanceContext : IPublicWebsiteInstanceContext
   private readonly TimeSpan _validationInterval;
   private readonly SemaphoreSlim _validationLock = new(1, 1);
   private CacheEntry? _cache;
+  private string? _resolvedCompanyRfc;
 
   public PublicWebsiteInstanceContext(
     PublicWebsiteInstanceDefinition instance,
@@ -57,7 +58,9 @@ public sealed class PublicWebsiteInstanceContext : IPublicWebsiteInstanceContext
   public PublicWebsiteInstanceDefinition Instance { get; }
   public PublicWebsitePresentationDefinition Presentation { get; }
 
-  public string CurrentRfc => Instance.ExpectedCompanyRfc;
+  public string CurrentRfc
+    => Volatile.Read(ref _resolvedCompanyRfc)
+      ?? Instance.ExpectedCompanyRfc;
 
   public async Task<PublicSiteBinding> ResolveRequiredAsync(CancellationToken ct = default)
   {
@@ -79,6 +82,7 @@ public sealed class PublicWebsiteInstanceContext : IPublicWebsiteInstanceContext
       await using var scope = _scopeFactory.CreateAsyncScope();
       var resolver = scope.ServiceProvider.GetRequiredService<IPublicSiteResolver>();
       var binding = await resolver.ResolveRequiredAsync(Instance.ToResolutionRequest(), ct);
+      Volatile.Write(ref _resolvedCompanyRfc, binding.CompanyRfc);
       var presentationMatch = PublicWebsitePresentationPolicy.EnsureMatchesBinding(
         Presentation,
         binding,

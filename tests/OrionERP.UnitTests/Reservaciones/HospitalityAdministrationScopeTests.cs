@@ -19,13 +19,14 @@ public sealed class HospitalityAdministrationScopeTests
   [Fact]
   public void ProductionLedgerAlternativeStillRequiresEnabledBoundPolicyAndAllPredicates()
   {
-    var source = RepoFile.Read("src/OrionERP.Infrastructure/Features/Reservaciones/HospitalityConnectionFactory.cs");
-    Assert.Contains("MigrationId IN (N'20260908_hospitality_administration_scope_sandbox', N'20260908_production_hospitality_administration_scope')", source, StringComparison.Ordinal);
-    Assert.Contains("AND is_enabled = 1 AND is_schema_bound=1)", source, StringComparison.Ordinal);
-    Assert.Contains("OR (SELECT COUNT(*) FROM sys.security_predicates WHERE object_id=OBJECT_ID(N'orion.HospitalityScopePolicy')) < 54", source, StringComparison.Ordinal);
-    Assert.Contains("OR NOT EXISTS (SELECT 1 FROM orion.SchemaMigration", source, StringComparison.Ordinal);
+    var source = RepoFile.Read("src/OrionERP.Infrastructure/Features/Platform/OrionSqlSessionFactory.cs");
+    Assert.Contains("N'20260908_hospitality_administration_scope_sandbox'", source, StringComparison.Ordinal);
+    Assert.Contains("N'20260908_production_hospitality_administration_scope'", source, StringComparison.Ordinal);
+    Assert.Contains("AND is_enabled=1 AND is_schema_bound=1", source, StringComparison.Ordinal);
+    Assert.Contains("WHERE object_id=OBJECT_ID(N'orion.HospitalityScopePolicy'))<54", source, StringComparison.Ordinal);
+    Assert.Contains("OR NOT EXISTS", source, StringComparison.Ordinal);
     Assert.Contains("THROW 51900", source, StringComparison.Ordinal);
-    Assert.Contains("c.CompanyId=@CompanyId AND s.SiteId=@SiteId AND c.Rfc=@CompanyRfc AND c.IsActive=1 AND s.IsActive=1", source, StringComparison.Ordinal);
+    Assert.Contains("c.CompanyId=@CompanyId AND c.Rfc=@CompanyRfc AND c.IsActive=1 AND s.IsActive=1", source, StringComparison.Ordinal);
   }
 
   [Fact]

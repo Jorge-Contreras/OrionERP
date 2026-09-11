@@ -19,7 +19,7 @@ public sealed class HospitalityRowSecuritySqlTests
       await using var reader = await command.ExecuteReaderAsync();
       while (await reader.ReadAsync()) targets.Add(reader.GetString(0));
     }
-    Assert.Equal(18, targets.Count);
+    Assert.Equal(27, targets.Count);
     foreach (var target in targets)
       Assert.Equal(0L, await ScalarAsync<long>(connection, null, $"SELECT COUNT_BIG(*) FROM {target}"));
   }
@@ -132,11 +132,17 @@ public sealed class HospitalityRowSecuritySqlTests
     Assert.Equal(0L, await ScalarAsync<long>(connection, transaction, "SELECT COUNT_BIG(*) FROM dbo.Reservation_Transacciones l JOIN dbo.Transacciones p ON p.ID=l.TransaccionID WHERE p.RFC<>@rfc", ("@rfc", a.Rfc)));
     var exception = await Assert.ThrowsAsync<SqlException>(() => ExecuteAsync(connection, transaction, """
       DECLARE @reservation int=(SELECT TOP(1) ID FROM dbo.RESERVATION ORDER BY ID);
-      DECLARE @otherRfc varchar(50)=(SELECT c.Rfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='brunos-main');
-      INSERT dbo.Transacciones(Concepto,Monto,RFC) VALUES(N'RLS transactional payment fixture',0,@otherRfc);
+      DECLARE @otherCompanyId bigint,@otherRfc varchar(50);
+      SELECT @otherCompanyId=c.CompanyId,@otherRfc=c.Rfc
+      FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='brunos-main';
+      EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId',@value=@otherCompanyId;
+      EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@otherRfc;
+      INSERT dbo.Transacciones(Concepto,Monto,RFC,CompanyId) VALUES(N'RLS transactional payment fixture',0,@otherRfc,@otherCompanyId);
       DECLARE @payment int=CONVERT(int,SCOPE_IDENTITY());
+      EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId',@value=@companyId;
+      EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@rfc;
       INSERT dbo.Reservation_Transacciones(ReservationID,TransaccionID,Amount) VALUES(@reservation,@payment,0);
-      """, ("@rfc", a.Rfc)));
+      """, ("@rfc", a.Rfc), ("@companyId", a.Company)));
     Assert.Equal(33504, exception.Number);
     await transaction.RollbackAsync();
   }

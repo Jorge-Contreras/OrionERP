@@ -1,6 +1,6 @@
 namespace OrionERP.Application.Features.Restaurante;
 
-public interface IBrunoMemberService
+public interface IRestaurantMembershipService
 {
   Task<LoyaltyMemberProfileDto?> GetMemberProfileByIdentityAsync(
     string rfc,

@@ -1,32 +1,40 @@
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
-public static class BonhomiaBookingCutoffPolicy
+public static class HospitalityBookingCutoffPolicy
 {
   public const string DefaultTimeZone = "America/Mexico_City";
-  public static readonly TimeOnly SameDayCutoff = new(17, 0);
+  public static readonly TimeOnly DefaultSameDayCutoff = new(17, 0);
 
-  public static DateOnly GetEarliestCheckInDate(DateTimeOffset nowUtc, string? timeZoneId = null)
+  public static DateOnly GetEarliestCheckInDate(
+    DateTimeOffset nowUtc,
+    string? timeZoneId = null,
+    TimeOnly? sameDayCutoff = null)
   {
     var localNow = GetLocalNow(nowUtc, timeZoneId);
     var localToday = DateOnly.FromDateTime(localNow.Date);
     var localTime = TimeOnly.FromDateTime(localNow);
 
-    return localTime >= SameDayCutoff
+    return localTime >= (sameDayCutoff ?? DefaultSameDayCutoff)
       ? localToday.AddDays(1)
       : localToday;
   }
 
-  public static void EnsureCheckInIsAllowed(DateOnly checkIn, DateTimeOffset nowUtc, string? timeZoneId = null)
+  public static void EnsureCheckInIsAllowed(
+    DateOnly checkIn,
+    DateTimeOffset nowUtc,
+    string? timeZoneId = null,
+    TimeOnly? sameDayCutoff = null)
   {
-    var earliestCheckIn = GetEarliestCheckInDate(nowUtc, timeZoneId);
+    var cutoff = sameDayCutoff ?? DefaultSameDayCutoff;
+    var earliestCheckIn = GetEarliestCheckInDate(nowUtc, timeZoneId, cutoff);
     if (checkIn >= earliestCheckIn)
     {
       return;
     }
 
-    throw new BonhomiaPublicBookingException(
+    throw new HospitalityPublicBookingException(
       "same_day_cutoff",
-      "Las reservaciones para llegada el mismo dia solo estan disponibles antes de las 17:00 hrs. Selecciona una fecha posterior.");
+      $"Las reservaciones para llegada el mismo dia solo estan disponibles antes de las {cutoff:HH\\:mm} hrs. Selecciona una fecha posterior.");
   }
 
   private static DateTime GetLocalNow(DateTimeOffset nowUtc, string? timeZoneId)

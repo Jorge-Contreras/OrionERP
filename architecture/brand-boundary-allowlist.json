@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "scanRoots": [
+    "src/OrionERP.Domain",
+    "src/OrionERP.Application",
+    "src/OrionERP.Infrastructure",
+    "src/OrionERP.Web",
+    "src/OrionERP.DatabaseMigrator",
+    "src/OrionERP.Hospitality.Web",
+    "src/OrionERP.Restaurant.Web"
+  ],
+  "patterns": [
+    "Bonhomia",
+    "Bruno",
+    "OHM191112Q26",
+    "BRUNOS260707L26",
+    "brunos_auth"
+  ],
+  "entries": [
+    {
+      "path": "^src/OrionERP\\.Application/Features/Hospitality/PublicBooking/HospitalityCheckoutOptions\\.cs$",
+      "pattern": "BonhomiaCheckout",
+      "category": 5,
+      "owner": "Platform",
+      "justification": "Alias de configuración heredado con precedencia y validación de conflicto.",
+      "removeAfter": "2026-12-31"
+    },
+    {
+      "path": "^src/OrionERP\\.Infrastructure/Features/Reservaciones/CalendarSync/HospitalityCalendarSyncOptions\\.cs$",
+      "pattern": "BonhomiaGraphCalendarSync",
+      "category": 5,
+      "owner": "Hospitality",
+      "justification": "Alias temporal de configuración de calendario.",
+      "removeAfter": "2026-12-31"
+    },
+    {
+      "path": "^src/OrionERP\\.Infrastructure/Features/Mail/MicrosoftGraphMailOptions\\.cs$",
+      "pattern": "(?:Bonhomia|Bruno)GraphMail",
+      "category": 5,
+      "owner": "Platform",
+      "justification": "Aliases temporales de configuración de correo público.",
+      "removeAfter": "2026-12-31"
+    },
+    {
+      "path": "^src/OrionERP\\.Infrastructure/.*/Sql/.*$",
+      "pattern": "(?:Bonhomia|Bruno|OHM191112Q26|BRUNOS260707L26|brunos_auth)",
+      "category": 4,
+      "owner": "Database",
+      "justification": "Migraciones aplicadas e identificadores históricos inmutables; incluye el puente heredado de rollback."
+    },
+    {
+      "path": "^src/OrionERP\\.DatabaseMigrator/SqlInventory\\.cs$",
+      "pattern": "(?:OHM191112Q26|BRUNOS260707L26)",
+      "category": 4,
+      "owner": "Database",
+      "justification": "Detector explícito de literales históricos prohibidos en nuevas migraciones."
+    },
+    {
+      "path": "^src/OrionERP\\.Web/Pages/Menus\\.cshtml$",
+      "pattern": "Brunos",
+      "category": 5,
+      "owner": "Restaurant",
+      "justification": "Respaldo PNG estático explícito cuando no resuelve una pantalla configurada.",
+      "removeAfter": "2026-12-31"
+    },
+    {
+      "path": "^src/OrionERP\\.Web/Pages/RestaurantPublicSiteLegacy\\.cshtml$",
+      "pattern": "sitio-brunos",
+      "category": 5,
+      "owner": "Restaurant",
+      "justification": "Ruta de redirección conservada para marcadores anteriores.",
+      "removeAfter": "2026-12-31"
+    },
+    {
+      "path": "^src/OrionERP\\.Web/Program\\.cs$",
+      "pattern": "MapGet\\(\"/bonhomia\"",
+      "category": 5,
+      "owner": "Hospitality",
+      "justification": "Redirección de ruta administrativa anterior.",
+      "removeAfter": "2026-12-31"
+    },
+    {
+      "path": "^src/OrionERP\\.Web/wwwroot/Images/BonhomiaSuitesLetterheadLogo\\.svg$",
+      "pattern": "Bonhomia",
+      "category": 4,
+      "owner": "Platform",
+      "justification": "Activo histórico conservado, sin referencia desde el runtime neutral."
+    }
+  ]
+}

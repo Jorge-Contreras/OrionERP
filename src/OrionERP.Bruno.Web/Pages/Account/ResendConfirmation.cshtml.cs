@@ -13,14 +13,14 @@ namespace OrionERP.Bruno.Web.Pages.Account;
 [EnableRateLimiting("account")]
 public sealed class ResendConfirmationModel : PageModel
 {
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  private readonly IEmailSender<BrunoMemberUser> _emailSender;
+  private readonly UserManager<PublicSiteUser> _userManager;
+  private readonly IEmailSender<PublicSiteUser> _emailSender;
   private readonly IBrunoTurnstileService _turnstile;
   private readonly ILogger<ResendConfirmationModel> _logger;
 
   public ResendConfirmationModel(
-    UserManager<BrunoMemberUser> userManager,
-    IEmailSender<BrunoMemberUser> emailSender,
+    UserManager<PublicSiteUser> userManager,
+    IEmailSender<PublicSiteUser> emailSender,
     IBrunoTurnstileService turnstile,
     ILogger<ResendConfirmationModel> logger)
   {

@@ -12,8 +12,8 @@ namespace OrionERP.Bruno.Web.Pages.Account;
 [EnableRateLimiting("account")]
 public sealed class ResetPasswordModel : PageModel
 {
-  private readonly UserManager<BrunoMemberUser> _userManager;
-  public ResetPasswordModel(UserManager<BrunoMemberUser> userManager) { _userManager = userManager; }
+  private readonly UserManager<PublicSiteUser> _userManager;
+  public ResetPasswordModel(UserManager<PublicSiteUser> userManager) { _userManager = userManager; }
   [BindProperty] public InputModel Input { get; set; } = new();
   public bool Completed { get; private set; }
   public IActionResult OnGet(string? code = null, string? email = null)

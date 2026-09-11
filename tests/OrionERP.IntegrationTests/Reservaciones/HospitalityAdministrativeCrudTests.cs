@@ -39,11 +39,11 @@ public sealed class HospitalityAdministrativeCrudTests
     var scopes = (await bootstrap.QueryAsync<ScopeRow>("""
 SELECT ps.PublicSiteKey, ps.CompanyId, ps.SiteId, company.Rfc AS CompanyRfc
 FROM orion.PublicSite ps INNER JOIN orion.Company company ON company.CompanyId = ps.CompanyId
-WHERE ps.PublicSiteKey IN ('bonhomia-main', 'brunos-main');
+WHERE ps.PublicSiteKey IN ('bonhomia-main', 'synthetic-hospitality-main');
 """)).ToList();
     Assert.Equal(2, scopes.Count);
     var scopeA = scopes.Single(row => row.PublicSiteKey == "bonhomia-main").ToScope();
-    var scopeB = scopes.Single(row => row.PublicSiteKey == "brunos-main").ToScope();
+    var scopeB = scopes.Single(row => row.PublicSiteKey == "synthetic-hospitality-main").ToScope();
     Assert.NotEqual(scopeA.CompanyId, scopeB.CompanyId);
     var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:OrionDb"] = connectionString }).Build();
     var factoryA = new HospitalityConnectionFactory(cfg, new FixedScope(scopeA));

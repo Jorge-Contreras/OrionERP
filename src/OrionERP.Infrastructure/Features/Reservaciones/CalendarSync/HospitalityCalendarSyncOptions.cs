@@ -4,9 +4,10 @@ using System.Linq;
 
 namespace OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 
-public sealed class BonhomiaGraphCalendarSyncOptions
+public sealed class HospitalityCalendarSyncOptions
 {
-  public const string SectionName = "BonhomiaGraphCalendarSync";
+  public const string SectionName = "HospitalityIntegrations:Calendar";
+  public const string LegacySectionName = "BonhomiaGraphCalendarSync";
 
   // Disabled until an operator binds this integration to a verified company/site.
   public bool Enabled { get; set; }

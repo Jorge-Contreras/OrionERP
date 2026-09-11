@@ -27,7 +27,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
   }
 
   /// <summary>
-  /// Operaciones de sede exigen el módulo habilitado. El catálogo público de Bruno
+  /// Operaciones de sede exigen el módulo habilitado. El catálogo público
   /// no construye este accessor y tampoco llama estos dos métodos: sin accessor la
   /// operación se niega, nunca se exime.
   /// </summary>
@@ -694,7 +694,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     long productId,
     bool thumbnail,
     CancellationToken ct = default)
-    => GetProductImageCoreAsync(rfc, null, null, productId, thumbnail, ct);
+    => GetProductImageCoreAsync(rfc, null, productId, thumbnail, ct);
 
   public Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
     string rfc,
@@ -705,25 +705,12 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
   {
     if (siteId <= 0)
       throw new ArgumentOutOfRangeException(nameof(siteId));
-    return GetProductImageCoreAsync(rfc, siteId, null, productId, thumbnail, ct);
-  }
-
-  public Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
-    string rfc,
-    string siteCode,
-    long productId,
-    bool thumbnail,
-    CancellationToken ct = default)
-  {
-    if (string.IsNullOrWhiteSpace(siteCode))
-      throw new ArgumentException("SiteCode is required.", nameof(siteCode));
-    return GetProductImageCoreAsync(rfc, null, siteCode.Trim(), productId, thumbnail, ct);
+    return GetProductImageCoreAsync(rfc, siteId, productId, thumbnail, ct);
   }
 
   private async Task<(byte[] Bytes, string ContentType)?> GetProductImageCoreAsync(
     string rfc,
     long? siteId,
-    string? siteCode,
     long productId,
     bool thumbnail,
     CancellationToken ct)
@@ -746,14 +733,13 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
         WHERE siteInfo.Rfc = product.Rfc AND siteInfo.IsEnabled = 1
           AND
           (
-            (@SiteId IS NOT NULL AND siteInfo.Id = @SiteId)
-            OR (@SiteCode IS NOT NULL AND siteInfo.SiteCode = @SiteCode)
+            @SiteId IS NOT NULL AND siteInfo.Id = @SiteId
           )
       ) scopedSite
       WHERE product.Rfc = @Rfc AND product.Id = @ProductId
         AND
         (
-          (@SiteId IS NULL AND @SiteCode IS NULL)
+          @SiteId IS NULL
           OR
           (
             scopedSite.Id IS NOT NULL
@@ -767,7 +753,6 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     {
       Rfc = LogisticsRfc.Require(rfc),
       SiteId = siteId,
-      SiteCode = siteCode,
       ProductId = productId,
       Thumbnail = thumbnail
     }, cancellationToken: ct));

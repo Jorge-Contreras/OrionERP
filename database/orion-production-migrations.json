@@ -189,6 +189,69 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260911_platform_execution_scope",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_platform_execution_scope.sql",
+      "description": "CompanyId, binding explícito Restaurant, PublicSiteId de configuración, integraciones y principales públicos neutrales.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260911_public_identity",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_identity.sql",
+      "description": "Crea public_identity, copia Identity por PublicSite, activa RLS y un bridge unidireccional reversible.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260911_public_provisioning_profiles",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_provisioning_profiles.sql",
+      "description": "Ledger reanudable y perfiles mínimos de permisos SQL por módulo público.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260911_public_principal_boundary",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_principal_boundary.sql",
+      "description": "Perfil v2 y validación obligatoria del principal SQL contra su PublicSite.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260911_public_rls_principal_binding",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_rls_principal_binding.sql",
+      "description": "RLS enlazada al principal SQL y PublicSite registrado, incluso ante SESSION_CONTEXT manipulado.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260911_rfc_rls_fail_closed",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_rfc_rls_fail_closed.sql",
+      "description": "Hace fail-closed el RLS RFC compartido y enlaza los procesos públicos a CompanyId y PublicSite.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
+      "id": "20260911_legacy_write_compatibility",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_legacy_write_compatibility.sql",
+      "description": "Puente fail-closed para escritores heredados de bindings Restaurant durante la ventana de compatibilidad.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

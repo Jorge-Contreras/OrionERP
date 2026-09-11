@@ -63,7 +63,9 @@ public sealed class CompanyClaimsPrincipalFactory : UserClaimsPrincipalFactory<A
       select role.Id).ToListAsync();
 
     var companyRoleIds = await _db.UserCompanyRoles.AsNoTracking()
-      .Where(link => link.UserId == user.Id && link.Rfc == selectedRfc)
+      .Where(link => link.UserId == user.Id &&
+        (link.CompanyId == membership.Company.CompanyId ||
+         (link.CompanyId == null && link.Rfc == selectedRfc)))
       .Select(link => link.RoleId)
       .ToListAsync();
 
@@ -83,6 +85,9 @@ public sealed class CompanyClaimsPrincipalFactory : UserClaimsPrincipalFactory<A
       identity.AddClaim(new Claim(claim.ClaimType!, claim.ClaimValue!));
 
     identity.AddClaim(new Claim(CompanyClaimTypes.Rfc, membership.Rfc));
+    identity.AddClaim(new Claim(
+      CompanyClaimTypes.CompanyId,
+      membership.Company.CompanyId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
     identity.AddClaim(new Claim(CompanyClaimTypes.CompanyName, membership.Company.DisplayName));
     identity.AddClaim(new Claim(CompanyClaimTypes.SessionVersion, CompanyClaimTypes.CurrentSessionVersion));
     if (membership.EmployeeId.HasValue)

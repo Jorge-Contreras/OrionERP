@@ -339,7 +339,24 @@ MERGE reporteFinanciero.SaludEmpresaConfiguracion WITH (HOLDLOCK) AS target
 USING (SELECT @Rfc RFC) AS source ON source.RFC=target.RFC
 WHEN NOT MATCHED THEN
   INSERT (RFC,HospedajeHabilitado,RetencionArrendadorPct,ActualizadoPor)
-  VALUES (source.RFC,CASE WHEN source.RFC='OHM191112Q26' THEN 1 ELSE 0 END,10,N'Sistema Salud Financiera v2');
+  VALUES
+  (
+    source.RFC,
+    CASE WHEN EXISTS
+    (
+      SELECT 1
+      FROM orion.Company company
+      JOIN orion.CompanyModule companyModule
+        ON companyModule.CompanyId=company.CompanyId
+       AND companyModule.ModuleCode='HOSPITALITY'
+      WHERE company.Rfc=source.RFC AND company.IsActive=1
+        AND companyModule.[Status]='Enabled'
+        AND (companyModule.EffectiveFromUtc IS NULL OR companyModule.EffectiveFromUtc<=SYSUTCDATETIME())
+        AND (companyModule.EffectiveToUtc IS NULL OR companyModule.EffectiveToUtc>SYSUTCDATETIME())
+    ) THEN 1 ELSE 0 END,
+    10,
+    N'Sistema Salud Financiera v2'
+  );
 
 SELECT RFC,HospedajeHabilitado LodgingEnabled,RetencionArrendadorPct OwnerWithholdingPct,
        ActualizadoUtc UpdatedAtUtc,ActualizadoPor UpdatedBy

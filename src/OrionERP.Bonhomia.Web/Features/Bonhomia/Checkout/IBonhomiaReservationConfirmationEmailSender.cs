@@ -1,22 +1,22 @@
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
-public interface IBonhomiaReservationConfirmationEmailSender
+public interface IHospitalityReservationConfirmationEmailSender
 {
   Task SendConfirmationAsync(
-    BonhomiaReservationConfirmationEmail confirmation,
+    HospitalityReservationConfirmationEmail confirmation,
     CancellationToken ct = default);
 }
 
-public sealed class BonhomiaReservationConfirmationEmail
+public sealed class HospitalityReservationConfirmationEmail
 {
   public int ReservationId { get; set; }
   public int TransaccionId { get; set; }
   public string ClientName { get; set; } = string.Empty;
-  public BonhomiaQuoteDto Quote { get; set; } = new();
-  public BonhomiaCustomerInfo Customer { get; set; } = new();
-  public BonhomiaPayPalCaptureResult Payment { get; set; } = new();
+  public HospitalityQuoteDto Quote { get; set; } = new();
+  public HospitalityCustomerInfo Customer { get; set; } = new();
+  public HospitalityPayPalCaptureResult Payment { get; set; } = new();
   public decimal Total { get; set; }
   public DateTimeOffset ConfirmedAtUtc { get; set; }
   public string PdfUrl { get; set; } = string.Empty;

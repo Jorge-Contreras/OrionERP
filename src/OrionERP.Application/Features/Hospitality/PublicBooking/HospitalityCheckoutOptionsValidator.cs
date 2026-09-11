@@ -1,9 +1,9 @@
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
-public static class BonhomiaCheckoutOptionsValidator
+public static class HospitalityCheckoutOptionsValidator
 {
   public static IReadOnlyList<string> ValidateForEnvironment(
-    BonhomiaCheckoutOptions options,
+    HospitalityCheckoutOptions options,
     string? environmentName)
   {
     ArgumentNullException.ThrowIfNull(options);
@@ -17,23 +17,22 @@ public static class BonhomiaCheckoutOptionsValidator
 
     if (!options.UseLivePayPal)
     {
-      errors.Add("Production Bonhomia checkout must set BonhomiaCheckout:Environment to Live or Production.");
+      errors.Add("Production hospitality checkout must set HospitalityCheckout:Environment to Live or Production.");
     }
 
     if (!options.IsPayPalConfigured)
     {
-      errors.Add("Production Bonhomia checkout requires BonhomiaCheckout:PayPalClientId and BonhomiaCheckout:PayPalClientSecret.");
+      errors.Add("Production hospitality checkout requires HospitalityCheckout:PayPalClientId and HospitalityCheckout:PayPalClientSecret.");
     }
 
     if (!IsAbsoluteHttpsUrl(options.PublicBaseUrl))
     {
-      errors.Add("Production Bonhomia checkout requires BonhomiaCheckout:PublicBaseUrl to be an absolute HTTPS URL.");
+      errors.Add("Production hospitality checkout requires HospitalityCheckout:PublicBaseUrl to be an absolute HTTPS URL.");
     }
 
-    if (string.IsNullOrWhiteSpace(options.AccountingRfc)
-        || string.IsNullOrWhiteSpace(options.AccountingAccount))
+    if (string.IsNullOrWhiteSpace(options.AccountingAccount))
     {
-      errors.Add("Production hospitality checkout requires a bound accounting RFC and account name.");
+      errors.Add("Production hospitality checkout requires a bound accounting account name.");
     }
 
     if (string.IsNullOrWhiteSpace(options.PublicName)

@@ -1,18 +1,18 @@
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.UnitTests.Bonhomia;
 
-public class BonhomiaCheckoutOptionsValidatorTests
+public class HospitalityCheckoutOptionsValidatorTests
 {
   [Fact]
   public void ValidateForEnvironment_AllowsSandbox_WhenDevelopment()
   {
-    var options = new BonhomiaCheckoutOptions
+    var options = new HospitalityCheckoutOptions
     {
       Environment = "Sandbox"
     };
 
-    var errors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(options, "Development");
+    var errors = HospitalityCheckoutOptionsValidator.ValidateForEnvironment(options, "Development");
 
     Assert.Empty(errors);
   }
@@ -23,7 +23,7 @@ public class BonhomiaCheckoutOptionsValidatorTests
     var options = CreateProductionOptions();
     options.Environment = "Sandbox";
 
-    var errors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
+    var errors = HospitalityCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
 
     Assert.Contains(errors, error => error.Contains("Live or Production", StringComparison.OrdinalIgnoreCase));
   }
@@ -35,7 +35,7 @@ public class BonhomiaCheckoutOptionsValidatorTests
     options.PayPalClientId = string.Empty;
     options.PayPalClientSecret = string.Empty;
 
-    var errors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
+    var errors = HospitalityCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
 
     Assert.Contains(errors, error => error.Contains("PayPalClientId", StringComparison.OrdinalIgnoreCase));
     Assert.Contains(errors, error => error.Contains("PayPalClientSecret", StringComparison.OrdinalIgnoreCase));
@@ -47,7 +47,7 @@ public class BonhomiaCheckoutOptionsValidatorTests
     var options = CreateProductionOptions();
     options.PublicBaseUrl = "http://bonhomiasuites.com";
 
-    var errors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
+    var errors = HospitalityCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
 
     Assert.Contains(errors, error => error.Contains("absolute HTTPS URL", StringComparison.OrdinalIgnoreCase));
   }
@@ -57,19 +57,18 @@ public class BonhomiaCheckoutOptionsValidatorTests
   {
     var options = CreateProductionOptions();
 
-    var errors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
+    var errors = HospitalityCheckoutOptionsValidator.ValidateForEnvironment(options, "Production");
 
     Assert.Empty(errors);
   }
 
-  private static BonhomiaCheckoutOptions CreateProductionOptions()
+  private static HospitalityCheckoutOptions CreateProductionOptions()
     => new()
     {
       Environment = "Live",
       PayPalClientId = "live-client-id",
       PayPalClientSecret = "live-client-secret",
       PublicBaseUrl = "https://hospitality.example.test",
-      AccountingRfc = "AAA010101AAA",
       AccountingAccount = "cuenta-prueba",
       PublicName = "Hospedaje de Prueba",
       ReservationSourceLabel = "Portal de hospedaje"

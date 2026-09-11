@@ -4,16 +4,16 @@ using System.Text;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
-public static class BonhomiaQuoteCalculator
+public static class HospitalityQuoteCalculator
 {
   private const decimal TaxIncludedFactor = 1.16m;
 
-  public static BonhomiaQuoteDto BuildQuote(
-    BonhomiaQuoteRequest request,
-    BonhomiaRoomAvailabilityDto room,
-    IReadOnlyList<BonhomiaExtraOptionDto> extras,
+  public static HospitalityQuoteDto BuildQuote(
+    HospitalityQuoteRequest request,
+    HospitalityRoomAvailabilityDto room,
+    IReadOnlyList<HospitalityExtraOptionDto> extras,
     IReadOnlyList<ExperienceCatalogItemDto> experiences,
     DateTimeOffset expiresAtUtc,
     string currency,
@@ -29,22 +29,22 @@ public static class BonhomiaQuoteCalculator
     var nights = checkOut.DayNumber - checkIn.DayNumber;
     if (nights <= 0)
     {
-      throw new BonhomiaPublicBookingException("invalid_dates", "La salida debe ser posterior a la llegada.");
+      throw new HospitalityPublicBookingException("invalid_dates", "La salida debe ser posterior a la llegada.");
     }
 
     if (nights > maxStayNights)
     {
-      throw new BonhomiaPublicBookingException("stay_too_long", $"La estancia maxima en linea es de {maxStayNights} noches.");
+      throw new HospitalityPublicBookingException("stay_too_long", $"La estancia maxima en linea es de {maxStayNights} noches.");
     }
 
     if (request.Guests <= 0)
     {
-      throw new BonhomiaPublicBookingException("invalid_guests", "Indica al menos un huesped.");
+      throw new HospitalityPublicBookingException("invalid_guests", "Indica al menos un huesped.");
     }
 
     if (request.Guests > room.Capacity)
     {
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "capacity_exceeded",
         $"{room.RoomName} admite hasta {room.Capacity} huespedes.");
     }
@@ -57,7 +57,7 @@ public static class BonhomiaQuoteCalculator
     {
       if (!daysByDate.TryGetValue(day, out var availability) || !availability.IsAvailable)
       {
-        throw new BonhomiaPublicBookingException(
+        throw new HospitalityPublicBookingException(
           "not_available",
           $"{room.RoomName} ya no esta disponible para todas las noches seleccionadas.");
       }
@@ -82,7 +82,7 @@ public static class BonhomiaQuoteCalculator
       experienceChargeLines,
       totalPagado: 0m);
 
-    var lines = new List<BonhomiaQuoteLineDto>
+    var lines = new List<HospitalityQuoteLineDto>
     {
       new()
       {
@@ -94,7 +94,7 @@ public static class BonhomiaQuoteCalculator
       }
     };
 
-    lines.AddRange(selectedExtras.Select(item => new BonhomiaQuoteLineDto
+    lines.AddRange(selectedExtras.Select(item => new HospitalityQuoteLineDto
     {
       Type = "extra",
       Description = item.Option.Name,
@@ -105,7 +105,7 @@ public static class BonhomiaQuoteCalculator
 
     foreach (var selectedExperience in selectedExperiences)
     {
-      lines.Add(new BonhomiaQuoteLineDto
+      lines.Add(new HospitalityQuoteLineDto
       {
         Type = "experience",
         Description = $"{selectedExperience.Experience.Name} - {selectedExperience.Package.Name} ({selectedExperience.Request.ExperienceDate:dd MMM yyyy})",
@@ -114,7 +114,7 @@ public static class BonhomiaQuoteCalculator
         Total = selectedExperience.Pricing.PackageSubtotal
       });
 
-      lines.AddRange(selectedExperience.Pricing.AddOns.Select(addOn => new BonhomiaQuoteLineDto
+      lines.AddRange(selectedExperience.Pricing.AddOns.Select(addOn => new HospitalityQuoteLineDto
       {
         Type = "experience-addon",
         Description = $"{selectedExperience.Experience.Name} - {addOn.AddOn.Name}",
@@ -124,18 +124,18 @@ public static class BonhomiaQuoteCalculator
       }));
     }
 
-    var quoteRequest = new BonhomiaQuoteRequest
+    var quoteRequest = new HospitalityQuoteRequest
     {
       RoomName = room.RoomName,
       CheckIn = checkIn,
       CheckOut = checkOut,
       Guests = request.Guests,
-      Extras = selectedExtras.Select(item => new BonhomiaSelectedExtraRequest
+      Extras = selectedExtras.Select(item => new HospitalitySelectedExtraRequest
       {
         Code = item.Option.Code,
         Quantity = item.Quantity
       }).ToArray(),
-      Experiences = selectedExperiences.Select(item => new BonhomiaSelectedExperienceRequest
+      Experiences = selectedExperiences.Select(item => new HospitalitySelectedExperienceRequest
       {
         Code = item.Experience.Code,
         PackageCode = item.Package.Code,
@@ -146,7 +146,7 @@ public static class BonhomiaQuoteCalculator
       }).ToArray()
     };
 
-    var quote = new BonhomiaQuoteDto
+    var quote = new HospitalityQuoteDto
     {
       QuoteId = Guid.NewGuid(),
       Request = quoteRequest,
@@ -173,7 +173,7 @@ public static class BonhomiaQuoteCalculator
     return quote;
   }
 
-  public static string CreateFingerprint(BonhomiaQuoteDto quote)
+  public static string CreateFingerprint(HospitalityQuoteDto quote)
   {
     ArgumentNullException.ThrowIfNull(quote);
 
@@ -200,17 +200,17 @@ public static class BonhomiaQuoteCalculator
     return Convert.ToHexString(bytes);
   }
 
-  private static IReadOnlyList<(BonhomiaExtraOptionDto Option, int Quantity)> NormalizeSelectedExtras(
-    IReadOnlyList<BonhomiaSelectedExtraRequest>? selectedExtras,
-    IReadOnlyList<BonhomiaExtraOptionDto> extras)
+  private static IReadOnlyList<(HospitalityExtraOptionDto Option, int Quantity)> NormalizeSelectedExtras(
+    IReadOnlyList<HospitalitySelectedExtraRequest>? selectedExtras,
+    IReadOnlyList<HospitalityExtraOptionDto> extras)
   {
     if (selectedExtras is null || selectedExtras.Count == 0)
     {
-      return Array.Empty<(BonhomiaExtraOptionDto, int)>();
+      return Array.Empty<(HospitalityExtraOptionDto, int)>();
     }
 
     var optionsByCode = extras.ToDictionary(extra => extra.Code, StringComparer.OrdinalIgnoreCase);
-    var normalized = new List<(BonhomiaExtraOptionDto Option, int Quantity)>();
+    var normalized = new List<(HospitalityExtraOptionDto Option, int Quantity)>();
 
     foreach (var selected in selectedExtras)
     {
@@ -221,12 +221,12 @@ public static class BonhomiaQuoteCalculator
 
       if (!optionsByCode.TryGetValue(selected.Code, out var option))
       {
-        throw new BonhomiaPublicBookingException("unknown_extra", "Uno de los extras seleccionados ya no esta disponible.");
+        throw new HospitalityPublicBookingException("unknown_extra", "Uno de los extras seleccionados ya no esta disponible.");
       }
 
       if (selected.Quantity > option.MaxQuantity)
       {
-        throw new BonhomiaPublicBookingException(
+        throw new HospitalityPublicBookingException(
           "extra_quantity_exceeded",
           $"{option.Name} permite hasta {option.MaxQuantity} unidad{(option.MaxQuantity == 1 ? string.Empty : "es")}.");
       }
@@ -237,7 +237,7 @@ public static class BonhomiaQuoteCalculator
         var mergedQuantity = normalized[existingIndex].Quantity + selected.Quantity;
         if (mergedQuantity > option.MaxQuantity)
         {
-          throw new BonhomiaPublicBookingException("extra_quantity_exceeded", $"{option.Name} excede el maximo permitido.");
+          throw new HospitalityPublicBookingException("extra_quantity_exceeded", $"{option.Name} excede el maximo permitido.");
         }
 
         normalized[existingIndex] = (option, mergedQuantity);
@@ -252,7 +252,7 @@ public static class BonhomiaQuoteCalculator
   }
 
   private static IReadOnlyList<SelectedExperience> NormalizeSelectedExperiences(
-    IReadOnlyList<BonhomiaSelectedExperienceRequest>? selectedExperiences,
+    IReadOnlyList<HospitalitySelectedExperienceRequest>? selectedExperiences,
     IReadOnlyList<ExperienceCatalogItemDto> experiences,
     int participantLimit,
     DateOnly checkIn,
@@ -275,32 +275,32 @@ public static class BonhomiaQuoteCalculator
 
       if (!optionsByCode.TryGetValue(selected.Code, out var experience))
       {
-        throw new BonhomiaPublicBookingException("unknown_experience", "Una de las experiencias seleccionadas ya no esta disponible.");
+        throw new HospitalityPublicBookingException("unknown_experience", "Una de las experiencias seleccionadas ya no esta disponible.");
       }
 
       var package = experience.Packages.FirstOrDefault(item => string.Equals(item.Code, selected.PackageCode, StringComparison.OrdinalIgnoreCase));
       if (package is null)
       {
-        throw new BonhomiaPublicBookingException("unknown_experience_package", $"{experience.Name} ya no tiene disponible el paquete seleccionado.");
+        throw new HospitalityPublicBookingException("unknown_experience_package", $"{experience.Name} ya no tiene disponible el paquete seleccionado.");
       }
 
       if (selected.ExperienceDate < checkIn || selected.ExperienceDate >= checkOut)
       {
-        throw new BonhomiaPublicBookingException(
+        throw new HospitalityPublicBookingException(
           "experience_date_outside_stay",
           $"{experience.Name} debe programarse dentro de las noches de la estancia.");
       }
 
       if (selected.AdultParticipants <= 0)
       {
-        throw new BonhomiaPublicBookingException(
+        throw new HospitalityPublicBookingException(
           "experience_adult_required",
           $"{experience.Name} requiere al menos un adulto.");
       }
 
       if (selected.ChildParticipants < 0)
       {
-        throw new BonhomiaPublicBookingException(
+        throw new HospitalityPublicBookingException(
           "invalid_experience_children",
           "La cantidad de menores en la experiencia no puede ser negativa.");
       }
@@ -308,20 +308,20 @@ public static class BonhomiaQuoteCalculator
       var totalParticipants = selected.AdultParticipants + selected.ChildParticipants;
       if (totalParticipants > participantLimit)
       {
-        throw new BonhomiaPublicBookingException(
+        throw new HospitalityPublicBookingException(
           "experience_participants_exceed_guests",
           $"{experience.Name} admite hasta {participantLimit} participante(s) segun la capacidad de la suite.");
       }
 
       var addOnsByCode = experience.AddOns.ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
       var selectedAddOns = new List<ExperiencePricingAddOnInput>();
-      var normalizedAddOnRequests = new List<BonhomiaSelectedExperienceAddOnRequest>();
+      var normalizedAddOnRequests = new List<HospitalitySelectedExperienceAddOnRequest>();
 
       foreach (var addOnRequest in selected.AddOns.Where(item => item.Quantity > 0))
       {
         if (!addOnsByCode.TryGetValue(addOnRequest.Code, out var addOn))
         {
-          throw new BonhomiaPublicBookingException("unknown_experience_addon", $"Un adicional de {experience.Name} ya no esta disponible.");
+          throw new HospitalityPublicBookingException("unknown_experience_addon", $"Un adicional de {experience.Name} ya no esta disponible.");
         }
 
         selectedAddOns.Add(new ExperiencePricingAddOnInput
@@ -329,14 +329,14 @@ public static class BonhomiaQuoteCalculator
           AddOn = addOn,
           Quantity = addOnRequest.Quantity
         });
-        normalizedAddOnRequests.Add(new BonhomiaSelectedExperienceAddOnRequest
+        normalizedAddOnRequests.Add(new HospitalitySelectedExperienceAddOnRequest
         {
           Code = addOn.Code,
           Quantity = addOnRequest.Quantity
         });
       }
 
-      var normalizedRequest = new BonhomiaSelectedExperienceRequest
+      var normalizedRequest = new HospitalitySelectedExperienceRequest
       {
         Code = experience.Code,
         PackageCode = package.Code,
@@ -385,6 +385,6 @@ public static class BonhomiaQuoteCalculator
   private sealed record SelectedExperience(
     ExperienceCatalogItemDto Experience,
     ExperiencePackageOptionDto Package,
-    BonhomiaSelectedExperienceRequest Request,
+    HospitalitySelectedExperienceRequest Request,
     ExperiencePricingResult Pricing);
 }

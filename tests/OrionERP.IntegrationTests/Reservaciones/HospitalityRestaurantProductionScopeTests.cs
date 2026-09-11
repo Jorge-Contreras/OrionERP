@@ -188,10 +188,15 @@ public sealed class HospitalityRestaurantProductionScopeTests
       {
         await f.Sql.OpenAsync();
         Assert.Equal("Orion_Sandbox", await f.Sql.ExecuteScalarAsync<string>("SELECT DB_NAME()"), ignoreCase: true);
-        f.Scope = await f.Sql.QuerySingleAsync<HospitalityScope>("SELECT p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='bonhomia-main'");
+        f.Scope = await f.Sql.QuerySingleAsync<HospitalityScope>("SELECT p.CompanyId,p.SiteId,c.Rfc AS CompanyRfc FROM orion.PublicSite p JOIN orion.Company c ON c.CompanyId=p.CompanyId WHERE p.PublicSiteKey='synthetic-hospitality-main'");
         await HospitalityConnectionFactory.InitializeAsync(f.Sql, f.Scope);
         await f.Sql.ExecuteAsync("EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc", new { f.Rfc });
         f._otherSite = await f.Sql.ExecuteScalarAsync<long>("INSERT orion.Site(CompanyId,SiteKey,DisplayName,TimeZoneId) VALUES(@CompanyId,@Marker,@Marker,'America/Mexico_City'); SELECT CONVERT(bigint,SCOPE_IDENTITY());", new { f.Scope.CompanyId, f.Marker });
+        await f.Sql.ExecuteAsync("""
+          INSERT orion.SiteCapability(CompanyId,SiteId,ModuleCode,IsEnabled,UpdatedBy)
+          VALUES(@CompanyId,@SiteId,'HOSPITALITY',1,N'SqlIntegration'),
+                (@CompanyId,@SiteId,'RESTAURANT',1,N'SqlIntegration');
+          """,new { f.Scope.CompanyId,SiteId=f._otherSite });
         f._room = await f.Sql.ExecuteScalarAsync<int>("INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE) VALUES(@Marker,'SUITE'); SELECT CONVERT(int,SCOPE_IDENTITY());", new { f.Marker });
         var locations = new LocationService(f.Factory(f.Rfc), new FixedScope(f.Scope));
         var privateLocation = await locations.SaveLocationAsync(new() { LocationName = f.Marker + "-private", RoomId = f._room });
@@ -222,10 +227,9 @@ public sealed class HospitalityRestaurantProductionScopeTests
     }
 
     public CompanyConnectionFactory Factory(string? rfc) => new(_configuration, new CompanyRfc(rfc));
-    // La sede sintética de la fixture no tiene contraparte en orion.Site, así que el
-    // módulo se da por habilitado: lo que estas pruebas delimitan es Logística.
+    // El binding local apunta a la sede central sintética creada por la fixture.
     public IRestaurantScopeAccessor ModuleScope
-      => new FixedRestaurantScope(new RestaurantScope(Scope.CompanyId, Scope.SiteId, RestaurantSite, Rfc));
+      => new FixedRestaurantScope(new RestaurantScope(Scope.CompanyId, _otherSite, RestaurantSite, Rfc));
     public RestaurantProductionService Production(HospitalityScope? scope) => new(Factory(Rfc), scope is null ? null : new FixedScope(scope), ModuleScope);
     public RestaurantCatalogService Catalog(HospitalityScope? scope) => new(Factory(Rfc), scope is null ? null : new FixedScope(scope), ModuleScope);
     public RestaurantProductionPlanRequest Plan(int output, string key) => new() { Rfc = Rfc, SiteId = RestaurantSite, BomVersionId = _bomVersion, PlannedQuantity = 4, OutputLocationId = output, IdempotencyKey = Marker + key };
@@ -257,8 +261,9 @@ public sealed class HospitalityRestaurantProductionScopeTests
           DELETE restaurante.Site WHERE Id=@RestaurantSite AND [Name]=@Marker;
           DELETE logistica.Location WHERE Id IN @Locations;
           DELETE dbo.ROOM WHERE ID=@Room AND ROOM_NAME=@Marker;
+          DELETE orion.SiteCapability WHERE CompanyId=@CompanyId AND SiteId=@OtherSite AND ModuleCode IN('HOSPITALITY','RESTAURANT');
           DELETE orion.Site WHERE SiteId=@OtherSite AND SiteKey=@Marker;
-          """, new { RestaurantSite, Materials = new[] { InputMaterial, OutputMaterial }, Version = _bomVersion, Header = _bomHeader, Marker, Locations = new[] { PrivateLocation, GeneralLocation }, Room = _room, OtherSite = _otherSite });
+          """, new { RestaurantSite, Materials = new[] { InputMaterial, OutputMaterial }, Version = _bomVersion, Header = _bomHeader, Marker, Locations = new[] { PrivateLocation, GeneralLocation }, Room = _room, Scope.CompanyId, OtherSite = _otherSite });
       }
       finally { await Sql.DisposeAsync(); }
     }

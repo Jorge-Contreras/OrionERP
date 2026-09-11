@@ -55,7 +55,7 @@ public static class NavigationCatalog
             [
                 new("/reservaciones/lista", "Reserv", "Gestion de bookings, cambios y seguimiento operativo.", "oi-calendar", "Reservaciones", NavLinkMatch.Prefix, true, "Agenda", "reservaciones", "booking", "agenda"),
                 new("/reservaciones/calendario", "Calendario", "Vista visual para planeacion, huecos y conflictos.", "oi-grid-three-up", "Calendario de reservaciones", NavLinkMatch.Prefix, true, "Vista", "calendario", "ocupacion", "programacion"),
-                new("/arrendadores", "Arrendadores", "Estado de cuenta por propiedad y pagos contabilizados.", "oi-spreadsheet", "Arrendadores", NavLinkMatch.Prefix, false, "Rentas", "arrendadores", "estado de cuenta", "bonhomia", "propietarios")
+                new("/arrendadores", "Arrendadores", "Estado de cuenta por propiedad y pagos contabilizados.", "oi-spreadsheet", "Arrendadores", NavLinkMatch.Prefix, false, "Rentas", "arrendadores", "estado de cuenta", "hospedaje", "propietarios")
             ]),
         new(
             "Operacion",

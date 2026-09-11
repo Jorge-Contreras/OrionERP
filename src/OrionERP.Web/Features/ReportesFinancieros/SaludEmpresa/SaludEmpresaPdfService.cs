@@ -4,6 +4,7 @@ using OrionERP.Application.Features.ReportesFinancieros.Models;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using OrionERP.Web.Features.Documents;
 
 namespace OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
 
@@ -19,16 +20,17 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
   private const string BrandWarning = "#D98C24";
   private const string BrandInfo = "#2878BD";
   private static readonly CultureInfo MexicanCulture = CultureInfo.GetCultureInfo("es-MX");
-  private readonly string _logoSvg;
+  private readonly ICompanyDocumentPresentation _presentation;
 
   public SaludEmpresaPdfService(IWebHostEnvironment environment)
+    : this(CompanyDocumentPresentation.CreateNeutral(environment))
+  {
+  }
+
+  public SaludEmpresaPdfService(ICompanyDocumentPresentation presentation)
   {
     QuestPDF.Settings.License = LicenseType.Community;
-
-    var logoPath = Path.Combine(environment.WebRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
-    _logoSvg = File.Exists(logoPath)
-      ? File.ReadAllText(logoPath)
-      : FallbackLogoSvg;
+    _presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
   }
 
   public byte[] Generate(SaludEmpresaPdfDocumentModel model)
@@ -219,7 +221,7 @@ public sealed class SaludEmpresaPdfService : ISaludEmpresaPdfService
       column.Spacing(8);
       column.Item().Row(row =>
       {
-        row.ConstantItem(54).Height(54).Svg(_logoSvg);
+        row.ConstantItem(54).Height(54).Svg(_presentation.LogoSvg);
         row.RelativeItem().PaddingLeft(10).Column(text =>
         {
           text.Item().Text("Salud financiera")

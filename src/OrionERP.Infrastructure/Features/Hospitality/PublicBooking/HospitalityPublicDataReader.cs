@@ -2,25 +2,26 @@ using OrionERP.Application.Features.Reservaciones;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 using OrionERP.Infrastructure.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Platform;
 
-namespace OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 
 /// <summary>
 /// Public hospitality reader whose SQL always contains the verified composite
 /// company/site scope. It intentionally does not call the global reservation
 /// calendar or experience catalog readers used by the management console.
 /// </summary>
-public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataReader
+public sealed class HospitalityPublicDataReader : IHospitalityPublicDataReader
 {
   private readonly string _connectionString;
   private readonly IHospitalityWebsiteScopeAccessor _scopeAccessor;
   private readonly HospitalityWebsiteDefinition _hospitalityWebsite;
 
-  public BonhomiaScopedPublicDataReader(
+  public HospitalityPublicDataReader(
     IConfiguration configuration,
     IHospitalityWebsiteScopeAccessor scopeAccessor,
     HospitalityWebsiteDefinition hospitalityWebsite)
@@ -41,7 +42,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
 
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       CalendarTimelineSql,
       new
@@ -66,18 +67,18 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
     };
   }
 
-  public async Task<IReadOnlyList<BonhomiaExtraOptionDto>> GetExtraOptionsAsync(
+  public async Task<IReadOnlyList<HospitalityExtraOptionDto>> GetExtraOptionsAsync(
     CancellationToken ct = default)
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     var rows = (await conn.QueryAsync<ExtraCatalogRow>(new CommandDefinition(
       ExtraCatalogSql,
       ScopeParameters(scope),
       cancellationToken: ct))).AsList();
 
-    var options = new List<BonhomiaExtraOptionDto>();
+    var options = new List<HospitalityExtraOptionDto>();
     foreach (var item in _hospitalityWebsite.FeaturedExtras)
     {
       var matches = rows
@@ -95,7 +96,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
       }
       var match = matches[0];
 
-      options.Add(new BonhomiaExtraOptionDto
+      options.Add(new HospitalityExtraOptionDto
       {
         Code = item.Code,
         Name = item.Name,
@@ -117,7 +118,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       ExperienceCatalogSql,
       new
@@ -173,7 +174,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     var ids = await conn.QueryAsync<int>(new CommandDefinition(
       RoomCalendarIdsSql,
       new
@@ -194,7 +195,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(
       ReservationDetailSql,
       new
@@ -241,7 +242,7 @@ public sealed class BonhomiaScopedPublicDataReader : IBonhomiaScopedPublicDataRe
   {
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     var valid = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
       SchemaReadinessSql,
       ScopeParameters(scope),

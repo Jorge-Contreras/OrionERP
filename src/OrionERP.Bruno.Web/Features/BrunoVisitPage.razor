@@ -1,5 +1,5 @@
 @page "/visitanos"
-@inject IBrunoPublicCatalogService CatalogService
+@inject IRestaurantPublicCatalogService CatalogService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
 
@@ -15,7 +15,7 @@
 </section>
 
 @code {
-  private BrunoPublicSiteSettingsDto? settings;
+  private RestaurantPublicSiteSettingsDto? settings;
   private string timeZoneId = "UTC";
   private string TodayHours => RestaurantOpeningHours.Today(settings?.OpeningHoursJson, timeZoneId, DateTimeOffset.UtcNow);
   private IReadOnlyList<RestaurantOpeningHoursDay> WeekHours => RestaurantOpeningHours.Week(settings?.OpeningHoursJson);
@@ -24,6 +24,6 @@
   {
     var binding = await Website.ResolveRequiredAsync();
     timeZoneId = binding.TimeZoneId;
-    settings = await CatalogService.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+    settings = await CatalogService.GetSettingsAsync(binding);
   }
 }

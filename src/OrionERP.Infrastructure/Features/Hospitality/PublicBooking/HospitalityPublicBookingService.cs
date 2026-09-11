@@ -1,5 +1,6 @@
 using OrionERP.Application.Features.Reservaciones;
 using OrionERP.Infrastructure.Features.Reservaciones;
+using OrionERP.Infrastructure.Features.Platform;
 using System.Data;
 using System.Net.Mail;
 using Dapper;
@@ -7,30 +8,30 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Reservaciones.Experiencias;
 using OrionERP.Application.Features.Reservaciones.ListaReservaciones;
 
-namespace OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 
-public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
+public sealed class HospitalityPublicBookingService : IHospitalityPublicBookingService
 {
   private const string TaxIncluded = "TaxIncluded";
 
   private readonly string _connectionString;
-  private readonly IBonhomiaScopedPublicDataReader _dataReader;
+  private readonly IHospitalityPublicDataReader _dataReader;
   private readonly IHospitalityWebsiteScopeAccessor _scopeAccessor;
   private readonly HospitalityWebsiteDefinition _website;
-  private readonly BonhomiaCheckoutOptions _options;
-  private readonly ILogger<BonhomiaPublicBookingService> _logger;
+  private readonly HospitalityCheckoutOptions _options;
+  private readonly ILogger<HospitalityPublicBookingService> _logger;
 
-  public BonhomiaPublicBookingService(
+  public HospitalityPublicBookingService(
     IConfiguration configuration,
-    IBonhomiaScopedPublicDataReader dataReader,
+    IHospitalityPublicDataReader dataReader,
     IHospitalityWebsiteScopeAccessor scopeAccessor,
     HospitalityWebsiteDefinition website,
-    IOptions<BonhomiaCheckoutOptions> options,
-    ILogger<BonhomiaPublicBookingService> logger)
+    IOptions<HospitalityCheckoutOptions> options,
+    ILogger<HospitalityPublicBookingService> logger)
   {
     _connectionString = configuration.GetConnectionString("OrionDb")
       ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb.");
@@ -41,7 +42,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     _logger = logger;
   }
 
-  public async Task<BonhomiaAvailabilityDto> GetAvailabilityAsync(
+  public async Task<HospitalityAvailabilityDto> GetAvailabilityAsync(
     DateOnly startDate,
     DateOnly endDateExclusive,
     CancellationToken ct = default)
@@ -71,7 +72,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
           ? roomCells
           : new List<RoomCalendarDayCellDto>();
 
-        return new BonhomiaRoomAvailabilityDto
+        return new HospitalityRoomAvailabilityDto
         {
           RoomId = resource.RoomId,
           RoomName = resource.RoomName,
@@ -84,7 +85,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
           BasePrice = resource.BasePrice,
           Days = cells
             .OrderBy(cell => cell.RoomDate)
-            .Select(cell => new BonhomiaDayAvailabilityDto
+            .Select(cell => new HospitalityDayAvailabilityDto
             {
               Date = DateOnly.FromDateTime(cell.RoomDate.Date),
               IsAvailable = IsPubliclyAvailable(cell),
@@ -96,7 +97,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       })
       .ToArray();
 
-    return new BonhomiaAvailabilityDto
+    return new HospitalityAvailabilityDto
     {
       StartDate = startDate,
       EndDateExclusive = endDateExclusive,
@@ -106,8 +107,8 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     };
   }
 
-  public async Task<BonhomiaQuoteDto> CreateQuoteAsync(
-    BonhomiaQuoteRequest request,
+  public async Task<HospitalityQuoteDto> CreateQuoteAsync(
+    HospitalityQuoteRequest request,
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
@@ -115,16 +116,20 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
 
     var nowUtc = DateTimeOffset.UtcNow;
-    BonhomiaBookingCutoffPolicy.EnsureCheckInIsAllowed(request.CheckIn, nowUtc, _options.TimeZone);
+    HospitalityBookingCutoffPolicy.EnsureCheckInIsAllowed(
+      request.CheckIn,
+      nowUtc,
+      _options.TimeZone,
+      _options.SameDayCutoff);
 
     var availability = await GetAvailabilityAsync(request.CheckIn, request.CheckOut, ct);
     var room = availability.Rooms.FirstOrDefault(item => NamesMatch(item.RoomName, request.RoomName));
     if (room is null)
     {
-      throw new BonhomiaPublicBookingException("unknown_room", "La suite seleccionada ya no esta disponible.");
+      throw new HospitalityPublicBookingException("unknown_room", "La suite seleccionada ya no esta disponible.");
     }
 
-    var quote = BonhomiaQuoteCalculator.BuildQuote(
+    var quote = HospitalityQuoteCalculator.BuildQuote(
       request,
       room,
       availability.Extras,
@@ -139,12 +144,12 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       quote.CheckIn,
       quote.CheckOut,
       ct);
-    quote.Fingerprint = BonhomiaQuoteCalculator.CreateFingerprint(quote);
+    quote.Fingerprint = HospitalityQuoteCalculator.CreateFingerprint(quote);
     return quote;
   }
 
   public async Task ValidateQuoteAvailabilityAsync(
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(quote);
@@ -153,15 +158,15 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     var liveQuote = await CreateQuoteAsync(quote.Request, ct);
     if (!string.Equals(liveQuote.Fingerprint, quote.Fingerprint, StringComparison.Ordinal))
     {
-      throw new BonhomiaPublicBookingException("quote_changed", "La cotizacion cambio antes de confirmar el pago.");
+      throw new HospitalityPublicBookingException("quote_changed", "La cotizacion cambio antes de confirmar el pago.");
     }
   }
 
-  public async Task<BonhomiaPaidReservationResult> CreatePaidReservationAsync(
-    BonhomiaQuoteDto quote,
-    BonhomiaCustomerInfo customer,
-    BonhomiaPayPalCaptureResult payment,
-    BonhomiaLegalAcceptance legalAcceptance,
+  public async Task<HospitalityPaidReservationResult> CreatePaidReservationAsync(
+    HospitalityQuoteDto quote,
+    HospitalityCustomerInfo customer,
+    HospitalityPayPalCaptureResult payment,
+    HospitalityLegalAcceptance legalAcceptance,
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(quote);
@@ -177,7 +182,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
       "La version aceptada de los terminos no es valida.");
     if (legalAcceptance.AcceptedAtUtc == default)
     {
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "invalid_legal_acceptance",
         "La aceptacion legal no tiene un sello de tiempo valido.");
     }
@@ -185,7 +190,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     // Do not rely solely on the HTTP endpoint to issue this value. Other
     // callers of the application service must also prove that the customer
     // accepted the legal documents served by this website process.
-    var currentLegalAcceptance = BonhomiaLegalConsentPolicy.EnsureAccepted(
+    var currentLegalAcceptance = HospitalityLegalConsentPolicy.EnsureAccepted(
       accepted: true,
       acceptedPrivacyVersion,
       acceptedTermsVersion,
@@ -197,14 +202,14 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
 
     var scope = await _scopeAccessor.ResolveRequiredAsync(ct);
     HospitalityWebsiteScopePolicy.EnsureQuoteBelongsToScope(quote, scope);
-    BonhomiaPayPalOrderPolicy.EnsureCaptureBelongsToQuote(payment, quote);
+    HospitalityPayPalOrderPolicy.EnsureCaptureBelongsToQuote(payment, quote);
 
     if (!payment.IsCompleted)
     {
       var status = string.IsNullOrWhiteSpace(payment.Status) ? "SIN_ESTATUS" : payment.Status;
       var reason = string.IsNullOrWhiteSpace(payment.StatusReason) ? string.Empty : $" ({payment.StatusReason})";
       var orderStatus = string.IsNullOrWhiteSpace(payment.OrderStatus) ? string.Empty : $" Orden: {payment.OrderStatus}.";
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "payment_not_completed",
         $"PayPal devolvio el cobro en estado {status}{reason}.{orderStatus} No se creo la reservacion porque PayPal aun no acredita el pago. Si estas probando sandbox, revisa que la cuenta business acepte {payment.Currency} o acepta/convierte el pago pendiente en PayPal.");
     }
@@ -212,7 +217,7 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     if (!string.Equals(payment.Currency, quote.Currency, StringComparison.OrdinalIgnoreCase)
         || decimal.Abs(payment.Amount - quote.Total) > 0.01m)
     {
-      throw new BonhomiaPublicBookingException("payment_amount_mismatch", "El pago confirmado no coincide con la cotizacion.");
+      throw new HospitalityPublicBookingException("payment_amount_mismatch", "El pago confirmado no coincide con la cotizacion.");
     }
 
     var fullName = RequireCustomerValue(customer.FullName, "El nombre completo es obligatorio.");
@@ -220,11 +225,11 @@ public sealed class BonhomiaPublicBookingService : IBonhomiaPublicBookingService
     var phone = customer.Phone?.Trim() ?? string.Empty;
     if (!IsValidEmail(email))
     {
-      throw new BonhomiaPublicBookingException("invalid_customer", "El correo no tiene un formato valido.");
+      throw new HospitalityPublicBookingException("invalid_customer", "El correo no tiene un formato valido.");
     }
 
     await using var conn = new SqlConnection(_connectionString);
-    await HospitalityConnectionFactory.InitializeAsync(conn, new HospitalityScope(scope.CompanyId, scope.SiteId, scope.CompanyRfc), ct);
+    await OrionSqlSessionFactory.InitializeAsync(conn, scope.ToExecutionScope(), ct);
     await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
     try
@@ -286,7 +291,7 @@ ORDER BY rc.ROOM_DATE;
 
       if (decimal.Abs(totals.TotalReservacion - quote.Total) > 0.01m)
       {
-        throw new BonhomiaPublicBookingException("quote_changed", "La cotizacion cambio antes de confirmar el pago.");
+        throw new HospitalityPublicBookingException("quote_changed", "La cotizacion cambio antes de confirmar el pago.");
       }
 
       var cliente = await ResolveOrCreateCustomerAsync(conn, tx, scope, fullName, email, phone, ct);
@@ -350,7 +355,7 @@ WHERE ID IN @Ids
 
       if (updateCount != calendarRows.Count)
       {
-        throw new BonhomiaPublicBookingException("not_available", "La suite se ocupo antes de finalizar la reservacion.");
+        throw new HospitalityPublicBookingException("not_available", "La suite se ocupo antes de finalizar la reservacion.");
       }
 
       if (extras.Count > 0)
@@ -491,7 +496,7 @@ VALUES
 
       await tx.CommitAsync(ct);
 
-      return new BonhomiaPaidReservationResult
+      return new HospitalityPaidReservationResult
       {
         ReservationId = reservationId,
         TransaccionId = transaccionId,
@@ -504,9 +509,9 @@ VALUES
     {
       try { await tx.RollbackAsync(ct); } catch { /* ignore rollback failure */ }
 
-      if (ex is not BonhomiaPublicBookingException)
+      if (ex is not HospitalityPublicBookingException)
       {
-        _logger.LogError(ex, "Error creating paid Bonhomia reservation for PayPal order {OrderId}.", payment.OrderId);
+        _logger.LogError(ex, "Error creating paid Hospitality reservation for PayPal order {OrderId}.", payment.OrderId);
       }
 
       throw;
@@ -547,7 +552,7 @@ WHERE r.OrionCompanyId = @ScopeCompanyId
     var match = rows.FirstOrDefault(row => NamesMatch(row.RoomName, requestedRoomName));
     if (match is null || (requireSuiteType && !string.Equals(match.RoomType, "SUITE", StringComparison.OrdinalIgnoreCase)))
     {
-      throw new BonhomiaPublicBookingException("unknown_room", "La suite seleccionada ya no esta configurada.");
+      throw new HospitalityPublicBookingException("unknown_room", "La suite seleccionada ya no esta configurada.");
     }
 
     return match;
@@ -557,7 +562,7 @@ WHERE r.OrionCompanyId = @ScopeCompanyId
     SqlConnection conn,
     SqlTransaction tx,
     HospitalityWebsiteScope scope,
-    IReadOnlyList<BonhomiaSelectedExtraRequest>? selectedExtras,
+    IReadOnlyList<HospitalitySelectedExtraRequest>? selectedExtras,
     CancellationToken ct)
   {
     if (selectedExtras is null || selectedExtras.Count == 0)
@@ -593,13 +598,13 @@ WHERE e.OrionCompanyId = @ScopeCompanyId
     {
       if (!optionsByCode.TryGetValue(selected.Code, out var option))
       {
-        throw new BonhomiaPublicBookingException("unknown_extra", "Uno de los extras seleccionados ya no esta disponible.");
+        throw new HospitalityPublicBookingException("unknown_extra", "Uno de los extras seleccionados ya no esta disponible.");
       }
 
       var extra = rows.FirstOrDefault(row => NamesMatch(row.Name, option.CatalogName));
       if (extra is null)
       {
-        throw new BonhomiaPublicBookingException("extra_not_configured", $"{option.Name} no esta configurado en el catalogo de OrionERP.");
+        throw new HospitalityPublicBookingException("extra_not_configured", $"{option.Name} no esta configurado en el catalogo de OrionERP.");
       }
 
       resolved.Add(new ResolvedExtraLine(
@@ -614,7 +619,7 @@ WHERE e.OrionCompanyId = @ScopeCompanyId
   }
 
   private async Task<IReadOnlyList<ResolvedExperienceLine>> ResolveSelectedExperiencesAsync(
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     CancellationToken ct)
   {
     if (quote.Request.Experiences.Count == 0)
@@ -630,24 +635,24 @@ WHERE e.OrionCompanyId = @ScopeCompanyId
     {
       if (!experiencesByCode.TryGetValue(selected.Code, out var experience))
       {
-        throw new BonhomiaPublicBookingException("unknown_experience", "Una de las experiencias seleccionadas ya no esta disponible.");
+        throw new HospitalityPublicBookingException("unknown_experience", "Una de las experiencias seleccionadas ya no esta disponible.");
       }
 
       var package = experience.Packages.FirstOrDefault(item => string.Equals(item.Code, selected.PackageCode, StringComparison.OrdinalIgnoreCase));
       if (package is null)
       {
-        throw new BonhomiaPublicBookingException("unknown_experience_package", $"{experience.Name} ya no tiene disponible el paquete seleccionado.");
+        throw new HospitalityPublicBookingException("unknown_experience_package", $"{experience.Name} ya no tiene disponible el paquete seleccionado.");
       }
 
       var addOnsByCode = experience.AddOns.ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
       var addOns = new List<ExperiencePricingAddOnInput>();
-      var normalizedAddOns = new List<BonhomiaSelectedExperienceAddOnRequest>();
+      var normalizedAddOns = new List<HospitalitySelectedExperienceAddOnRequest>();
 
       foreach (var addOnRequest in selected.AddOns.Where(item => item.Quantity > 0))
       {
         if (!addOnsByCode.TryGetValue(addOnRequest.Code, out var addOn))
         {
-          throw new BonhomiaPublicBookingException("unknown_experience_addon", $"Un adicional de {experience.Name} ya no esta disponible.");
+          throw new HospitalityPublicBookingException("unknown_experience_addon", $"Un adicional de {experience.Name} ya no esta disponible.");
         }
 
         addOns.Add(new ExperiencePricingAddOnInput
@@ -655,14 +660,14 @@ WHERE e.OrionCompanyId = @ScopeCompanyId
           AddOn = addOn,
           Quantity = addOnRequest.Quantity
         });
-        normalizedAddOns.Add(new BonhomiaSelectedExperienceAddOnRequest
+        normalizedAddOns.Add(new HospitalitySelectedExperienceAddOnRequest
         {
           Code = addOn.Code,
           Quantity = addOnRequest.Quantity
         });
       }
 
-      var normalizedRequest = new BonhomiaSelectedExperienceRequest
+      var normalizedRequest = new HospitalitySelectedExperienceRequest
       {
         Code = experience.Code,
         PackageCode = package.Code,
@@ -792,7 +797,7 @@ WHERE customer.ID = @ClienteId
     int reservationId,
     string clienteNombre,
     decimal amount,
-    BonhomiaPayPalCaptureResult payment,
+    HospitalityPayPalCaptureResult payment,
     CancellationToken ct)
   {
     var transaccionId = await conn.ExecuteScalarAsync<int>(
@@ -839,11 +844,11 @@ VALUES (@ReservationId, @TransaccionId, @Amount, @ScopeCompanyId, @ScopeSiteId);
     return transaccionId;
   }
 
-  private async Task<BonhomiaPaidReservationResult?> FindExistingPaidReservationAsync(
+  private async Task<HospitalityPaidReservationResult?> FindExistingPaidReservationAsync(
     SqlConnection conn,
     SqlTransaction tx,
     HospitalityWebsiteScope scope,
-    BonhomiaPayPalCaptureResult payment,
+    HospitalityPayPalCaptureResult payment,
     CancellationToken ct)
   {
     var orderLike = BuildSqlContainsPattern($"PayPal Order: {payment.OrderId}");
@@ -897,7 +902,7 @@ ORDER BY r.ID DESC;
       return null;
     }
 
-    return new BonhomiaPaidReservationResult
+    return new HospitalityPaidReservationResult
     {
       ReservationId = row.ReservationId,
       TransaccionId = row.TransaccionId,
@@ -918,12 +923,12 @@ ORDER BY r.ID DESC;
     return $"%{escaped}%";
   }
 
-  private static void ValidateLockedCalendarRows(BonhomiaQuoteDto quote, IReadOnlyList<RoomCalendarLockRow> rows)
+  private static void ValidateLockedCalendarRows(HospitalityQuoteDto quote, IReadOnlyList<RoomCalendarLockRow> rows)
   {
     var nights = quote.CheckOut.DayNumber - quote.CheckIn.DayNumber;
     if (rows.Count != nights)
     {
-      throw new BonhomiaPublicBookingException("not_available", "No existe calendario completo para las fechas seleccionadas.");
+      throw new HospitalityPublicBookingException("not_available", "No existe calendario completo para las fechas seleccionadas.");
     }
 
     var expected = Enumerable.Range(0, nights)
@@ -933,12 +938,12 @@ ORDER BY r.ID DESC;
     var actual = rows.Select(row => DateOnly.FromDateTime(row.RoomDate.Date)).ToHashSet();
     if (!expected.SetEquals(actual))
     {
-      throw new BonhomiaPublicBookingException("not_available", "No existe calendario completo para las fechas seleccionadas.");
+      throw new HospitalityPublicBookingException("not_available", "No existe calendario completo para las fechas seleccionadas.");
     }
 
     if (rows.Any(row => row.IsLocked || !string.IsNullOrWhiteSpace(row.LockDescription)))
     {
-      throw new BonhomiaPublicBookingException("not_available", "La suite se ocupo antes de finalizar la reservacion.");
+      throw new HospitalityPublicBookingException("not_available", "La suite se ocupo antes de finalizar la reservacion.");
     }
   }
 
@@ -959,7 +964,7 @@ ORDER BY r.ID DESC;
     var normalized = value?.Trim();
     if (string.IsNullOrWhiteSpace(normalized))
     {
-      throw new BonhomiaPublicBookingException("invalid_customer", message);
+      throw new HospitalityPublicBookingException("invalid_customer", message);
     }
 
     return normalized;
@@ -972,7 +977,7 @@ ORDER BY r.ID DESC;
         || normalized.Length > 30
         || normalized.Any(char.IsControl))
     {
-      throw new BonhomiaPublicBookingException("invalid_legal_acceptance", message);
+      throw new HospitalityPublicBookingException("invalid_legal_acceptance", message);
     }
 
     return normalized;
@@ -992,9 +997,9 @@ ORDER BY r.ID DESC;
   }
 
   private string BuildReservationNotes(
-    BonhomiaQuoteDto quote,
-    BonhomiaCustomerInfo customer,
-    BonhomiaPayPalCaptureResult payment)
+    HospitalityQuoteDto quote,
+    HospitalityCustomerInfo customer,
+    HospitalityPayPalCaptureResult payment)
   {
     var extras = quote.Lines
       .Where(line => string.Equals(line.Type, "extra", StringComparison.OrdinalIgnoreCase))
@@ -1017,7 +1022,7 @@ ORDER BY r.ID DESC;
       experiences.Length == 0 ? "Experiencias: ninguna" : $"Experiencias: {string.Join(", ", experiences)}");
   }
 
-  private static string BuildContactNote(BonhomiaCustomerInfo customer)
+  private static string BuildContactNote(HospitalityCustomerInfo customer)
   {
     var parts = new[] { customer.Email?.Trim() ?? string.Empty, customer.Phone?.Trim() ?? string.Empty }
       .Where(part => !string.IsNullOrWhiteSpace(part));
@@ -1057,7 +1062,7 @@ ORDER BY r.ID DESC;
   private sealed record ResolvedExperienceLine(
     ExperienceCatalogItemDto Experience,
     ExperiencePackageOptionDto Package,
-    BonhomiaSelectedExperienceRequest Request,
+    HospitalitySelectedExperienceRequest Request,
     ExperiencePricingResult Pricing);
 
   private sealed class ClienteRow

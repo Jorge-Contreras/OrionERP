@@ -14,18 +14,14 @@ public sealed class GraphMailOptions : MicrosoftGraphMailOptions
   public const string SectionName = "GraphMail";
 }
 
-public sealed class BonhomiaGraphMailOptions : MicrosoftGraphMailOptions
+public sealed class HospitalityMailOptions : MicrosoftGraphMailOptions
 {
-  public const string SectionName = "BonhomiaGraphMail";
+  public const string SectionName = "PublicIntegrations:Mail";
+  public const string LegacySectionName = "BonhomiaGraphMail";
 }
 
-public sealed class BrunoGraphMailOptions : MicrosoftGraphMailOptions
+public sealed class RestaurantMailOptions : MicrosoftGraphMailOptions
 {
-  public const string SectionName = "BrunoGraphMail";
-
-  public BrunoGraphMailOptions()
-  {
-    SenderAddress = "info@brunosgarden.com";
-    PublicBaseUrl = "https://brunosgarden.com";
-  }
+  public const string SectionName = "PublicIntegrations:Mail";
+  public const string LegacySectionName = "BrunoGraphMail";
 }

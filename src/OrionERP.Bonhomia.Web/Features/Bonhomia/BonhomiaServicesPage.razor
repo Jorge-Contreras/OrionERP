@@ -2,7 +2,7 @@
 @using System.Globalization
 @inject PublicWebsitePresentationDefinition Presentation
 @inject HospitalityWebsiteDefinition Hospitality
-@inject IBonhomiaScopedPublicDataReader HospitalityData
+@inject IHospitalityPublicDataReader HospitalityData
 
 <PageTitle>Servicios | @Presentation.PublicName</PageTitle>
 <HeadContent>
@@ -74,7 +74,7 @@
 </main>
 
 @code {
-    private IReadOnlyList<BonhomiaExtraOptionDto> Extras { get; set; } = [];
+    private IReadOnlyList<HospitalityExtraOptionDto> Extras { get; set; } = [];
     private bool IsLoadingExtras { get; set; } = true;
     private string? ExtrasError { get; set; }
 

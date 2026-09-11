@@ -1,18 +1,18 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
-public interface IBonhomiaPayPalClient
+public interface IHospitalityPayPalClient
 {
-  Task<BonhomiaPayPalOrderResult> CreateOrderAsync(
-    BonhomiaQuoteDto quote,
+  Task<HospitalityPayPalOrderResult> CreateOrderAsync(
+    HospitalityQuoteDto quote,
     string idempotencyKey,
     CancellationToken ct = default);
 
-  Task<BonhomiaPayPalCaptureResult> CaptureOrderAsync(
+  Task<HospitalityPayPalCaptureResult> CaptureOrderAsync(
     string orderId,
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     string idempotencyKey,
     CancellationToken ct = default);
 }

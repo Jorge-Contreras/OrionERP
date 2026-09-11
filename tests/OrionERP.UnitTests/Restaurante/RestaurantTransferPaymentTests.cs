@@ -12,6 +12,8 @@ public sealed class RestaurantTransferPaymentTests
   private const string SampleAccount = "4065810178";
   private const string SampleClabe = "021830040658101780";
   private const string SampleCard = "4830303151973944";
+  private const string SyntheticRfc = "TST260910DUAL01";
+  private const string SyntheticSiteCode = "DUAL-CAMPUS";
 
   [Fact]
   public void NormalizeDigits_StripsSeparatorsAndDiscardsEmptyValues()
@@ -178,8 +180,8 @@ public sealed class RestaurantTransferPaymentTests
 
   private static RestaurantSiteUpsertRequest CreateSiteRequest() => new()
   {
-    Rfc = BrunoRestaurantConstants.Rfc,
-    SiteCode = BrunoRestaurantConstants.SiteCode,
+    Rfc = SyntheticRfc,
+    SiteCode = SyntheticSiteCode,
     Name = "Bruno's",
     TransferAccountHolder = SampleHolder,
     TransferBankName = "BBVA",
@@ -192,8 +194,8 @@ public sealed class RestaurantTransferPaymentTests
   private static RestaurantSiteDto CreateSite() => new()
   {
     Id = 1,
-    Rfc = BrunoRestaurantConstants.Rfc,
-    SiteCode = BrunoRestaurantConstants.SiteCode,
+    Rfc = SyntheticRfc,
+    SiteCode = SyntheticSiteCode,
     Name = "Bruno's",
     TimeZoneId = "Central Standard Time (Mexico)",
     TaxRate = 0.16m,

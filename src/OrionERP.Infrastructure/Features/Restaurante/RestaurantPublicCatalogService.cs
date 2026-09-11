@@ -4,65 +4,65 @@ using System.Text.Json;
 using Dapper;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.Shared;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 
 namespace OrionERP.Infrastructure.Features.Restaurante;
 
-public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
+public sealed class RestaurantPublicCatalogService : IRestaurantPublicCatalogService
 {
   private readonly IDbConnectionFactory _connectionFactory;
   private readonly IRestaurantCatalogService _catalogService;
   private readonly IRestaurantPromotionService _promotionService;
+  private readonly IOrionSqlSessionFactory _sessionFactory;
 
-  public BrunoPublicCatalogService(
+  public RestaurantPublicCatalogService(
     IDbConnectionFactory connectionFactory,
     IRestaurantCatalogService catalogService,
-    IRestaurantPromotionService promotionService)
+    IRestaurantPromotionService promotionService,
+    IOrionSqlSessionFactory sessionFactory)
   {
     _connectionFactory = connectionFactory;
     _catalogService = catalogService;
     _promotionService = promotionService;
+    _sessionFactory = sessionFactory;
   }
 
-  public async Task<BrunoPublicCatalogDto?> GetCatalogAsync(
-    string rfc,
-    string siteCode,
+  public async Task<RestaurantPublicCatalogDto?> GetCatalogAsync(
+    PublicSiteBinding binding,
     DateTimeOffset at,
     CancellationToken ct = default)
   {
-    var normalizedRfc = LogisticsRfc.Require(rfc);
-    var sites = await _catalogService.GetSitesAsync(normalizedRfc, ct);
-    var site = sites.FirstOrDefault(item =>
-      item.IsEnabled &&
-      string.Equals(item.SiteCode, siteCode, StringComparison.OrdinalIgnoreCase));
-    if (site is null)
-    {
+    EnsureRestaurantBinding(binding);
+    await using var connection = await _sessionFactory.OpenAsync(
+      PlatformExecutionScope.FromPublicSite(binding), ct);
+    var siteId = await connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+      """
+      SELECT Id
+      FROM restaurante.Site
+      WHERE OrionCompanyId=@CompanyId AND OrionSiteId=@SiteId AND IsEnabled=1;
+      """,
+      new { binding.CompanyId, binding.SiteId },
+      cancellationToken: ct));
+    if (!siteId.HasValue)
       return null;
-    }
 
-    var settings = await GetSettingsAsync(normalizedRfc, site.Id, ct);
+    var settings = await GetSettingsAsync(binding, ct);
     if (settings is null)
-    {
       return null;
-    }
 
-    var menu = await _catalogService.GetPublicCatalogAsync(normalizedRfc, site.Id, at, ct);
-    IReadOnlyList<BrunoPublicPromotionDto> promotions = Array.Empty<BrunoPublicPromotionDto>();
+    var menu = await _catalogService.GetPublicCatalogAsync(binding.CompanyRfc, siteId.Value, at, ct);
+    IReadOnlyList<RestaurantPublicPromotionDto> promotions = Array.Empty<RestaurantPublicPromotionDto>();
     if (settings.IsPromotionsEnabled)
     {
       var allPromotions = await _promotionService.GetPromotionsAsync(
-        normalizedRfc,
-        site.Id,
-        includeInactive: false,
-        ct);
+        binding.CompanyRfc, siteId.Value, includeInactive: false, ct);
       promotions = allPromotions
-        .Where(item =>
-          item.IsPublic &&
-          item.WebEnabled &&
+        .Where(item => item.IsPublic && item.WebEnabled &&
           item.Status is RestaurantPromotionStatuses.Active or RestaurantPromotionStatuses.Scheduled)
         .OrderByDescending(item => item.Priority)
         .ThenBy(item => item.Id)
-        .Select(item => new BrunoPublicPromotionDto
+        .Select(item => new RestaurantPublicPromotionDto
         {
           Id = item.Id,
           Name = item.Name,
@@ -72,10 +72,10 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
           ValidToLocal = item.ValidToLocal,
           Schedules = item.Schedules
         })
-        .ToList();
+        .ToArray();
     }
 
-    return new BrunoPublicCatalogDto
+    return new RestaurantPublicCatalogDto
     {
       Settings = settings,
       Menu = menu,
@@ -83,7 +83,71 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
     };
   }
 
-  public async Task<BrunoPublicSiteSettingsDto?> GetSettingsAsync(
+  public async Task<RestaurantPublicSiteSettingsDto?> GetSettingsAsync(
+    PublicSiteBinding binding,
+    CancellationToken ct = default)
+  {
+    EnsureRestaurantBinding(binding);
+    await using var connection = await _sessionFactory.OpenAsync(
+      PlatformExecutionScope.FromPublicSite(binding), ct);
+    return await connection.QuerySingleOrDefaultAsync<RestaurantPublicSiteSettingsDto>(new CommandDefinition(
+      """
+      SELECT
+        PublicSiteId,Rfc,SiteId,LegalName,PublicName,HeroEyebrow,HeroTitle,HeroDescription,
+        AddressLine,Neighborhood,PostalCode,City,StateName,CountryName,
+        WhatsAppPhone,WhatsAppDisplay,MapsUrl,FacebookUrl,InstagramUrl,TikTokUrl,
+        OpeningHoursJson,SeoDescription,IsWebsiteEnabled,IsMembershipEnabled,
+        IsLoyaltyAccrualEnabled,IsPromotionsEnabled,UpdatedAt
+      FROM restaurante.PublicSiteSettings
+      WHERE PublicSiteId=@PublicSiteId;
+      """,
+      new { binding.PublicSiteId },
+      cancellationToken: ct));
+  }
+
+  public async Task<(byte[] Bytes, string ContentType)?> GetProductImageAsync(
+    PublicSiteBinding binding,
+    long productId,
+    bool thumbnail,
+    CancellationToken ct = default)
+  {
+    EnsureRestaurantBinding(binding);
+    if (productId <= 0)
+      throw new ArgumentOutOfRangeException(nameof(productId));
+
+    await using var connection = await _sessionFactory.OpenAsync(
+      PlatformExecutionScope.FromPublicSite(binding), ct);
+    var row = await connection.QueryFirstOrDefaultAsync<PublicImageRow>(new CommandDefinition(
+      """
+      SELECT
+        CASE WHEN @Thumbnail=1
+          THEN COALESCE(product.VariantImageThumbnail,product.VariantImage,card.FamilyImageThumbnail,
+            material.PrimaryImageThumbnail,card.FamilyImage,material.PrimaryImage)
+          ELSE COALESCE(product.VariantImage,card.FamilyImage,material.PrimaryImage) END Bytes,
+        COALESCE(product.VariantImageContentType,card.ImageContentType,material.PrimaryImageContentType,'image/jpeg') ContentType
+      FROM restaurante.Site siteInfo
+      JOIN restaurante.Product product ON product.Rfc=siteInfo.Rfc
+      JOIN restaurante.ProductCard card ON card.Rfc=product.Rfc AND card.Id=product.ProductCardId
+      LEFT JOIN logistica.Material material ON material.Rfc=product.Rfc AND material.Id=product.MaterialId
+      LEFT JOIN restaurante.KitchenStation station ON station.Rfc=product.Rfc AND station.Id=product.KitchenStationId
+      WHERE siteInfo.OrionCompanyId=@CompanyId AND siteInfo.OrionSiteId=@SiteId AND siteInfo.IsEnabled=1
+        AND product.Id=@ProductId AND product.IsActive=1
+        AND (product.KitchenStationId IS NULL OR station.SiteId=siteInfo.Id);
+      """,
+      new
+      {
+        binding.CompanyId,
+        binding.SiteId,
+        ProductId = productId,
+        Thumbnail = thumbnail
+      },
+      cancellationToken: ct));
+    return row?.Bytes is { Length: > 0 }
+      ? (row.Bytes, row.ContentType ?? "image/jpeg")
+      : null;
+  }
+
+  public async Task<RestaurantPublicSiteSettingsDto?> GetSettingsAsync(
     string rfc,
     int siteId,
     CancellationToken ct = default)
@@ -95,7 +159,7 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
     }
 
     using var conn = CreateConnection();
-    return await conn.QuerySingleOrDefaultAsync<BrunoPublicSiteSettingsDto>(new CommandDefinition(
+    return await conn.QuerySingleOrDefaultAsync<RestaurantPublicSiteSettingsDto>(new CommandDefinition(
       """
       SELECT
         Rfc,SiteId,LegalName,PublicName,HeroEyebrow,HeroTitle,HeroDescription,
@@ -110,41 +174,8 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
       cancellationToken: ct));
   }
 
-  public async Task<BrunoPublicSiteSettingsDto?> GetSettingsAsync(
-    string rfc,
-    string siteCode,
-    CancellationToken ct = default)
-  {
-    var normalizedRfc = LogisticsRfc.Require(rfc);
-    var normalizedSiteCode = string.IsNullOrWhiteSpace(siteCode)
-      ? throw new ArgumentException("SiteCode is required.", nameof(siteCode))
-      : siteCode.Trim();
-
-    using var conn = CreateConnection();
-    return await conn.QuerySingleOrDefaultAsync<BrunoPublicSiteSettingsDto>(new CommandDefinition(
-      """
-      SELECT
-        settings.Rfc,settings.SiteId,settings.LegalName,settings.PublicName,
-        settings.HeroEyebrow,settings.HeroTitle,settings.HeroDescription,
-        settings.AddressLine,settings.Neighborhood,settings.PostalCode,settings.City,
-        settings.StateName,settings.CountryName,settings.WhatsAppPhone,
-        settings.WhatsAppDisplay,settings.MapsUrl,settings.FacebookUrl,
-        settings.InstagramUrl,settings.TikTokUrl,settings.OpeningHoursJson,
-        settings.SeoDescription,settings.IsWebsiteEnabled,settings.IsMembershipEnabled,
-        settings.IsLoyaltyAccrualEnabled,settings.IsPromotionsEnabled,settings.UpdatedAt
-      FROM restaurante.PublicSiteSettings settings
-      INNER JOIN restaurante.Site site
-        ON site.Rfc=settings.Rfc AND site.Id=settings.SiteId
-      WHERE settings.Rfc=@Rfc
-        AND site.SiteCode=@SiteCode
-        AND site.IsEnabled=1;
-      """,
-      new { Rfc = normalizedRfc, SiteCode = normalizedSiteCode },
-      cancellationToken: ct));
-  }
-
   public async Task<RestaurantCommandResult> SaveSettingsAsync(
-    BrunoPublicSiteSettingsSaveRequest request,
+    RestaurantPublicSiteSettingsSaveRequest request,
     string userName,
     CancellationToken ct = default)
   {
@@ -218,7 +249,7 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
       if (affected != 1)
       {
         await tx.RollbackAsync(ct);
-        return RestaurantCommandResult.Fail("La configuración pública no existe; aplica primero la migración de Bruno.");
+        return RestaurantCommandResult.Fail("La configuración pública no existe; aplica primero la migración de Restaurant.");
       }
 
       await conn.ExecuteAsync(new CommandDefinition(
@@ -250,4 +281,17 @@ public sealed class BrunoPublicCatalogService : IBrunoPublicCatalogService
       ?? throw new InvalidOperationException("La fábrica no devolvió una DbConnection.");
   private static string? NullIfWhiteSpace(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+  private static void EnsureRestaurantBinding(PublicSiteBinding binding)
+  {
+    ArgumentNullException.ThrowIfNull(binding);
+    if (!string.Equals(binding.ModuleCode, PlatformModuleCodes.Restaurant, StringComparison.Ordinal))
+      throw new UnauthorizedAccessException("El sitio público no pertenece al módulo Restaurant.");
+  }
+
+  private sealed class PublicImageRow
+  {
+    public byte[]? Bytes { get; set; }
+    public string? ContentType { get; set; }
+  }
 }

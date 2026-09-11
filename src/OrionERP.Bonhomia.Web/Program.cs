@@ -4,10 +4,10 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting.WindowsServices;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
-using OrionERP.Infrastructure.Features.Bonhomia.PublicBooking;
+using OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
@@ -20,17 +20,30 @@ builder.Configuration.Sources.Clear();
 builder.Configuration
   .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
   .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
-  .AddJsonFile("appsettings.Instance.json", optional: true, reloadOnChange: false);
+  .AddJsonFile("appsettings.Instance.json", optional: true, reloadOnChange: false)
+  .AddEnvironmentVariables(prefix: "ASPNETCORE_")
+  .AddEnvironmentVariables(prefix: "DOTNET_");
 
 if (builder.Environment.IsDevelopment())
 {
+  // This workstation also hosts production services. Keep local sandbox secrets
+  // above machine-wide production variables when debugging from Visual Studio.
   builder.Configuration.AddUserSecrets<Program>(optional: true);
 }
 
 builder.Configuration
-  .AddEnvironmentVariables(prefix: "ASPNETCORE_")
-  .AddEnvironmentVariables(prefix: "DOTNET_")
   .AddCommandLine(args);
+
+var usesLegacyCheckout = LegacyConfigurationAliases.ApplySectionAlias(
+  builder.Configuration,
+  HospitalityCheckoutOptions.SectionName,
+  HospitalityCheckoutOptions.LegacySectionName);
+var usesLegacyMail = LegacyConfigurationAliases.ApplySectionAlias(
+  builder.Configuration,
+  HospitalityMailOptions.SectionName,
+  HospitalityMailOptions.LegacySectionName);
+if (usesLegacyCheckout || usesLegacyMail)
+  Console.WriteLine("[HOSPITALITY BOOT] Legacy configuration aliases are active until 2026-12-31.");
 
 var publicWebsite = PublicWebsiteInstancePolicy.Create(
   builder.Configuration
@@ -85,19 +98,17 @@ if (args.Any(argument => string.Equals(
 // Existing checkout code consumes these values synchronously. Deriving both
 // from the fixed process identity prevents a request from choosing a tenant or
 // a callback origin.
-builder.Configuration[$"{BonhomiaCheckoutOptions.SectionName}:PublicBaseUrl"] =
+builder.Configuration[$"{HospitalityCheckoutOptions.SectionName}:PublicBaseUrl"] =
   publicWebsite.CanonicalBaseUri.GetLeftPart(UriPartial.Authority);
-builder.Configuration[$"{BonhomiaCheckoutOptions.SectionName}:AccountingRfc"] =
-  publicWebsite.ExpectedCompanyRfc;
-builder.Configuration[$"{BonhomiaCheckoutOptions.SectionName}:AccountingAccount"] =
+builder.Configuration[$"{HospitalityCheckoutOptions.SectionName}:AccountingAccount"] =
   hospitalityWebsite.AccountingAccount;
-builder.Configuration[$"{BonhomiaCheckoutOptions.SectionName}:PublicName"] =
+builder.Configuration[$"{HospitalityCheckoutOptions.SectionName}:PublicName"] =
   presentation.PublicName;
-builder.Configuration[$"{BonhomiaCheckoutOptions.SectionName}:ReservationSourceLabel"] =
+builder.Configuration[$"{HospitalityCheckoutOptions.SectionName}:ReservationSourceLabel"] =
   hospitalityWebsite.ReservationSourceLabel;
-builder.Configuration[$"{BonhomiaCheckoutOptions.SectionName}:PdfFilePrefix"] =
+builder.Configuration[$"{HospitalityCheckoutOptions.SectionName}:PdfFilePrefix"] =
   hospitalityWebsite.PdfFilePrefix;
-builder.Configuration[$"{BonhomiaGraphMailOptions.SectionName}:SenderAddress"] =
+builder.Configuration[$"{HospitalityMailOptions.SectionName}:SenderAddress"] =
   presentation.PublicEmail;
 builder.Configuration["AllowedHosts"] =
   $"{publicWebsite.CanonicalHost};www.{publicWebsite.CanonicalHost};localhost;127.0.0.1";
@@ -143,8 +154,8 @@ if (!string.IsNullOrWhiteSpace(conn))
 }
 
 var checkoutOptions = builder.Configuration
-  .GetSection(BonhomiaCheckoutOptions.SectionName)
-  .Get<BonhomiaCheckoutOptions>() ?? new BonhomiaCheckoutOptions();
+  .GetSection(HospitalityCheckoutOptions.SectionName)
+  .Get<HospitalityCheckoutOptions>() ?? new HospitalityCheckoutOptions();
 
 Console.WriteLine(
   $"[BONHOMIA BOOT] ENV={builder.Environment.EnvironmentName} " +
@@ -162,13 +173,13 @@ if (string.IsNullOrWhiteSpace(conn))
     "In Production, use ASPNETCORE_ConnectionStrings__OrionDb.");
 }
 
-var checkoutValidationErrors = BonhomiaCheckoutOptionsValidator.ValidateForEnvironment(
+var checkoutValidationErrors = HospitalityCheckoutOptionsValidator.ValidateForEnvironment(
   checkoutOptions,
   builder.Environment.EnvironmentName);
 if (checkoutValidationErrors.Count > 0)
 {
   throw new InvalidOperationException(
-    "Invalid BonhomiaCheckout production configuration: " +
+    "Invalid HospitalityCheckout production configuration: " +
     string.Join(" ", checkoutValidationErrors));
 }
 
@@ -190,8 +201,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
   options.KnownProxies.Add(IPAddress.IPv6Loopback);
 });
 
-builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
-builder.Services.Configure<BonhomiaGraphMailOptions>(builder.Configuration.GetSection(BonhomiaGraphMailOptions.SectionName));
+builder.Services.Configure<HospitalityCheckoutOptions>(builder.Configuration.GetSection(HospitalityCheckoutOptions.SectionName));
+builder.Services.Configure<HospitalityMailOptions>(builder.Configuration.GetSection(HospitalityMailOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
 {
   var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
@@ -206,13 +217,13 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
 });
 
 builder.Services.AddScoped<IHospitalityWebsiteScopeAccessor, HospitalityWebsiteScopeAccessor>();
-builder.Services.AddScoped<IBonhomiaScopedPublicDataReader, BonhomiaScopedPublicDataReader>();
-builder.Services.AddScoped<IBonhomiaPublicBookingService, BonhomiaPublicBookingService>();
-builder.Services.AddHttpClient<IBonhomiaPayPalClient, BonhomiaPayPalClient>();
-builder.Services.AddHttpClient<IMicrosoftGraphMailClient<BonhomiaGraphMailOptions>, MicrosoftGraphMailClient<BonhomiaGraphMailOptions>>();
-builder.Services.AddScoped<IBonhomiaReservationConfirmationEmailSender, BonhomiaReservationConfirmationEmailSender>();
-builder.Services.AddSingleton<IBonhomiaQuoteTokenService, BonhomiaQuoteTokenService>();
-builder.Services.AddSingleton<IBonhomiaReservationPdfTokenService, BonhomiaReservationPdfTokenService>();
+builder.Services.AddScoped<IHospitalityPublicDataReader, HospitalityPublicDataReader>();
+builder.Services.AddScoped<IHospitalityPublicBookingService, HospitalityPublicBookingService>();
+builder.Services.AddHttpClient<IHospitalityPayPalClient, HospitalityPayPalClient>();
+builder.Services.AddHttpClient<IMicrosoftGraphMailClient<HospitalityMailOptions>, MicrosoftGraphMailClient<HospitalityMailOptions>>();
+builder.Services.AddScoped<IHospitalityReservationConfirmationEmailSender, HospitalityReservationConfirmationEmailSender>();
+builder.Services.AddSingleton<IHospitalityQuoteTokenService, HospitalityQuoteTokenService>();
+builder.Services.AddSingleton<IHospitalityReservationPdfTokenService, HospitalityReservationPdfTokenService>();
 builder.Services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
 builder.Services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
 
@@ -233,8 +244,8 @@ app.UseRouting();
 app.MapGet("/healthz", () => Results.Text("OK", "text/plain"));
 app.MapGet("/readyz", async (
   IPublicWebsiteInstanceContext website,
-  IBonhomiaScopedPublicDataReader hospitalityData,
-  IBonhomiaPublicBookingService bookingService,
+  IHospitalityPublicDataReader hospitalityData,
+  IHospitalityPublicBookingService bookingService,
   CancellationToken ct) =>
 {
   try
@@ -253,7 +264,7 @@ app.MapGet("/readyz", async (
     return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
   }
 });
-app.MapBonhomiaCheckoutApi();
+app.MapHospitalityCheckoutApi();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
@@ -281,7 +292,7 @@ static string BuildConnectionSummary(string? connectionString)
   }
 }
 
-static string BuildPayPalModeSummary(BonhomiaCheckoutOptions options)
+static string BuildPayPalModeSummary(HospitalityCheckoutOptions options)
 {
   var mode = string.IsNullOrWhiteSpace(options.Environment)
     ? "<empty>"

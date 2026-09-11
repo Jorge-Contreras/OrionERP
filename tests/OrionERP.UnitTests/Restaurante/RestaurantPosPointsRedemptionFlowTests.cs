@@ -7,7 +7,7 @@ public sealed class RestaurantPosPointsRedemptionFlowTests
   {
     var page = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPosPage.razor");
     var orderService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");
-    var loyaltyContract = ReadRepoFile("src/OrionERP.Application/Features/Restaurante/ILoyaltyService.cs");
+    var loyaltyContract = ReadRepoFile("src/OrionERP.Application/Features/Restaurante/IRestaurantLoyaltyService.cs");
     var adminPage = ReadRepoFile("src/OrionERP.Web/Features/Restaurante/RestaurantPromotionsPage.razor");
 
     Assert.Contains("PointsToRedeem=appliedRedemptionPoints", page, StringComparison.Ordinal);

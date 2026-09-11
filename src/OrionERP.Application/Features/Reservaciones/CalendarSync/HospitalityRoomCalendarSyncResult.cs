@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace OrionERP.Application.Features.Reservaciones.CalendarSync;
 
-public sealed class BonhomiaRoomCalendarSyncResult
+public sealed class HospitalityRoomCalendarSyncResult
 {
   public DateTime StartDate { get; set; }
   public DateTime EndDateExclusive { get; set; }
@@ -13,5 +13,5 @@ public sealed class BonhomiaRoomCalendarSyncResult
   public int SkippedCount { get; set; }
   public int RecoveredMappingCount { get; set; }
   public int ErrorCount { get; set; }
-  public IReadOnlyList<BonhomiaRoomCalendarRoomResult> Rooms { get; set; } = Array.Empty<BonhomiaRoomCalendarRoomResult>();
+  public IReadOnlyList<HospitalityRoomCalendarRoomResult> Rooms { get; set; } = Array.Empty<HospitalityRoomCalendarRoomResult>();
 }

@@ -33,6 +33,13 @@ builder.Configuration
   .AddEnvironmentVariables(prefix: "DOTNET_")
   .AddCommandLine(args);
 
+var usesLegacyMail = LegacyConfigurationAliases.ApplySectionAlias(
+  builder.Configuration,
+  RestaurantMailOptions.SectionName,
+  RestaurantMailOptions.LegacySectionName);
+if (usesLegacyMail)
+  Console.WriteLine("[RESTAURANT BOOT] Legacy configuration aliases are active until 2026-12-31.");
+
 var publicWebsite = PublicWebsiteInstancePolicy.Create(
   builder.Configuration
     .GetSection(PublicWebsiteInstanceOptions.SectionName)
@@ -79,8 +86,8 @@ if (args.Any(argument => string.Equals(
 
 var canonicalBaseUrl = publicWebsite.CanonicalBaseUri.GetLeftPart(UriPartial.Authority);
 builder.Configuration[$"{BrunoSiteOptions.SectionName}:PublicBaseUrl"] = canonicalBaseUrl;
-builder.Configuration[$"{BrunoGraphMailOptions.SectionName}:PublicBaseUrl"] = canonicalBaseUrl;
-builder.Configuration[$"{BrunoGraphMailOptions.SectionName}:SenderAddress"] = presentation.PublicEmail;
+builder.Configuration[$"{RestaurantMailOptions.SectionName}:PublicBaseUrl"] = canonicalBaseUrl;
+builder.Configuration[$"{RestaurantMailOptions.SectionName}:SenderAddress"] = presentation.PublicEmail;
 builder.Configuration[$"{BrunoTurnstileOptions.SectionName}:ExpectedHostname"] = publicWebsite.CanonicalHost;
 builder.Configuration["AllowedHosts"] =
   $"{publicWebsite.CanonicalHost};www.{publicWebsite.CanonicalHost};localhost;127.0.0.1";
@@ -121,9 +128,12 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
   options.KnownProxies.Add(IPAddress.IPv6Loopback);
 });
 
-builder.Services.AddDbContext<BrunoIdentityDbContext>(options => options.UseSqlServer(connectionString));
+builder.Services.AddScoped<PublicIdentityConnectionInterceptor>();
+builder.Services.AddDbContext<PublicIdentityDbContext>((services, options) => options
+  .UseSqlServer(connectionString)
+  .AddInterceptors(services.GetRequiredService<PublicIdentityConnectionInterceptor>()));
 builder.Services
-  .AddIdentity<BrunoMemberUser, IdentityRole>(options =>
+  .AddIdentity<PublicSiteUser, PublicSiteRole>(options =>
   {
     options.SignIn.RequireConfirmedEmail = true;
     options.Password.RequiredLength = 8;
@@ -136,8 +146,8 @@ builder.Services
     options.User.RequireUniqueEmail = true;
     options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
   })
-  .AddEntityFrameworkStores<BrunoIdentityDbContext>()
-  .AddUserStore<RestaurantMemberUserStore>()
+  .AddEntityFrameworkStores<PublicIdentityDbContext>()
+  .AddUserStore<PublicSiteUserStore>()
   .AddDefaultTokenProviders();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<RequestLocalizationOptions>(options =>
@@ -147,8 +157,8 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
   options.SupportedCultures = [culture];
   options.SupportedUICultures = [culture];
 });
-builder.Services.AddScoped<IRestaurantPublicIdentityScopeAccessor, ConfiguredRestaurantIdentityScopeAccessor>();
-builder.Services.AddScoped<IUserClaimsPrincipalFactory<BrunoMemberUser>, RestaurantMemberClaimsPrincipalFactory>();
+builder.Services.AddScoped<IPublicIdentityScopeAccessor, VerifiedPublicIdentityScopeAccessor>();
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<PublicSiteUser>, PublicSiteUserClaimsPrincipalFactory>();
 builder.Services.ConfigureApplicationCookie(options =>
 {
   options.Cookie.Name = $"__Host-OrionRestaurant.{publicWebsite.PublicSiteKey}.Member";
@@ -160,7 +170,7 @@ builder.Services.ConfigureApplicationCookie(options =>
   options.AccessDeniedPath = "/cuenta/acceso";
   options.ExpireTimeSpan = TimeSpan.FromHours(8);
   options.SlidingExpiration = true;
-  options.Events.OnValidatePrincipal = RestaurantMemberCookieScopeValidator.ValidatePrincipalAsync;
+  options.Events.OnValidatePrincipal = PublicSiteUserCookieScopeValidator.ValidatePrincipalAsync;
 });
 
 builder.Services.AddAuthorization();
@@ -176,21 +186,21 @@ builder.Services.AddScoped<SqlConnectionFactory>();
 builder.Services.AddScoped<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
 builder.Services.AddScoped<IRestaurantCatalogService, RestaurantCatalogService>();
 builder.Services.AddScoped<IRestaurantPromotionService, RestaurantPromotionService>();
-builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
-builder.Services.AddScoped<IBrunoMemberService>(sp => sp.GetRequiredService<ILoyaltyService>());
-builder.Services.AddScoped<IBrunoPublicCatalogService, BrunoPublicCatalogService>();
-builder.Services.AddScoped<IRestaurantPublicIdentityReadiness, RestaurantPublicIdentityReadiness>();
+builder.Services.AddScoped<IRestaurantLoyaltyService, LoyaltyService>();
+builder.Services.AddScoped<IRestaurantMembershipService>(sp => sp.GetRequiredService<IRestaurantLoyaltyService>());
+builder.Services.AddScoped<IRestaurantPublicCatalogService, RestaurantPublicCatalogService>();
+builder.Services.AddScoped<IPublicIdentityReadiness, PublicIdentityReadiness>();
 
 builder.Services
-  .AddOptions<BrunoGraphMailOptions>()
-  .Bind(builder.Configuration.GetSection(BrunoGraphMailOptions.SectionName))
+  .AddOptions<RestaurantMailOptions>()
+  .Bind(builder.Configuration.GetSection(RestaurantMailOptions.SectionName))
   .Validate(
     options =>
       !string.IsNullOrWhiteSpace(options.TenantId) &&
       !string.IsNullOrWhiteSpace(options.ClientId) &&
       !string.IsNullOrWhiteSpace(options.ClientSecret) &&
       !string.IsNullOrWhiteSpace(options.SenderAddress),
-    "BrunoGraphMail requiere TenantId, ClientId, ClientSecret y SenderAddress.")
+    "PublicIntegrations:Mail requiere TenantId, ClientId, ClientSecret y SenderAddress.")
   .ValidateOnStart();
 builder.Services.Configure<BrunoSiteOptions>(builder.Configuration.GetSection(BrunoSiteOptions.SectionName));
 builder.Services
@@ -203,8 +213,8 @@ builder.Services
     options => !options.IsConfigured || !string.IsNullOrWhiteSpace(options.ExpectedHostname),
     "Turnstile:ExpectedHostname es obligatorio cuando Turnstile está configurado.")
   .ValidateOnStart();
-builder.Services.AddHttpClient<IMicrosoftGraphMailClient<BrunoGraphMailOptions>, MicrosoftGraphMailClient<BrunoGraphMailOptions>>();
-builder.Services.AddScoped<IEmailSender<BrunoMemberUser>, BrunoEmailSender>();
+builder.Services.AddHttpClient<IMicrosoftGraphMailClient<RestaurantMailOptions>, MicrosoftGraphMailClient<RestaurantMailOptions>>();
+builder.Services.AddScoped<IEmailSender<PublicSiteUser>, BrunoEmailSender>();
 builder.Services.AddHttpClient<IBrunoTurnstileService, BrunoTurnstileService>(client =>
 {
   client.Timeout = TimeSpan.FromSeconds(10);
@@ -261,16 +271,13 @@ app.Use(async (context, next) =>
     return;
   }
 
-  BrunoPublicSiteSettingsDto? settings = null;
+  RestaurantPublicSiteSettingsDto? settings = null;
   try
   {
-    var publicCatalog = context.RequestServices.GetRequiredService<IBrunoPublicCatalogService>();
+    var publicCatalog = context.RequestServices.GetRequiredService<IRestaurantPublicCatalogService>();
     var website = context.RequestServices.GetRequiredService<IPublicWebsiteInstanceContext>();
     var binding = await website.ResolveRequiredAsync(context.RequestAborted);
-    settings = await publicCatalog.GetSettingsAsync(
-      binding.CompanyRfc,
-      binding.SiteKey,
-      ct: context.RequestAborted);
+    settings = await publicCatalog.GetSettingsAsync(binding, context.RequestAborted);
   }
   catch (Exception ex)
   {
@@ -329,9 +336,9 @@ app.UseAuthorization();
 app.MapGet("/healthz", () => Results.Text("OK", "text/plain"));
 app.MapGet("/readyz", async (
   IPublicWebsiteInstanceContext website,
-  IRestaurantPublicIdentityScopeAccessor identityScope,
-  IRestaurantPublicIdentityReadiness identityReadiness,
-  IBrunoPublicCatalogService publicCatalog,
+  IPublicIdentityScopeAccessor identityScope,
+  IPublicIdentityReadiness identityReadiness,
+  IRestaurantPublicCatalogService publicCatalog,
   IOptions<BrunoTurnstileOptions> turnstile,
   CancellationToken ct) =>
 {
@@ -340,7 +347,7 @@ app.MapGet("/readyz", async (
     var binding = await website.ResolveRequiredAsync(ct);
     if (!await identityReadiness.IsReadyAsync(identityScope.Current, ct))
       return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
-    var settings = await publicCatalog.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey, ct);
+    var settings = await publicCatalog.GetSettingsAsync(binding, ct);
     return settings is null ||
            (settings.IsMembershipEnabled && !turnstile.Value.IsConfigured)
       ? Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable)
@@ -376,20 +383,11 @@ app.MapGet("/media/productos/{productId:long}", async (
   long productId,
   bool? thumbnail,
   IPublicWebsiteInstanceContext website,
-  IRestaurantCatalogService catalogService,
+  IRestaurantPublicCatalogService publicCatalog,
   CancellationToken ct) =>
 {
   var binding = await website.ResolveRequiredAsync(ct);
-  // The binding carries the platform site id (orion.Site), a different id space
-  // than restaurante.Site.Id, so it must never scope this query. Scope by
-  // SiteKey/SiteCode, as the catalog behind these pages does, so the rendered
-  // menu and the images it points at resolve to the same restaurant site.
-  var image = await catalogService.GetProductImageAsync(
-    binding.CompanyRfc,
-    binding.SiteKey,
-    productId,
-    thumbnail ?? true,
-    ct);
+  var image = await publicCatalog.GetProductImageAsync(binding, productId, thumbnail ?? true, ct);
   return image.HasValue ? Results.File(image.Value.Bytes, image.Value.ContentType) : Results.NotFound();
 });
 

@@ -6,14 +6,14 @@ using OrionERP.Infrastructure.Features.Mail;
 
 namespace OrionERP.Bruno.Web.Services;
 
-public sealed class BrunoEmailSender : IEmailSender<BrunoMemberUser>
+public sealed class BrunoEmailSender : IEmailSender<PublicSiteUser>
 {
-  private readonly IMicrosoftGraphMailClient<BrunoGraphMailOptions> _mailClient;
+  private readonly IMicrosoftGraphMailClient<RestaurantMailOptions> _mailClient;
   private readonly PublicWebsitePresentationDefinition _presentation;
   private readonly IPublicWebsiteInstanceContext _website;
 
   public BrunoEmailSender(
-    IMicrosoftGraphMailClient<BrunoGraphMailOptions> mailClient,
+    IMicrosoftGraphMailClient<RestaurantMailOptions> mailClient,
     PublicWebsitePresentationDefinition presentation,
     IPublicWebsiteInstanceContext website)
   {
@@ -22,19 +22,19 @@ public sealed class BrunoEmailSender : IEmailSender<BrunoMemberUser>
     _website = website;
   }
 
-  public Task SendConfirmationLinkAsync(BrunoMemberUser user, string email, string confirmationLink) =>
+  public Task SendConfirmationLinkAsync(PublicSiteUser user, string email, string confirmationLink) =>
     SendAsync(
       email,
       $"Confirma tu cuenta de {MembershipName}",
       BuildMessage("Confirma tu correo", "Para terminar tu registro, confirma tu correo electrónico.", confirmationLink, "Confirmar correo"));
 
-  public Task SendPasswordResetLinkAsync(BrunoMemberUser user, string email, string resetLink) =>
+  public Task SendPasswordResetLinkAsync(PublicSiteUser user, string email, string resetLink) =>
     SendAsync(
       email,
       $"Restablece tu contraseña de {MembershipName}",
       BuildMessage("Restablece tu contraseña", "Recibimos una solicitud para cambiar tu contraseña.", resetLink, "Crear nueva contraseña"));
 
-  public Task SendPasswordResetCodeAsync(BrunoMemberUser user, string email, string resetCode) =>
+  public Task SendPasswordResetCodeAsync(PublicSiteUser user, string email, string resetCode) =>
     SendAsync(
       email,
       $"Código de recuperación de {MembershipName}",

@@ -159,7 +159,7 @@
       { "RoomCode": "Casa London", "Aliases": [ "London" ], "Tag": "Familiar", "Ideal": "Para familias y grupos que quieren una casa completa y funcional.", "Capacity": 6, "Bedrooms": 3, "Bathrooms": 2.5, "PrimaryAssetKey": "london-1", "GalleryAssetKeys": [ "london-1", "london-2", "london-3", "london-4", "london-5", "london-render" ] }
     ]
   },
-  "BonhomiaGraphMail": {
+  "PublicIntegrations:Mail": {
     "SenderAddress": "recepcion@bonhomiasuites.com"
   }
 }

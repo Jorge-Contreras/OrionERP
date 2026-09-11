@@ -3,18 +3,18 @@ using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 
-public sealed class BonhomiaReservationPdfTokenService : IBonhomiaReservationPdfTokenService
+public sealed class HospitalityReservationPdfTokenService : IHospitalityReservationPdfTokenService
 {
   private readonly ITimeLimitedDataProtector _protector;
-  private readonly BonhomiaCheckoutOptions _options;
+  private readonly HospitalityCheckoutOptions _options;
 
-  public BonhomiaReservationPdfTokenService(
+  public HospitalityReservationPdfTokenService(
     IDataProtectionProvider dataProtectionProvider,
-    IOptions<BonhomiaCheckoutOptions> options)
+    IOptions<HospitalityCheckoutOptions> options)
   {
     _protector = dataProtectionProvider
       .CreateProtector("OrionERP.Bonhomia.Reservaciones.Pdf")

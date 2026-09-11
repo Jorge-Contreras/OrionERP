@@ -1,6 +1,6 @@
 @page "/membresia"
-@inject IBrunoPublicCatalogService CatalogService
-@inject ILoyaltyService LoyaltyService
+@inject IRestaurantPublicCatalogService CatalogService
+@inject IRestaurantLoyaltyService LoyaltyService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
 
@@ -68,7 +68,7 @@
     try
     {
       var binding = await Website.ResolveRequiredAsync();
-      var settingsTask = CatalogService.GetSettingsAsync(binding.CompanyRfc, binding.SiteKey);
+      var settingsTask = CatalogService.GetSettingsAsync(binding);
       var programTask = LoyaltyService.GetProgramSettingsAsync(binding.CompanyRfc);
       await Task.WhenAll(settingsTask, programTask);
       membershipEnabled = (await settingsTask)?.IsMembershipEnabled == true;

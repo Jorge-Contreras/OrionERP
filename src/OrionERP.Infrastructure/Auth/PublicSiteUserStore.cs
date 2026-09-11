@@ -5,18 +5,27 @@ using Microsoft.EntityFrameworkCore;
 namespace OrionERP.Infrastructure.Auth;
 
 /// <summary>
-/// Tenant-aware Identity store for the reusable restaurant website. Every
+/// Tenant-aware Identity store for a reusable public website. Every
 /// lookup and mutation is constrained to the database-verified PublicSiteId.
 /// </summary>
-public sealed class RestaurantMemberUserStore
-  : UserStore<BrunoMemberUser, IdentityRole, BrunoIdentityDbContext, string>
+public sealed class PublicSiteUserStore
+  : UserStore<
+    PublicSiteUser,
+    PublicSiteRole,
+    PublicIdentityDbContext,
+    string,
+    PublicSiteUserClaim,
+    PublicSiteUserRole,
+    PublicSiteUserLogin,
+    PublicSiteUserToken,
+    PublicSiteRoleClaim>
 {
-  private readonly BrunoIdentityDbContext _db;
-  private readonly IRestaurantPublicIdentityScopeAccessor _scopeAccessor;
+  private readonly PublicIdentityDbContext _db;
+  private readonly IPublicIdentityScopeAccessor _scopeAccessor;
 
-  public RestaurantMemberUserStore(
-    BrunoIdentityDbContext db,
-    IRestaurantPublicIdentityScopeAccessor scopeAccessor,
+  public PublicSiteUserStore(
+    PublicIdentityDbContext db,
+    IPublicIdentityScopeAccessor scopeAccessor,
     IdentityErrorDescriber describer)
     : base(db, describer)
   {
@@ -24,7 +33,7 @@ public sealed class RestaurantMemberUserStore
     _scopeAccessor = scopeAccessor ?? throw new ArgumentNullException(nameof(scopeAccessor));
   }
 
-  public override Task<BrunoMemberUser?> FindByIdAsync(
+  public override Task<PublicSiteUser?> FindByIdAsync(
     string userId,
     CancellationToken cancellationToken = default)
   {
@@ -35,7 +44,7 @@ public sealed class RestaurantMemberUserStore
       cancellationToken);
   }
 
-  public override Task<BrunoMemberUser?> FindByNameAsync(
+  public override Task<PublicSiteUser?> FindByNameAsync(
     string normalizedUserName,
     CancellationToken cancellationToken = default)
   {
@@ -47,7 +56,7 @@ public sealed class RestaurantMemberUserStore
       cancellationToken);
   }
 
-  public override Task<BrunoMemberUser?> FindByEmailAsync(
+  public override Task<PublicSiteUser?> FindByEmailAsync(
     string normalizedEmail,
     CancellationToken cancellationToken = default)
   {
@@ -59,7 +68,7 @@ public sealed class RestaurantMemberUserStore
       cancellationToken);
   }
 
-  public override async Task<BrunoMemberUser?> FindByLoginAsync(
+  public override async Task<PublicSiteUser?> FindByLoginAsync(
     string loginProvider,
     string providerKey,
     CancellationToken cancellationToken = default)
@@ -69,7 +78,7 @@ public sealed class RestaurantMemberUserStore
   }
 
   public override Task<IdentityResult> CreateAsync(
-    BrunoMemberUser user,
+    PublicSiteUser user,
     CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(user);
@@ -84,7 +93,7 @@ public sealed class RestaurantMemberUserStore
   }
 
   public override Task<IdentityResult> UpdateAsync(
-    BrunoMemberUser user,
+    PublicSiteUser user,
     CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(user);
@@ -94,7 +103,7 @@ public sealed class RestaurantMemberUserStore
   }
 
   public override Task<IdentityResult> DeleteAsync(
-    BrunoMemberUser user,
+    PublicSiteUser user,
     CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(user);
@@ -110,16 +119,16 @@ public sealed class RestaurantMemberUserStore
       var publicSiteId = _scopeAccessor.Current.PublicSiteId;
       return publicSiteId > 0
         ? publicSiteId
-        : throw new InvalidOperationException("The restaurant identity scope is not database verified.");
+        : throw new InvalidOperationException("The public identity scope is not database verified.");
     }
   }
 
-  private bool IsCurrent(BrunoMemberUser user)
+  private bool IsCurrent(PublicSiteUser user)
     => user.PublicSiteId == CurrentPublicSiteId;
 
   private static IdentityResult ScopeMismatch() => IdentityResult.Failed(new IdentityError
   {
     Code = "PublicSiteMismatch",
-    Description = "The member account does not belong to this public restaurant site."
+    Description = "The member account does not belong to this public site."
   });
 }

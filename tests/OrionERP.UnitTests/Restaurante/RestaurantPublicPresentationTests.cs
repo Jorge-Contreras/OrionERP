@@ -154,16 +154,17 @@ public sealed class RestaurantPublicPresentationTests
   public void Public_settings_lookup_requires_one_exact_rfc_and_site()
   {
     var contract = ReadRepoFile(
-      "src/OrionERP.Application/Features/Restaurante/IBrunoPublicCatalogService.cs");
+      "src/OrionERP.Application/Features/Restaurante/IRestaurantPublicCatalogService.cs");
     var service = ReadRepoFile(
-      "src/OrionERP.Infrastructure/Features/Restaurante/BrunoPublicCatalogService.cs");
+      "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPublicCatalogService.cs");
 
     Assert.DoesNotContain("int? siteId", contract, StringComparison.Ordinal);
+    Assert.DoesNotContain("string siteCode", contract, StringComparison.Ordinal);
     Assert.DoesNotContain("SELECT TOP(1)", service, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("@SiteId IS NULL", service, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("site.SiteCode", service, StringComparison.Ordinal);
+    Assert.Contains("WHERE PublicSiteId=@PublicSiteId", service, StringComparison.Ordinal);
     Assert.Contains("WHERE Rfc=@Rfc AND SiteId=@SiteId", service, StringComparison.Ordinal);
-    Assert.Contains("site.SiteCode=@SiteCode", service, StringComparison.Ordinal);
-    Assert.Contains("site.IsEnabled=1", service, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -220,17 +221,14 @@ public sealed class RestaurantPublicPresentationTests
   public void Public_product_images_are_scoped_to_the_bound_restaurant_site()
   {
     var program = ReadRepoFile("src/OrionERP.Bruno.Web/Program.cs");
-    var catalog = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantCatalogService.cs");
+    var catalog = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPublicCatalogService.cs");
 
-    // The bound site must come from the SiteKey/SiteCode space. binding.SiteId is
-    // the platform site id (orion.Site) and does not address restaurante.Site,
-    // so scoping the image query with it 404s every product on the public site.
-    Assert.Contains("binding.SiteKey", program, StringComparison.Ordinal);
-    Assert.DoesNotContain("binding.SiteId", program, StringComparison.Ordinal);
-    Assert.Contains("siteInfo.SiteCode = @SiteCode", catalog, StringComparison.Ordinal);
-    Assert.Contains("siteInfo.Rfc = product.Rfc AND siteInfo.IsEnabled = 1", catalog, StringComparison.Ordinal);
-    Assert.Contains("product.KitchenStationId IS NULL OR station.SiteId = scopedSite.Id", catalog, StringComparison.Ordinal);
-    Assert.Contains("product.IsActive = 1", catalog, StringComparison.Ordinal);
+    Assert.Contains("publicCatalog.GetProductImageAsync(binding", program, StringComparison.Ordinal);
+    Assert.DoesNotContain("binding.SiteKey", program, StringComparison.Ordinal);
+    Assert.Contains("siteInfo.OrionCompanyId=@CompanyId", catalog, StringComparison.Ordinal);
+    Assert.Contains("siteInfo.OrionSiteId=@SiteId", catalog, StringComparison.Ordinal);
+    Assert.Contains("product.KitchenStationId IS NULL OR station.SiteId=siteInfo.Id", catalog, StringComparison.Ordinal);
+    Assert.Contains("product.Id=@ProductId AND product.IsActive=1", catalog, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -239,7 +237,7 @@ public sealed class RestaurantPublicPresentationTests
     var contract = ReadRepoFile(
       "src/OrionERP.Application/Features/Restaurante/IRestaurantCatalogService.cs");
     var publicCatalog = ReadRepoFile(
-      "src/OrionERP.Infrastructure/Features/Restaurante/BrunoPublicCatalogService.cs");
+      "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPublicCatalogService.cs");
     var catalog = ReadRepoFile(
       "src/OrionERP.Infrastructure/Features/Restaurante/RestaurantCatalogService.cs");
     var orders = ReadRepoFile(

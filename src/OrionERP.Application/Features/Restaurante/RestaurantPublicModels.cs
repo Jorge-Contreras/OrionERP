@@ -2,8 +2,9 @@ using System.ComponentModel.DataAnnotations;
 
 namespace OrionERP.Application.Features.Restaurante;
 
-public sealed class BrunoPublicSiteSettingsDto
+public sealed class RestaurantPublicSiteSettingsDto
 {
+  public long PublicSiteId { get; set; }
   public string Rfc { get; set; } = string.Empty;
   public int SiteId { get; set; }
   public string LegalName { get; set; } = string.Empty;
@@ -32,7 +33,7 @@ public sealed class BrunoPublicSiteSettingsDto
   public DateTime UpdatedAt { get; set; }
 }
 
-public sealed class BrunoPublicSiteSettingsSaveRequest
+public sealed class RestaurantPublicSiteSettingsSaveRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
   public int SiteId { get; set; }
@@ -61,14 +62,14 @@ public sealed class BrunoPublicSiteSettingsSaveRequest
   public bool IsPromotionsEnabled { get; set; }
 }
 
-public sealed class BrunoPublicCatalogDto
+public sealed class RestaurantPublicCatalogDto
 {
-  public BrunoPublicSiteSettingsDto Settings { get; set; } = new();
+  public RestaurantPublicSiteSettingsDto Settings { get; set; } = new();
   public RestaurantPosCatalogDto Menu { get; set; } = new();
-  public IReadOnlyList<BrunoPublicPromotionDto> Promotions { get; set; } = Array.Empty<BrunoPublicPromotionDto>();
+  public IReadOnlyList<RestaurantPublicPromotionDto> Promotions { get; set; } = Array.Empty<RestaurantPublicPromotionDto>();
 }
 
-public sealed class BrunoPublicPromotionDto
+public sealed class RestaurantPublicPromotionDto
 {
   public long Id { get; set; }
   public string Name { get; set; } = string.Empty;

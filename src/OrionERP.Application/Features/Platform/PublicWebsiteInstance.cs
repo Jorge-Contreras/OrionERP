@@ -48,7 +48,7 @@ public static class PublicWebsiteInstancePolicy
         options.PublicSiteKey,
         options.ExpectedCompanyRfc,
         options.SiteKey,
-        options.ModuleCode,
+        string.IsNullOrWhiteSpace(options.ModuleCode) ? requiredModuleCode : options.ModuleCode,
         options.CanonicalHost));
     }
     catch (ArgumentException exception)

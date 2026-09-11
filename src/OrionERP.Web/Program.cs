@@ -19,7 +19,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using OfficeOpenXml;
 using OrionERP.Application.Common;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.CapitalHumano.Workforce;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Application.Features.Auth.Companies;
@@ -33,6 +33,7 @@ using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
+using OrionERP.Web.Features.Documents;
 using OrionERP.Web.Features.Restaurante;
 using OrionERP.Web.Features.TrainingSafety;
 using OrionERP.Web.Identity;
@@ -98,6 +99,22 @@ else
 }
 
 // -------------------------------------------------------------------------------
+
+// Apply compatibility aliases only after the final provider order is established.
+// In Development, user secrets intentionally override machine-wide production
+// variables on workstations that also host the deployed services.
+LegacyConfigurationAliases.ApplySectionAlias(
+  builder.Configuration,
+  HospitalityCheckoutOptions.SectionName,
+  HospitalityCheckoutOptions.LegacySectionName);
+LegacyConfigurationAliases.ApplySectionAlias(
+  builder.Configuration,
+  HospitalityMailOptions.SectionName,
+  HospitalityMailOptions.LegacySectionName);
+LegacyConfigurationAliases.ApplySectionAlias(
+  builder.Configuration,
+  HospitalityCalendarSyncOptions.SectionName,
+  HospitalityCalendarSyncOptions.LegacySectionName);
 
 var platformIsolation = PlatformIsolationOptions.FromConfiguration(builder.Configuration);
 
@@ -468,13 +485,13 @@ builder.Services.AddServerSideBlazor(options =>
   options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.Configure<GraphMailOptions>(builder.Configuration.GetSection(GraphMailOptions.SectionName));
-builder.Services.Configure<BonhomiaGraphMailOptions>(builder.Configuration.GetSection(BonhomiaGraphMailOptions.SectionName));
-builder.Services.Configure<BonhomiaGraphCalendarSyncOptions>(builder.Configuration.GetSection(BonhomiaGraphCalendarSyncOptions.SectionName));
-builder.Services.PostConfigure<BonhomiaGraphCalendarSyncOptions>(options =>
+builder.Services.Configure<HospitalityMailOptions>(builder.Configuration.GetSection(HospitalityMailOptions.SectionName));
+builder.Services.Configure<HospitalityCalendarSyncOptions>(builder.Configuration.GetSection(HospitalityCalendarSyncOptions.SectionName));
+builder.Services.PostConfigure<HospitalityCalendarSyncOptions>(options =>
 {
   var sharedCredentials = builder.Configuration
-    .GetSection(BonhomiaGraphMailOptions.SectionName)
-    .Get<BonhomiaGraphMailOptions>();
+    .GetSection(HospitalityMailOptions.SectionName)
+    .Get<HospitalityMailOptions>();
 
   if (sharedCredentials is not null)
   {
@@ -484,15 +501,20 @@ builder.Services.PostConfigure<BonhomiaGraphCalendarSyncOptions>(options =>
       sharedCredentials.ClientSecret);
   }
 });
-builder.Services.Configure<BonhomiaCheckoutOptions>(builder.Configuration.GetSection(BonhomiaCheckoutOptions.SectionName));
+builder.Services.Configure<HospitalityCheckoutOptions>(builder.Configuration.GetSection(HospitalityCheckoutOptions.SectionName));
 builder.Services.Configure<RestaurantQzTraySigningOptions>(
   builder.Configuration.GetSection(RestaurantQzTraySigningOptions.SectionName));
 builder.Services.Configure<RestaurantEventBroadcastOptions>(
   builder.Configuration.GetSection(RestaurantEventBroadcastOptions.SectionName));
+builder.Services.Configure<CompanyDocumentPresentationOptions>(
+  builder.Configuration.GetSection(CompanyDocumentPresentationOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
 {
   var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
-  options.LogoPath = Path.Combine(webRootPath, "Images", "BonhomiaSuitesLetterheadLogo.svg");
+  var configuredLogo = builder.Configuration[$"{CompanyDocumentPresentationOptions.SectionName}:LogoPath"];
+  options.LogoPath = string.IsNullOrWhiteSpace(configuredLogo)
+    ? null
+    : Path.Combine(webRootPath, configuredLogo);
 });
 
 builder.Services.AddCfdiCargarXmlSat();
@@ -635,7 +657,7 @@ app.MapGet("/api/workforce/prenomina/exports/{exportId:long}/{format}", async (
       ? Results.File(bundle.ZipBytes, "application/zip", bundle.ZipFileName)
       : Results.NotFound();
 }).RequireAuthorization("CapitalHumanoNomina");
-app.MapGet("/hospedaje", (IOptions<BonhomiaCheckoutOptions> options) =>
+app.MapGet("/hospedaje", (IOptions<HospitalityCheckoutOptions> options) =>
 {
   var publicBaseUrl = options.Value.PublicBaseUrl?.Trim();
   if (!string.IsNullOrWhiteSpace(publicBaseUrl)

@@ -16,6 +16,12 @@
       "description": "Aprovisionamiento verificable de Bonhomía y Bruno exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_public_site_bindings",
+          "path": "database/production/20260908/20260908_production_public_site_bindings.sql"
+        }
       ]
     },
     {
@@ -24,6 +30,12 @@
       "description": "Aislamiento por empresa y sede del recorrido público de Hospedaje, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_hospitality_public_scope",
+          "path": "database/production/20260908/20260908_production_hospitality_public_scope.sql"
+        }
       ]
     },
     {
@@ -32,6 +44,12 @@
       "description": "Aislamiento de Identity y membresía pública de Restaurante por PublicSite, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_restaurant_public_identity_scope",
+          "path": "database/production/20260908/20260908_production_restaurant_public_identity_scope.sql"
+        }
       ]
     },
     {
@@ -40,6 +58,12 @@
       "description": "Ventana transaccional y auditable para activar o revertir presentaciones públicas, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_public_site_presentation_transition",
+          "path": "database/production/20260908/20260908_production_public_site_presentation_transition.sql"
+        }
       ]
     },
     {
@@ -48,6 +72,12 @@
       "description": "Evidencia indivisible de versiones legales y aceptación UTC del checkout público de Hospedaje, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_hospitality_legal_consent",
+          "path": "database/production/20260908/20260908_production_hospitality_legal_consent.sql"
+        }
       ]
     },
     {
@@ -56,6 +86,12 @@
       "description": "Aislamiento RLS fail-closed de Hospedaje administrativo y clientes fiscales, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_hospitality_administration_scope",
+          "path": "database/production/20260908/20260908_production_hospitality_administration_scope.sql"
+        }
       ]
     },
     {
@@ -64,6 +100,12 @@
       "description": "CompanyId aditivo y nullable en el agregado contable, con relleno por el vinculo legacy exacto, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_accounting_company_identity",
+          "path": "database/production/20260908/20260908_production_accounting_company_identity.sql"
+        }
       ]
     },
     {
@@ -72,6 +114,12 @@
       "description": "Ciclo contable formal apagado: periodos por empresa, Draft/Posted/Reversed, inmutabilidad en SQL y reversa unica, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_accounting_cycle",
+          "path": "database/production/20260908/20260908_production_accounting_cycle.sql"
+        }
       ]
     },
     {
@@ -80,6 +128,12 @@
       "description": "Bandeja contable durable con identidad unica de operacion, y mappings de Hospedaje vacios, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_accounting_outbox",
+          "path": "database/production/20260908/20260908_production_accounting_outbox.sql"
+        }
       ]
     },
     {
@@ -88,6 +142,12 @@
       "description": "Balanza y resultados versionados con el parametro @SoloPublicadas apagado por omision, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260908_production_published_reports",
+          "path": "database/production/20260908/20260908_production_published_reports.sql"
+        }
       ]
     },
     {
@@ -96,6 +156,12 @@
       "description": "Enciende el ciclo solo para el piloto BRUNOS con corte 2026-09-09, y registra el mapping de Bonhomia Suites, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260909_production_accounting_cycle_activation",
+          "path": "database/production/20260909/20260909_production_accounting_cycle_activation.sql"
+        }
       ]
     },
     {
@@ -104,6 +170,12 @@
       "description": "Agrega la contrapartida 401.25.01 al saldo inicial 27047 de BSU, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260909_production_bsu_opening_balance_counterpart",
+          "path": "database/production/20260909/20260909_production_bsu_opening_balance_counterpart.sql"
+        }
       ]
     },
     {
@@ -112,6 +184,12 @@
       "description": "E8c: RLS fail-closed del agregado de asistencia de RH, seis tablas movidas fuera del bypass, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260909_production_workforce_attendance_scope",
+          "path": "database/production/20260909/20260909_production_workforce_attendance_scope.sql"
+        }
       ]
     },
     {
@@ -120,6 +198,12 @@
       "description": "El calendario de reservaciones acotado al arrendador de la sesi\u00f3n, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260909_production_calendar_owner_scope",
+          "path": "database/production/20260909/20260909_production_calendar_owner_scope.sql"
+        }
       ]
     },
     {
@@ -128,6 +212,12 @@
       "description": "E7: asociaciones de arrendadores, mappings expl\u00edcitos de actividad, corrector auditable de pagos y reparaci\u00f3n/cuarentena local de Outlook, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260910_production_hospitality_legacy_mechanisms",
+          "path": "database/production/20260910/20260910_production_hospitality_legacy_mechanisms.sql"
+        }
       ]
     },
     {
@@ -136,6 +226,12 @@
       "description": "E7: garantiza rollback de los dos mecanismos heredados ante evidencia inv\u00e1lida, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260910_production_hospitality_legacy_mechanisms",
+          "path": "database/production/20260910/20260910_production_hospitality_legacy_mechanisms.sql"
+        }
       ]
     },
     {
@@ -144,6 +240,12 @@
       "description": "E7: separa las transiciones de predicados RLS del corrector de pagos para validaci\u00f3n y restauraci\u00f3n transaccional, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
+      ],
+      "satisfiedBy": [
+        {
+          "id": "20260910_production_hospitality_legacy_mechanisms",
+          "path": "database/production/20260910/20260910_production_hospitality_legacy_mechanisms.sql"
+        }
       ]
     },
     {
@@ -174,6 +276,78 @@
       "id": "20260909_fiscal_rls_scope_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/ReportesFinancieros/Sql/20260909_fiscal_rls_scope_sandbox.sql",
       "description": "E8d: RLS fail-closed del agregado fiscal sin imponer propiedad exclusiva a CFDI, exclusivamente en Orion_Sandbox.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_platform_execution_scope",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_platform_execution_scope.sql",
+      "description": "CompanyId, binding explícito Restaurant, PublicSiteId de configuración, integraciones y principales públicos neutrales.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_public_identity",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_identity.sql",
+      "description": "Crea public_identity, copia Identity por PublicSite, activa RLS y un bridge unidireccional reversible.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_public_provisioning_profiles",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_provisioning_profiles.sql",
+      "description": "Ledger reanudable y perfiles mínimos de permisos SQL por módulo público.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_public_principal_boundary",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_principal_boundary.sql",
+      "description": "Perfil v2 y validación obligatoria del principal SQL contra su PublicSite.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_public_rls_principal_binding",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_rls_principal_binding.sql",
+      "description": "RLS enlazada al principal SQL y PublicSite registrado, incluso ante SESSION_CONTEXT manipulado.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_sandbox_database_owner",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_sandbox_database_owner.sql",
+      "description": "Repara el owner de Sandbox para que los módulos EXECUTE AS OWNER y el bridge Identity sean ejecutables.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_rfc_rls_fail_closed",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_rfc_rls_fail_closed.sql",
+      "description": "Hace fail-closed el RLS RFC compartido y enlaza los procesos públicos a CompanyId y PublicSite.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_synthetic_dual_company",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_synthetic_dual_company.sql",
+      "description": "Fixture determinista de empresa dual, identidad, datos mínimos, principales y perfiles públicos para aceptación integral.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
+      "id": "20260911_legacy_write_compatibility",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_legacy_write_compatibility.sql",
+      "description": "Puente fail-closed para escritores heredados de bindings Restaurant durante la ventana de compatibilidad.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ]

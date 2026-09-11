@@ -1,5 +1,5 @@
 using System.Globalization;
-using OrionERP.Application.Features.Bonhomia.PublicBooking;
+using OrionERP.Application.Features.Hospitality.PublicBooking;
 
 namespace OrionERP.Bonhomia.Web.Features.Bonhomia;
 
@@ -107,17 +107,17 @@ public static class BonhomiaBookingCalendarRules
       BonhomiaCalendarSelectionTarget.CheckIn);
   }
 
-  public static bool IsAnySuiteAvailableOnDate(IEnumerable<BonhomiaRoomAvailabilityDto> rooms, DateOnly day)
+  public static bool IsAnySuiteAvailableOnDate(IEnumerable<HospitalityRoomAvailabilityDto> rooms, DateOnly day)
     => rooms.Any(room => IsRoomDayAvailable(room, day));
 
   public static bool IsSuiteAvailableForStay(
-    BonhomiaRoomAvailabilityDto room,
+    HospitalityRoomAvailabilityDto room,
     DateOnly checkIn,
     DateOnly checkOut)
     => GetUnavailableDatesForStay(room, checkIn, checkOut).Count == 0;
 
   public static IReadOnlyList<DateOnly> GetUnavailableDatesForStay(
-    BonhomiaRoomAvailabilityDto room,
+    HospitalityRoomAvailabilityDto room,
     DateOnly checkIn,
     DateOnly checkOut)
   {
@@ -140,7 +140,7 @@ public static class BonhomiaBookingCalendarRules
 
   public static string ResolveSelectedRoomName(
     string? selectedRoomName,
-    IEnumerable<BonhomiaRoomAvailabilityDto> rooms,
+    IEnumerable<HospitalityRoomAvailabilityDto> rooms,
     DateOnly checkIn,
     DateOnly checkOut)
   {
@@ -197,6 +197,6 @@ public static class BonhomiaBookingCalendarRules
       BonhomiaCalendarSelectionTarget.CheckOut);
   }
 
-  private static bool IsRoomDayAvailable(BonhomiaRoomAvailabilityDto room, DateOnly day)
+  private static bool IsRoomDayAvailable(HospitalityRoomAvailabilityDto room, DateOnly day)
     => room.Days.FirstOrDefault(item => item.Date == day)?.IsAvailable == true;
 }

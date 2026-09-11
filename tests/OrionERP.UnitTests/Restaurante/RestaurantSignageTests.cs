@@ -149,7 +149,8 @@ public sealed class RestaurantSignageTests
     // cae al respaldo estático, que es el comportamiento previo a esta función.
     Assert.Contains("UseLegacyStaticBoards", model, StringComparison.Ordinal);
     Assert.Contains("catch (Exception ex)", model, StringComparison.Ordinal);
-    Assert.Contains("Signage:DefaultRfc", model, StringComparison.Ordinal);
+    Assert.Contains("Signage:DefaultPublicSiteKey", model, StringComparison.Ordinal);
+    Assert.Contains("Signage:LegacyStaticFallbackEnabled", model, StringComparison.Ordinal);
     Assert.Contains("/Images/Brunos/Menus/menu-principal.png", page, StringComparison.Ordinal);
   }
 

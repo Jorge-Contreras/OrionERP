@@ -1,6 +1,6 @@
 using OrionERP.Application.Features.Platform;
 
-namespace OrionERP.Application.Features.Bonhomia.PublicBooking;
+namespace OrionERP.Application.Features.Hospitality.PublicBooking;
 
 /// <summary>
 /// Database scope for one verified hospitality website instance. This value is
@@ -11,10 +11,20 @@ public sealed record HospitalityWebsiteScope(
   long CompanyId,
   long SiteId,
   string CompanyRfc,
-  string PublicSiteKey)
+  string PublicSiteKey,
+  long? PublicSiteId = null)
 {
   public bool Owns(long companyId, long siteId)
     => CompanyId == companyId && SiteId == siteId;
+
+  public PlatformExecutionScope ToExecutionScope()
+    => new(
+      CompanyId,
+      CompanyRfc,
+      SiteId: SiteId,
+      ModuleCode: PlatformModuleCodes.Hospitality,
+      PublicSiteId: PublicSiteId,
+      PublicSiteKey: PublicSiteId.HasValue ? PublicSiteKey : null);
 }
 
 public static class HospitalityWebsiteScopePolicy
@@ -44,11 +54,12 @@ public static class HospitalityWebsiteScopePolicy
       binding.CompanyId,
       binding.SiteId,
       binding.CompanyRfc,
-      binding.PublicSiteKey);
+      binding.PublicSiteKey,
+      binding.PublicSiteId);
   }
 
   public static void EnsureQuoteBelongsToScope(
-    BonhomiaQuoteDto quote,
+    HospitalityQuoteDto quote,
     HospitalityWebsiteScope scope)
   {
     ArgumentNullException.ThrowIfNull(quote);
@@ -57,7 +68,7 @@ public static class HospitalityWebsiteScopePolicy
     if (string.IsNullOrWhiteSpace(quote.PublicSiteKey)
         || !string.Equals(quote.PublicSiteKey, scope.PublicSiteKey, StringComparison.Ordinal))
     {
-      throw new BonhomiaPublicBookingException(
+      throw new HospitalityPublicBookingException(
         "quote_scope_mismatch",
         "La cotizacion no pertenece a este sitio de hospedaje.");
     }

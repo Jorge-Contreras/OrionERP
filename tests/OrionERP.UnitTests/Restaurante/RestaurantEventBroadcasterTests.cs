@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OrionERP.Web.Features.Restaurante;
@@ -12,10 +11,10 @@ public sealed class RestaurantEventBroadcasterTests
   public async Task StopAsync_WhenTimerIsWaiting_CompletesWithoutCancellationException()
   {
     var broadcaster = new RestaurantEventBroadcaster(
-      new ConfigurationBuilder().Build(),
       Options.Create(new RestaurantEventBroadcastOptions()),
       new UnusedHubContext(),
-      NullLogger<RestaurantEventBroadcaster>.Instance);
+      NullLogger<RestaurantEventBroadcaster>.Instance,
+      null!);
 
     await broadcaster.StartAsync(CancellationToken.None);
     await Task.Delay(50);
@@ -34,11 +33,12 @@ public sealed class RestaurantEventBroadcasterTests
       "src/OrionERP.Web/Features/Restaurante/RestaurantEventBroadcaster.cs");
 
     Assert.False(options.Enabled);
-    Assert.Contains("OrionRfc", source, StringComparison.Ordinal);
-    Assert.Contains("OrionERP.CompanyId", source, StringComparison.Ordinal);
-    Assert.Contains("companyModule.ModuleCode='RESTAURANT'", source, StringComparison.Ordinal);
-    Assert.Contains("capability.IsEnabled=1", source, StringComparison.Ordinal);
-    Assert.Contains("legacySite.SiteCode=@SiteKey", source, StringComparison.Ordinal);
+    Assert.Contains("sessions.OpenAsync(scope", source, StringComparison.Ordinal);
+    Assert.Contains("PlatformExecutionScope", source, StringComparison.Ordinal);
+    Assert.Contains("sites.ListAsync(PlatformModuleCodes.Restaurant", source, StringComparison.Ordinal);
+    Assert.Contains("bindings.ResolveRequiredAsync", source, StringComparison.Ordinal);
+    Assert.Contains("leases.TryAcquireAsync", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("legacySite.Rfc=eventInfo.Rfc AND legacySite.Id=eventInfo.SiteId", source, StringComparison.Ordinal);
   }
 
   private sealed class UnusedHubContext : IHubContext<RestaurantEventsHub>

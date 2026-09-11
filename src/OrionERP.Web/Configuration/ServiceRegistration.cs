@@ -38,6 +38,7 @@ using OrionERP.Infrastructure.Features.Contabilidad.Bancos;
 using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 using OrionERP.Infrastructure.Features.Contabilidad.ContabilidadRegistros;
 using OrionERP.Application.Features.ReportesFinancieros;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Reservaciones.Cfdi;
 using OrionERP.Application.Features.Reservaciones.Accounting;
 using OrionERP.Application.Features.Reservaciones.CalendarSync;
@@ -66,6 +67,7 @@ using OrionERP.Infrastructure.Features.Reservaciones.CalendarSync;
 using OrionERP.Infrastructure.Features.Reservaciones.Experiencias;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Features.Arrendadores;
+using OrionERP.Web.Features.Documents;
 using OrionERP.Web.Features.Cfdi.HtmlCFDI;
 using OrionERP.Web.Features.Logistica.Purchasing;
 using OrionERP.Web.Features.ReportesFinancieros.SaludEmpresa;
@@ -110,16 +112,21 @@ public static class ServiceRegistration
     services.AddScoped<HospitalityAdministrationSessionGuard>();
     services.AddScoped<HospitalityAdministrationScopeAccessor>();
     services.AddScoped<IHospitalityScopeAccessor>(sp => sp.GetRequiredService<HospitalityAdministrationScopeAccessor>());
-    services.AddScoped<HospitalityConnectionFactory>();
+    services.AddScoped<HospitalityConnectionFactory>(sp => new HospitalityConnectionFactory(
+      sp.GetRequiredService<IOrionSqlSessionFactory>(),
+      sp.GetRequiredService<IHospitalityScopeAccessor>()));
     services.AddScoped<IHospitalityViewerScope, HospitalityViewerScopeResolver>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();
     services.AddScoped<IOutlookRoomCalendarSyncRepository, OutlookRoomCalendarSyncRepository>();
-    services.AddHttpClient<IBonhomiaRoomCalendarSyncService, BonhomiaRoomCalendarSyncService>();
+    services.AddHttpClient<IHospitalityRoomCalendarSyncService, HospitalityRoomCalendarSyncService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
-    services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
-    services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
+    services.AddScoped<ICompanyDocumentPresentation, CompanyDocumentPresentation>();
+    services.AddScoped<IArrendadorEstadoCuentaPdfService>(sp => new ArrendadorEstadoCuentaPdfService(
+      sp.GetRequiredService<ICompanyDocumentPresentation>()));
+    services.AddScoped<ISaludEmpresaPdfService>(sp => new SaludEmpresaPdfService(
+      sp.GetRequiredService<ICompanyDocumentPresentation>()));
     services.AddScoped<ISaludEmpresaExcelService, SaludEmpresaExcelService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
 
@@ -181,9 +188,9 @@ public static class ServiceRegistration
     services.AddScoped<IRestaurantSaleReadinessService, RestaurantSaleReadinessService>();
     services.AddScoped<IRestaurantSaleReadinessWorkbookService, RestaurantSaleReadinessWorkbookService>();
     services.AddScoped<IRestaurantPromotionService, RestaurantPromotionService>();
-    services.AddScoped<ILoyaltyService, LoyaltyService>();
-    services.AddScoped<IBrunoMemberService>(sp => sp.GetRequiredService<ILoyaltyService>());
-    services.AddScoped<IBrunoPublicCatalogService, BrunoPublicCatalogService>();
+    services.AddScoped<IRestaurantLoyaltyService, LoyaltyService>();
+    services.AddScoped<IRestaurantMembershipService>(sp => sp.GetRequiredService<IRestaurantLoyaltyService>());
+    services.AddScoped<IRestaurantPublicCatalogService, RestaurantPublicCatalogService>();
     services.AddScoped<IRestaurantCashService, RestaurantCashService>();
     services.AddScoped<IRestaurantProductionService, RestaurantProductionService>();
     services.AddScoped<IRestaurantBackofficeService, RestaurantBackofficeService>();
@@ -198,7 +205,8 @@ public static class ServiceRegistration
     services.AddScoped<IArrendadoresEstadoCuentaService, ArrendadoresEstadoCuentaService>();
     services.AddScoped<IPurchaseMaterialThumbnailHydrator, PurchaseMaterialThumbnailHydrator>();
     services.AddScoped<IPurchaseOrderPdfDocumentFactory, PurchaseOrderPdfDocumentFactory>();
-    services.AddScoped<IPurchaseOrderPdfService, PurchaseOrderPdfService>();
+    services.AddScoped<IPurchaseOrderPdfService>(sp => new PurchaseOrderPdfService(
+      sp.GetRequiredService<ICompanyDocumentPresentation>()));
     services.AddScoped<IRestaurantReceiptPdfService, RestaurantReceiptPdfService>();
     services.AddSingleton<IRestaurantQzTraySigningService, RestaurantQzTraySigningService>();
 
@@ -219,16 +227,21 @@ public static class ServiceRegistration
     services.AddScoped<HospitalityAdministrationSessionGuard>();
     services.AddScoped<HospitalityAdministrationScopeAccessor>();
     services.AddScoped<IHospitalityScopeAccessor>(sp => sp.GetRequiredService<HospitalityAdministrationScopeAccessor>());
-    services.AddScoped<HospitalityConnectionFactory>();
+    services.AddScoped<HospitalityConnectionFactory>(sp => new HospitalityConnectionFactory(
+      sp.GetRequiredService<IOrionSqlSessionFactory>(),
+      sp.GetRequiredService<IHospitalityScopeAccessor>()));
     services.AddScoped<IHospitalityViewerScope, HospitalityViewerScopeResolver>();
     services.AddScoped<ReservacionesIListaReservacionesService, ReservacionesListaReservacionesService>();
     services.AddScoped<IReservacionExperiencesService, ReservacionExperiencesService>();
     services.AddScoped<IReservationCfdiService, ReservationCfdiService>();
     services.AddScoped<IOutlookRoomCalendarSyncRepository, OutlookRoomCalendarSyncRepository>();
-    services.AddHttpClient<IBonhomiaRoomCalendarSyncService, BonhomiaRoomCalendarSyncService>();
+    services.AddHttpClient<IHospitalityRoomCalendarSyncService, HospitalityRoomCalendarSyncService>();
     services.AddScoped<IReservacionPdfService, ReservacionPdfService>();
-    services.AddScoped<IArrendadorEstadoCuentaPdfService, ArrendadorEstadoCuentaPdfService>();
-    services.AddScoped<ISaludEmpresaPdfService, SaludEmpresaPdfService>();
+    services.AddScoped<ICompanyDocumentPresentation, CompanyDocumentPresentation>();
+    services.AddScoped<IArrendadorEstadoCuentaPdfService>(sp => new ArrendadorEstadoCuentaPdfService(
+      sp.GetRequiredService<ICompanyDocumentPresentation>()));
+    services.AddScoped<ISaludEmpresaPdfService>(sp => new SaludEmpresaPdfService(
+      sp.GetRequiredService<ICompanyDocumentPresentation>()));
     services.AddScoped<ISaludEmpresaExcelService, SaludEmpresaExcelService>();
     services.AddScoped<IReservacionPdfDocumentFactory, ReservacionPdfDocumentFactory>();
 

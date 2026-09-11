@@ -8,10 +8,8 @@ using OrionERP.Application.Features.Restaurante;
 namespace OrionERP.Infrastructure.Features.Restaurante;
 
 /// <summary>
-/// Calcado de HospitalityAdministrationScopeAccessor, con ModuleCode = RESTAURANT.
-/// La sede legada se traduce por <c>restaurante.Site.SiteCode = orion.Site.SiteKey</c>,
-/// que es el vínculo que estableció la migración de plataforma; no se infiere por
-/// nombre ni por semejanza.
+/// Resolves the explicit relationship between the platform site and the
+/// module-local Restaurant site. Textual site codes are never authority.
 /// </summary>
 public sealed class RestaurantScopeAccessor : IRestaurantScopeAccessor
 {
@@ -25,7 +23,8 @@ public sealed class RestaurantScopeAccessor : IRestaurantScopeAccessor
     JOIN orion.Module m ON m.ModuleCode = cm.ModuleCode AND m.IsActive = 1
     JOIN orion.SiteCapability sc
       ON sc.CompanyId = c.CompanyId AND sc.SiteId = s.SiteId AND sc.ModuleCode = cm.ModuleCode
-    JOIN restaurante.Site legacy ON legacy.Rfc = c.Rfc AND legacy.SiteCode = s.SiteKey
+    JOIN restaurante.Site legacy
+      ON legacy.OrionCompanyId = c.CompanyId AND legacy.OrionSiteId = s.SiteId
     WHERE c.Rfc = @Rfc AND c.IsActive = 1 AND s.IsActive = 1 AND sc.IsEnabled = 1
       AND cm.[Status] = 'Enabled'
       AND (cm.EffectiveFromUtc IS NULL OR cm.EffectiveFromUtc <= SYSUTCDATETIME())
@@ -77,7 +76,7 @@ public sealed class RestaurantScopeAccessor : IRestaurantScopeAccessor
       JOIN orion.SiteCapability sc WITH (HOLDLOCK)
         ON sc.CompanyId = c.CompanyId AND sc.SiteId = s.SiteId AND sc.ModuleCode = cm.ModuleCode
       JOIN restaurante.Site legacy WITH (HOLDLOCK)
-        ON legacy.Rfc = c.Rfc AND legacy.SiteCode = s.SiteKey
+        ON legacy.OrionCompanyId = c.CompanyId AND legacy.OrionSiteId = s.SiteId
       WHERE c.CompanyId = @ScopeCompanyId AND s.SiteId = @ScopePlatformSiteId
         AND legacy.Id = @ScopeLegacySiteId AND c.Rfc = @ScopeCompanyRfc
         AND c.IsActive = 1 AND s.IsActive = 1 AND sc.IsEnabled = 1

@@ -12,6 +12,7 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
   private string? _displayName;
   private int? _employeeId;
   private long? _companyId;
+  private long? _claimedCompanyId;
 
   public CurrentCompanyContext(ICompanyIdentityResolver identityResolver)
     => _identityResolver = identityResolver ?? throw new ArgumentNullException(nameof(identityResolver));
@@ -43,6 +44,11 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
     var nextEmployeeId = int.TryParse(user.FindFirst(CompanyClaimTypes.EmployeeId)?.Value, out var parsedEmployeeId)
       ? parsedEmployeeId
       : (int?)null;
+    var companyIdClaims = user.FindAll(CompanyClaimTypes.CompanyId)
+      .Select(claim => long.TryParse(claim.Value, out var value) && value > 0 ? value : (long?)null)
+      .Where(value => value.HasValue)
+      .ToArray();
+    var claimedCompanyId = companyIdClaims.Length == 1 ? companyIdClaims[0] : null;
 
     lock (_gate)
     {
@@ -52,6 +58,7 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
       _currentRfc = nextRfc;
       _displayName = nextDisplayName;
       _employeeId = nextEmployeeId;
+      _claimedCompanyId = claimedCompanyId;
     }
   }
 
@@ -75,6 +82,8 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
         "La empresa de la sesión no está dada de alta en la plataforma o está inactiva.");
     lock (_gate)
     {
+      if (_claimedCompanyId.HasValue && _claimedCompanyId.Value != resolved)
+        throw new UnauthorizedAccessException("CompanyId no coincide con la empresa heredada de la sesión.");
       // Otro hilo pudo resolverla mientras tanto; la sesión tiene una sola empresa.
       _companyId ??= resolved;
       return _companyId.Value;
@@ -95,6 +104,7 @@ public sealed class CurrentCompanyContext : ICurrentCompanyContext
       _displayName = null;
       _employeeId = null;
       _companyId = null;
+      _claimedCompanyId = null;
     }
   }
 

@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Data;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -43,7 +44,7 @@ public sealed class OrionSqlSessionFactory : IOrionSqlSessionFactory
     }
   }
 
-  public static Task InitializeAsync(
+  public static async Task InitializeAsync(
     SqlConnection connection,
     PlatformExecutionScope scope,
     CancellationToken ct = default)
@@ -52,7 +53,15 @@ public sealed class OrionSqlSessionFactory : IOrionSqlSessionFactory
     ArgumentNullException.ThrowIfNull(scope);
     scope.EnsureValid();
 
-    return connection.ExecuteAsync(new CommandDefinition("""
+    // Dapper opens and closes a connection automatically when it receives a
+    // closed connection. SESSION_CONTEXT belongs to the physical SQL session,
+    // so allowing that behavior here can return the initialized connection to
+    // the pool before the caller's scoped command runs. Keep this exact
+    // connection open until its caller disposes it.
+    if (connection.State != ConnectionState.Open)
+      await connection.OpenAsync(ct);
+
+    await connection.ExecuteAsync(new CommandDefinition("""
       EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=NULL, @read_only=0;
       EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=NULL, @read_only=0;
       EXEC sys.sp_set_session_context @key=N'OrionERP.SiteId', @value=NULL, @read_only=0;

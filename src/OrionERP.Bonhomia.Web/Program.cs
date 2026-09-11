@@ -246,11 +246,13 @@ app.MapGet("/readyz", async (
   IPublicWebsiteInstanceContext website,
   IHospitalityPublicDataReader hospitalityData,
   IHospitalityPublicBookingService bookingService,
+  ILoggerFactory loggerFactory,
   CancellationToken ct) =>
 {
+  PublicSiteBinding? binding = null;
   try
   {
-    await website.ResolveRequiredAsync(ct);
+    binding = await website.ResolveRequiredAsync(ct);
     await hospitalityData.ValidateSchemaAsync(ct);
     var today = DateOnly.FromDateTime(DateTime.UtcNow);
     var availability = await bookingService.GetAvailabilityAsync(today, today.AddDays(1), ct);
@@ -259,8 +261,16 @@ app.MapGet("/readyz", async (
     await hospitalityData.GetExtraOptionsAsync(ct);
     return Results.Text("OK", "text/plain");
   }
-  catch
+  catch (Exception exception)
   {
+    loggerFactory
+      .CreateLogger("OrionERP.Hospitality.Readiness")
+      .LogError(
+        exception,
+        "Hospitality public-site readiness verification failed for CompanyId {CompanyId}, SiteId {SiteId}, PublicSiteId {PublicSiteId}.",
+        binding?.CompanyId,
+        binding?.SiteId,
+        binding?.PublicSiteId);
     return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
   }
 });

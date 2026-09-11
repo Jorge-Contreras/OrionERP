@@ -30,6 +30,18 @@ public sealed class HospitalityAdministrationScopeTests
   }
 
   [Fact]
+  public void SharedSessionInitializerOpensTheConnectionBeforeInstallingSessionContext()
+  {
+    var source = RepoFile.Read("src/OrionERP.Infrastructure/Features/Platform/OrionSqlSessionFactory.cs");
+    var openConnection = source.IndexOf("await connection.OpenAsync(ct)", StringComparison.Ordinal);
+    var installContext = source.IndexOf("await connection.ExecuteAsync", StringComparison.Ordinal);
+
+    Assert.True(openConnection >= 0);
+    Assert.True(installContext > openConnection);
+    Assert.Contains("connection.State != ConnectionState.Open", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public async Task MissingAuthenticatedCompanyFailsBeforeSql()
   {
     var accessor = new HospitalityAdministrationScopeAccessor(Configuration(), new NoCompany(), new HospitalitySiteSelection());

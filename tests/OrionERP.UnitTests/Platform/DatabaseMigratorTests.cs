@@ -555,6 +555,13 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("SELECT @ProfileVersion=MAX(ProfileVersion)", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
+        case "20260911_public_identity_readiness_permissions":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("PublicIdentityCompatibilityState", sql, StringComparison.Ordinal);
+          Assert.Contains("ProfileVersion=3", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
         case "20260911_public_rls_principal_binding":
           Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);

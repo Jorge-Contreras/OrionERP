@@ -10,6 +10,24 @@ public sealed class PlatformExecutionScopeSqlTests
   private static bool Enabled => Environment.GetEnvironmentVariable("ORION_RUN_SQL_INTEGRATION") == "1";
 
   [Fact, Trait("Category", "SqlIntegration")]
+  public async Task StaticSessionInitializer_OpensClosedConnectionAndKeepsScopeOnThatConnection()
+  {
+    if (!Enabled) return;
+    var connectionString = SandboxConnectionString("PlatformClosedInitializer-" + Guid.NewGuid().ToString("N"));
+    var (hospitality, _) = await LoadFixtureScopesAsync(connectionString);
+    await using var connection = new SqlConnection(connectionString);
+
+    Assert.Equal(System.Data.ConnectionState.Closed, connection.State);
+    await OrionSqlSessionFactory.InitializeAsync(connection, hospitality);
+
+    Assert.Equal(System.Data.ConnectionState.Open, connection.State);
+    Assert.Equal(hospitality.CompanyId, await ScalarAsync<long>(connection,
+      "SELECT TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.CompanyId'))"));
+    Assert.Equal(hospitality.PublicSiteId, await ScalarAsync<long>(connection,
+      "SELECT TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.PublicSiteId'))"));
+  }
+
+  [Fact, Trait("Category", "SqlIntegration")]
   public async Task SessionFactory_AlternatesPooledPublicScopesWithoutContamination()
   {
     if (!Enabled) return;

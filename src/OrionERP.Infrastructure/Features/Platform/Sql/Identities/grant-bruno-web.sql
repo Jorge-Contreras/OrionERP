@@ -57,7 +57,7 @@ DECLARE @Permisos TABLE (Objeto nvarchar(300) NOT NULL, Accion varchar(20) NOT N
 INSERT @Permisos (Objeto, Accion) VALUES
   (N'orion.Company','SELECT'), (N'orion.PublicSite','SELECT'), (N'orion.Site','SELECT'),
   (N'orion.CompanyModule','SELECT'), (N'orion.Module','SELECT'), (N'orion.SiteCapability','SELECT'),
-  (N'orion.SchemaMigration','SELECT');
+  (N'orion.SchemaMigration','SELECT'), (N'orion.PublicIdentityCompatibilityState','SELECT');
 
 /* Catalogo publicado: lectura. */
 INSERT @Permisos (Objeto, Accion) VALUES

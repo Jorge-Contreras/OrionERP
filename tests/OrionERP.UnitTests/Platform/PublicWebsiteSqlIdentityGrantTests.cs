@@ -25,6 +25,15 @@ public sealed class PublicWebsiteSqlIdentityGrantTests
     Assert.DoesNotContain("GRANT VIEW ANY DEFINITION", BonhomiaSql, StringComparison.OrdinalIgnoreCase);
   }
 
+  [Fact]
+  public void Restaurant_ReadinessCanReadOnlyTheIdentityBridgeStateItValidates()
+  {
+    Assert.Contains(
+      "(N'orion.PublicIdentityCompatibilityState','SELECT')",
+      BrunoSql,
+      StringComparison.Ordinal);
+  }
+
   [Theory]
   [MemberData(nameof(GrantScripts))]
   public void PublicGrantScripts_DoNotCreateLoginsOrAssignBroadDatabaseRoles(string sql)

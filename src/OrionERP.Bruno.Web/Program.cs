@@ -340,6 +340,7 @@ app.MapGet("/readyz", async (
   IPublicIdentityReadiness identityReadiness,
   IRestaurantPublicCatalogService publicCatalog,
   IOptions<BrunoTurnstileOptions> turnstile,
+  ILoggerFactory loggerFactory,
   CancellationToken ct) =>
 {
   try
@@ -353,8 +354,11 @@ app.MapGet("/readyz", async (
       ? Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable)
       : Results.Text("OK", "text/plain");
   }
-  catch
+  catch (Exception exception)
   {
+    loggerFactory
+      .CreateLogger("OrionERP.Restaurant.Readiness")
+      .LogError(exception, "Restaurant public-site readiness verification failed.");
     return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
   }
 });

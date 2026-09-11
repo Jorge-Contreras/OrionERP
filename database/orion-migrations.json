@@ -351,6 +351,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260911_public_identity_readiness_permissions",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_identity_readiness_permissions.sql",
+      "description": "Perfil público v3 con lectura mínima del estado del bridge requerida por readiness Restaurant.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

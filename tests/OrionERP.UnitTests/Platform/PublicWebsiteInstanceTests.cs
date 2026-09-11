@@ -295,7 +295,7 @@ public sealed class PublicWebsiteInstanceTests
   }
 
   [Fact]
-  public void HospitalityDevelopmentEnvironmentOverridesUserSecrets()
+  public void HospitalityDevelopmentUserSecretsOverrideProductionEnvironment()
   {
     var program = RepoFile.Read("src/OrionERP.Bonhomia.Web/Program.cs");
     var userSecrets = program.IndexOf("AddUserSecrets<Program>", StringComparison.Ordinal);
@@ -303,8 +303,9 @@ public sealed class PublicWebsiteInstanceTests
     var commandLine = program.IndexOf("AddCommandLine(args)", StringComparison.Ordinal);
 
     Assert.True(userSecrets >= 0);
-    Assert.True(environment > userSecrets);
-    Assert.True(commandLine > environment);
+    Assert.True(environment >= 0);
+    Assert.True(userSecrets > environment);
+    Assert.True(commandLine > userSecrets);
   }
 
   [Fact]

@@ -370,8 +370,8 @@ function Assert-InstanceSettings {
 
     $moduleCode = [string]$Settings.PublicWebsite.ModuleCode
     $rootFields = switch -CaseSensitive ($moduleCode) {
-        "HOSPITALITY" { @("PublicWebsite", "PublicWebsitePresentation", "HospitalityWebsite", "BonhomiaGraphMail") }
-        "RESTAURANT" { @("PublicWebsite", "PublicWebsitePresentation", "BrunoGraphMail") }
+        "HOSPITALITY" { @("PublicWebsite", "PublicWebsitePresentation", "HospitalityWebsite", "PublicIntegrations:Mail") }
+        "RESTAURANT" { @("PublicWebsite", "PublicWebsitePresentation", "PublicIntegrations:Mail") }
         default { throw "The instance settings profile has an unsupported PublicWebsite.ModuleCode '$moduleCode'." }
     }
     Assert-ObjectSchema -Value $Settings -Path "Instance settings" -Allowed $rootFields -Required $rootFields
@@ -435,19 +435,13 @@ function Assert-InstanceSettings {
                 "RoomCode", "Aliases", "Tag", "Ideal", "Capacity", "Bedrooms", "Bathrooms",
                 "PrimaryAssetKey", "GalleryAssetKeys"
             )
-        Assert-ObjectSchema `
-            -Value $Settings.BonhomiaGraphMail `
-            -Path "BonhomiaGraphMail" `
-            -Allowed @("SenderAddress") `
-            -Required @("SenderAddress")
     }
-    else {
-        Assert-ObjectSchema `
-            -Value $Settings.BrunoGraphMail `
-            -Path "BrunoGraphMail" `
-            -Allowed @("SenderAddress") `
-            -Required @("SenderAddress")
-    }
+
+    Assert-ObjectSchema `
+        -Value $Settings.'PublicIntegrations:Mail' `
+        -Path "PublicIntegrations:Mail" `
+        -Allowed @("SenderAddress") `
+        -Required @("SenderAddress")
 }
 
 function Read-InstanceSettings {
@@ -499,7 +493,7 @@ function Test-InstanceProfileArtifact {
     # mask the staged appsettings.Instance.json during preflight. Snapshot only
     # relevant process variables, isolate the child validation, then restore
     # every value without logging it (some Graph overrides may be secrets).
-    $overridePattern = '^(?:(?:ASPNETCORE_|DOTNET_)?(?:PublicWebsite|PublicWebsitePresentation|HospitalityWebsite|BrunoGraphMail|BonhomiaGraphMail)(?:__.*)?|(?:ASPNETCORE_|DOTNET_)?(?:Urls|HTTP_PORTS|HTTPS_PORTS|Kestrel)(?:__.*)?)$'
+    $overridePattern = '^(?:(?:ASPNETCORE_|DOTNET_)?(?:PublicWebsite|PublicWebsitePresentation|HospitalityWebsite|HospitalityCheckout|BonhomiaCheckout|PublicIntegrations|BrunoGraphMail|BonhomiaGraphMail)(?:__.*)?|(?:ASPNETCORE_|DOTNET_)?(?:Urls|HTTP_PORTS|HTTPS_PORTS|Kestrel)(?:__.*)?)$'
     $regexOptions = [Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
         [Text.RegularExpressions.RegexOptions]::CultureInvariant
     $processEnvironment = [Environment]::GetEnvironmentVariables(

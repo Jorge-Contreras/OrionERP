@@ -22,7 +22,7 @@
             </button>
             @if (IsDraftMode)
             {
-                <button type="button" class="btn btn-outline-success" @onclick="AbrirAutoPoModal" disabled="@IsMutating">
+                <button type="button" class="btn btn-outline-success" @onclick="AbrirAutoPoModalAsync" disabled="@IsMutating">
                     @(IsCreatingAutoPo ? "Preparando..." : "Sugerir compra")
                 </button>
                 <button type="button" class="btn btn-primary" @onclick="GuardarBorradorAsync" disabled="@IsMutating">
@@ -878,10 +878,42 @@
 
                     <div class="mb-3">
                         <label class="form-label">Proveedor</label>
-                        <LookupSearchBox Options="VendorOptions"
+                        <LookupSearchBox Options="AutoPoVendorOptions"
                                          @bind-Value="AutoPoRequest.BusinessPartnerId"
                                          Placeholder="Busca un proveedor"
-                                         Disabled="@IsCreatingAutoPo" />
+                                         Disabled="@(IsCreatingAutoPo || IsLoadingVendorsBelowMinimum)" />
+
+                        <div class="form-check mt-2">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="compras-auto-po-below-minimum"
+                                   checked="@AutoPoOnlyVendorsBelowMinimum"
+                                   @onchange="(e) => AlternarProveedoresBajoMinimoAsync(e.Value is bool selected && selected)"
+                                   disabled="@(IsCreatingAutoPo || IsLoadingVendorsBelowMinimum)" />
+                            <label class="form-check-label" for="compras-auto-po-below-minimum">
+                                Muestra solo los Proveedores abajo del Mínimo
+                            </label>
+                        </div>
+
+                        @if (IsLoadingVendorsBelowMinimum)
+                        {
+                            <div class="form-text">Revisando existencias contra sus mínimos...</div>
+                        }
+                        else if (AutoPoOnlyVendorsBelowMinimum)
+                        {
+                            @if (AutoPoVendorOptions.Count == 0)
+                            {
+                                <div class="alert alert-light border mt-2 mb-0">
+                                    Ningún proveedor tiene material en su mínimo. Desmarca la casilla para ver el catálogo completo.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="form-text">
+                                    @AutoPoVendorOptions.Count de @VendorOptions.Count proveedores surten material que ya llegó a su mínimo.
+                                </div>
+                            }
+                        }
                     </div>
 
                     <div class="compras-auto-po-room-panel">

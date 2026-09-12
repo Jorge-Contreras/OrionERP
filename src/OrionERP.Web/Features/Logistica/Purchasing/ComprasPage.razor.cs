@@ -57,7 +57,14 @@ public partial class ComprasPage : ComponentBase
   protected bool IsCancelling { get; set; }
   protected bool IsPrinting { get; set; }
   protected bool IsCreatingAutoPo { get; set; }
+  protected bool IsLoadingVendorsBelowMinimum { get; set; }
   protected bool ShowAutoPoModal { get; set; }
+
+  /// <summary>Acota el proveedor del Auto PO a los que ya tienen material en su minimo.</summary>
+  protected bool AutoPoOnlyVendorsBelowMinimum { get; set; }
+
+  /// <summary>Null mientras no se consulta; vacia significa que nadie esta bajo minimo.</summary>
+  protected IReadOnlyList<LookupOptionDto>? VendorsBelowMinimum { get; set; }
   protected bool ShowOrderBrowser { get; set; }
 
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
@@ -161,6 +168,12 @@ public partial class ComprasPage : ComponentBase
       _ => "Sigue el paso marcado para continuar."
     };
   protected IReadOnlyList<LookupOptionDto> VendorOptions => Catalog.Vendors;
+
+  /// <summary>El catalogo completo sigue disponible mientras el usuario no pida el recorte.</summary>
+  protected IReadOnlyList<LookupOptionDto> AutoPoVendorOptions
+    => AutoPoOnlyVendorsBelowMinimum
+      ? VendorsBelowMinimum ?? Array.Empty<LookupOptionDto>()
+      : VendorOptions;
   protected IReadOnlyList<LookupOptionDto> LocationOptions => Catalog.Locations;
   protected IReadOnlyList<LookupOptionDto> AutoPoRoomOptions => Catalog.Rooms;
   protected IReadOnlyList<string> StatusOptions => Catalog.Statuses;
@@ -493,10 +506,56 @@ public partial class ComprasPage : ComponentBase
     PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(line);
   }
 
-  protected void AbrirAutoPoModal()
+  protected async Task AbrirAutoPoModalAsync()
   {
     ResetAutoPoRequest(GetPreferredVendorId());
     ShowAutoPoModal = true;
+
+    // Las existencias cambian entre aperturas: el recorte se vuelve a consultar, nunca se reusa.
+    if (AutoPoOnlyVendorsBelowMinimum)
+    {
+      await CargarProveedoresBajoMinimoAsync();
+    }
+  }
+
+  protected async Task AlternarProveedoresBajoMinimoAsync(bool onlyBelowMinimum)
+  {
+    AutoPoOnlyVendorsBelowMinimum = onlyBelowMinimum;
+    if (onlyBelowMinimum)
+    {
+      await CargarProveedoresBajoMinimoAsync();
+      return;
+    }
+
+    VendorsBelowMinimum = null;
+  }
+
+  /// <summary>
+  /// Trae el recorte y suelta al proveedor elegido si se quedo fuera, para que el modal nunca
+  /// genere un Auto PO de un proveedor que la lista visible ya no ofrece.
+  /// </summary>
+  private async Task CargarProveedoresBajoMinimoAsync()
+  {
+    IsLoadingVendorsBelowMinimum = true;
+    try
+    {
+      VendorsBelowMinimum = await PurchaseOrderService.GetVendorsBelowMinimumAsync();
+      if (AutoPoRequest.BusinessPartnerId > 0
+        && !VendorsBelowMinimum.Any(vendor => vendor.Id == AutoPoRequest.BusinessPartnerId))
+      {
+        AutoPoRequest.BusinessPartnerId = 0;
+      }
+    }
+    catch (Exception ex)
+    {
+      AutoPoOnlyVendorsBelowMinimum = false;
+      VendorsBelowMinimum = null;
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "filtrar los proveedores con material bajo el mínimo"));
+    }
+    finally
+    {
+      IsLoadingVendorsBelowMinimum = false;
+    }
   }
 
   protected void CerrarAutoPoModal()

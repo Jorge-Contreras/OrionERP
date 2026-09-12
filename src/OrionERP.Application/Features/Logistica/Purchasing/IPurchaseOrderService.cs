@@ -7,6 +7,13 @@ public interface IPurchaseOrderService
   Task<IReadOnlyList<PurchaseOrderListItemDto>> GetPurchaseOrdersAsync(PurchaseOrderFilter filter, CancellationToken ct = default);
   Task<PurchaseOrderDetailDto?> GetPurchaseOrderAsync(int purchaseOrderId, CancellationToken ct = default);
   Task<PurchaseOrderCatalogDto> GetCatalogAsync(CancellationToken ct = default);
+
+  /// <summary>
+  /// Proveedores que surten al menos un material cuya existencia proyectada ya cayo a su
+  /// minimo. Usa el mismo proyectado que Auto PO (existencia - reservado + pendiente por
+  /// recibir), asi que un material ya cubierto por una orden abierta no reporta al proveedor.
+  /// </summary>
+  Task<IReadOnlyList<LookupOptionDto>> GetVendorsBelowMinimumAsync(CancellationToken ct = default);
   Task<LogisticsCommandResult> CreateAutoDraftAsync(AutoPurchaseOrderCreateRequest request, string? savedBy, CancellationToken ct = default);
   Task<LogisticsCommandResult> SaveDraftAsync(PurchaseOrderUpsertRequest request, string? savedBy, CancellationToken ct = default);
   Task<LogisticsCommandResult> IssueAsync(int purchaseOrderId, string? issuedBy, CancellationToken ct = default);

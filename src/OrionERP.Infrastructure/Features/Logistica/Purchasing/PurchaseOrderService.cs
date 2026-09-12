@@ -359,6 +359,74 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     };
   }
 
+  /// <summary>
+  /// Acota el catalogo de proveedores a los que hay que comprarle hoy. El proyectado replica el
+  /// de <see cref="LoadAutoReplenishmentRowsAsync"/> para que la lista no ofrezca proveedores
+  /// cuyo faltante ya viene en camino en otra orden abierta.
+  /// </summary>
+  public async Task<IReadOnlyList<LookupOptionDto>> GetVendorsBelowMinimumAsync(CancellationToken ct = default)
+  {
+    var sql = $"""
+      WITH OpenPurchaseAllocations AS (
+          SELECT
+              line.MaterialId,
+              allocation.LocationId,
+              CAST(ISNULL(SUM(allocation.PlannedQuantity - allocation.ReceivedQuantity), 0) AS decimal(18,4)) AS RemainingOpenQuantity
+          FROM logistica.PurchaseOrder po
+          JOIN logistica.PurchaseOrderLine line
+            ON line.PurchaseOrderId = po.Id
+          JOIN logistica.PurchaseOrderLineAllocation allocation
+            ON allocation.PurchaseOrderLineId = line.Id
+          WHERE {OrderVisibilitySql}
+            AND po.[Status] IN @ProjectedStatuses
+          GROUP BY line.MaterialId, allocation.LocationId
+      )
+      SELECT
+          bp.Id,
+          bp.PartnerName AS Name,
+          bp.Rfc AS Code
+      FROM dbo.BusinessPartner bp
+      WHERE bp.IsActive = 1
+        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope vendorScope
+                    WHERE vendorScope.BusinessPartnerId = bp.Id AND vendorScope.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')))
+        AND (
+            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM logistica.StockBalance sb
+            JOIN logistica.Material m
+              ON m.Id = sb.MaterialId
+            JOIN logistica.MaterialVendor mv
+              ON mv.Rfc = m.Rfc AND mv.MaterialId = m.Id AND mv.BusinessPartnerId = bp.Id AND mv.IsActive = 1
+            JOIN logistica.Location location
+              ON location.Id = sb.LocationId
+            LEFT JOIN OpenPurchaseAllocations openAlloc
+              ON openAlloc.MaterialId = sb.MaterialId
+             AND openAlloc.LocationId = sb.LocationId
+            WHERE m.IsActive = 1
+              AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId = location.Id AND visible.Rfc = location.Rfc)
+              AND location.IsActive = 1
+              AND location.IsInventoryEnabled = 1
+              AND ISNULL(sb.IsRemoved, 0) = 0
+              AND sb.MinQuantity IS NOT NULL
+              AND sb.MaxQuantity IS NOT NULL
+              AND sb.Quantity - ISNULL(sb.ReservedQuantity, 0) + ISNULL(openAlloc.RemainingOpenQuantity, 0) <= sb.MinQuantity
+        )
+      ORDER BY bp.PartnerName, bp.Id;
+      """;
+
+    var parameters = new DynamicParameters();
+    parameters.Add("@ProjectedStatuses", PurchaseOrderStatuses.Open);
+
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    var vendors = await conn.QueryAsync<LookupOptionDto>(
+      new CommandDefinition(sql, parameters, cancellationToken: ct));
+
+    return vendors.AsList();
+  }
+
   public async Task<LogisticsCommandResult> CreateAutoDraftAsync(AutoPurchaseOrderCreateRequest request, string? savedBy, CancellationToken ct = default)
   {
     if (request is null)

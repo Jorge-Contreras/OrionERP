@@ -1735,6 +1735,56 @@ public class PurchaseOrderServiceTests
     return table;
   }
 
+  [Fact]
+  public async Task GetVendorsBelowMinimumAsync_KeepsOnlyVendorsWhoseProjectedStockReachedTheMinimum()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+        commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal)
+          ? CreateLookupTable((21, "Abarrotes del Centro", "AAA010101AAA"))
+          : new DataTable(),
+      ScalarResultFactory = (_, _) => null,
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var vendors = await service.GetVendorsBelowMinimumAsync();
+
+    var vendor = Assert.Single(vendors);
+    Assert.Equal(21, vendor.Id);
+    Assert.Equal("Abarrotes del Centro", vendor.Name);
+
+    var query = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal));
+
+    // El recorte se apoya en el vinculo material-proveedor activo y descuenta lo que ya viene en
+    // camino, igual que Auto PO: de otro modo ofreceria proveedores sin nada que reordenar.
+    Assert.Contains("logistica.MaterialVendor mv", query.CommandText, StringComparison.Ordinal);
+    Assert.Contains("mv.IsActive = 1", query.CommandText, StringComparison.Ordinal);
+    Assert.Contains(
+      "sb.Quantity - ISNULL(sb.ReservedQuantity, 0) + ISNULL(openAlloc.RemainingOpenQuantity, 0) <= sb.MinQuantity",
+      query.CommandText,
+      StringComparison.Ordinal);
+    Assert.Contains("#OrionVisibleLocations", query.CommandText, StringComparison.Ordinal);
+  }
+
+  private static DataTable CreateLookupTable(params (int Id, string Name, string Code)[] rows)
+  {
+    var table = new DataTable();
+    table.Columns.Add("Id", typeof(int));
+    table.Columns.Add("Name", typeof(string));
+    table.Columns.Add("Code", typeof(string));
+    foreach (var row in rows)
+    {
+      table.Rows.Add(row.Id, row.Name, row.Code);
+    }
+
+    return table;
+  }
+
   // Sin suites seleccionadas el filtro opcional de ROOM no se agrega, y el ORDER BY
   // quedaba pegado al ultimo predicado del WHERE ("...IS NOT NULLORDER BY ...").
   [Fact]

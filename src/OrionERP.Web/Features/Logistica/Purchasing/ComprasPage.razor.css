@@ -1,6 +1,192 @@
-.compras-page .card {
-  border: 1px solid #d9e4e7;
+.compras-page {
+  --compras-ink: var(--orion-color-primary, #0f2d4e);
+  --compras-muted: var(--orion-color-text-muted, #6b7a90);
+  --compras-border: var(--orion-color-border, #d7dde5);
+}
+
+.compras-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.compras-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #e3edf5;
+  color: #1c446f;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Paneles ------------------------------------------------------------------
+   Cada sección se reconoce por su franja y su encabezado de color: el usuario
+   ya no tiene que leer el título para saber si está en el filtro, en la lista
+   o dentro del documento. */
+
+.compras-panel {
+  --panel-accent: #64748b;
+  --panel-tint: #f1f4f8;
+  overflow: hidden;
+  border: 1px solid var(--compras-border);
+  border-top: 3px solid var(--panel-accent);
   border-radius: 1rem;
+  background: var(--orion-color-surface, #fff);
+  box-shadow: 0 0.6rem 1.6rem rgba(15, 45, 78, 0.06);
+}
+
+.compras-panel-filters { --panel-accent: #64748b; --panel-tint: #eef2f7; }
+.compras-panel-orders { --panel-accent: #1f8aae; --panel-tint: #e9f4f9; }
+.compras-panel-order { --panel-accent: #0f2d4e; --panel-tint: #ecf0f6; }
+.compras-panel-materials { --panel-accent: #b8791a; --panel-tint: #fdf4e3; }
+.compras-panel-lines { --panel-accent: #16836f; --panel-tint: #e9f5f1; }
+.compras-panel-allocations { --panel-accent: #5b6fba; --panel-tint: #eef1fa; }
+.compras-panel-receipt { --panel-accent: #2f9e44; --panel-tint: #e9f7ec; }
+.compras-panel-history { --panel-accent: #6b7a90; --panel-tint: #f1f4f7; }
+
+.compras-panel-receipt {
+  box-shadow: 0 0.8rem 2rem rgba(47, 158, 68, 0.14);
+}
+
+.compras-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  padding: 0.8rem 1.05rem;
+  border-bottom: 1px solid var(--compras-border);
+  background: var(--panel-tint);
+}
+
+.compras-panel-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.compras-panel-title > div {
+  min-width: 0;
+}
+
+.compras-panel-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.7rem;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(15, 45, 78, 0.08);
+  color: var(--panel-accent);
+  font-size: 1rem;
+}
+
+.compras-panel-head h2 {
+  margin: 0;
+  color: var(--compras-ink);
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.compras-panel-head p {
+  margin: 0.15rem 0 0;
+  color: var(--compras-muted);
+  font-size: 0.78rem;
+}
+
+.compras-panel-count {
+  display: inline-grid;
+  flex: 0 0 auto;
+  min-width: 2rem;
+  padding: 0.2rem 0.6rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(15, 45, 78, 0.1);
+  color: var(--panel-accent);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.compras-panel-link {
+  padding: 0.2rem 0.55rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--panel-accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.compras-panel-link:hover:not(:disabled),
+.compras-panel-link:focus-visible {
+  background: rgba(15, 45, 78, 0.07);
+}
+
+.compras-panel-link:disabled {
+  opacity: 0.5;
+}
+
+.compras-panel-body {
+  padding: 1.05rem;
+}
+
+/* Ocultar la lista le devuelve el ancho completo al documento abierto. */
+.compras-order-browser:not(.is-open) {
+  display: none;
+}
+
+.compras-order-row {
+  cursor: pointer;
+}
+
+.compras-orders-open-col {
+  width: 2.25rem;
+}
+
+.compras-order-row .compras-orders-open-col {
+  color: #9fb0bd;
+}
+
+.compras-order-row:hover .compras-orders-open-col {
+  color: var(--orion-color-accent, #1f8aae);
+}
+
+.compras-empty-cell {
+  padding: 2rem 1rem !important;
+}
+
+.compras-empty {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: center;
+  color: var(--compras-muted);
+  text-align: center;
+}
+
+.compras-empty i {
+  color: #a9b8c4;
+  font-size: 1.6rem;
+}
+
+.compras-empty strong {
+  color: var(--compras-ink);
+}
+
+.compras-empty .btn {
+  margin-top: 0.5rem;
 }
 
 .compras-action-bar {
@@ -241,16 +427,11 @@
 .compras-section-kicker {
   display: block;
   margin-bottom: 0.2rem;
-  color: #137261;
+  color: var(--panel-accent, #137261);
   font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.compras-receipt-section {
-  border-color: #9bcfc2 !important;
-  box-shadow: 0 0.8rem 2rem rgba(13, 104, 88, 0.1) !important;
 }
 
 .compras-receive-grid {
@@ -560,10 +741,6 @@
     height: 1.75rem;
   }
 
-  .compras-order-browser:not(.is-open) {
-    display: none;
-  }
-
   .compras-summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.4rem;
@@ -684,6 +861,14 @@
   .compras-orders-table td:nth-child(3) {
     grid-column: 2;
     grid-row: 1 / span 2;
+  }
+
+  .compras-orders-table td.compras-orders-open-col {
+    display: none;
+  }
+
+  .compras-page-head {
+    align-items: flex-start;
   }
 
   .compras-lines-table td:nth-child(n+3),

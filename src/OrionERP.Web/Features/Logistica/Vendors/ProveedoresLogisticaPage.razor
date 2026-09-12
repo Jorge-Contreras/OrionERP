@@ -194,11 +194,21 @@
                             </div>
                         </div>
 
-                        <div class="d-flex gap-2 mt-4">
+                        <div class="d-flex flex-wrap gap-2 mt-4">
                             <button type="submit" class="btn btn-primary" disabled="@IsSaving">
                                 @(IsSaving ? "Guardando..." : "Guardar socio")
                             </button>
                             <button type="button" class="btn btn-outline-secondary" @onclick="NuevoRegistro" disabled="@IsSaving">Limpiar</button>
+                            @if (Editor.Id.HasValue)
+                            {
+                                <button type="button"
+                                        class="btn btn-outline-danger ms-auto"
+                                        @onclick="AbrirReporteRetiroAsync"
+                                        disabled="@(IsSaving || IsProcessingLifecycle)">
+                                    <i class="bi bi-shield-check" aria-hidden="true"></i>
+                                    Revisar retiro
+                                </button>
+                            }
                         </div>
                     </EditForm>
                 </div>
@@ -206,3 +216,218 @@
         </div>
     </div>
 </div>
+
+@if (ShowLifecycleDialog)
+{
+    <div class="modal fade show d-block" role="dialog" aria-modal="true" aria-labelledby="vendor-lifecycle-title" style="background-color: rgba(0,0,0,.5);">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h2 id="vendor-lifecycle-title" class="modal-title h5">Revisión de retiro seguro</h2>
+                        <p class="text-muted mb-0">
+                            @if (LifecycleAssessment is { Exists: true })
+                            {
+                                <span><strong>@LifecycleAssessment.DisplayName</strong> · @(string.IsNullOrWhiteSpace(LifecycleAssessment.Rfc) ? "Sin RFC" : LifecycleAssessment.Rfc)</span>
+                            }
+                            else
+                            {
+                                <span>Validando al socio seleccionado y todas sus relaciones.</span>
+                            }
+                        </p>
+                    </div>
+                    <button type="button" class="btn-close" aria-label="Cerrar" @onclick="CerrarReporteRetiro" disabled="@IsProcessingLifecycle"></button>
+                </div>
+
+                <div class="modal-body" aria-live="polite">
+                    @if (IsLoadingLifecycleAssessment)
+                    {
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="spinner-border" aria-hidden="true"></span>
+                            <div>
+                                <strong class="d-block">Revisando dependencias</strong>
+                                <span class="text-muted">Materiales, compras, cuentas por pagar, hospedaje y catálogos heredados.</span>
+                            </div>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(LifecycleAssessmentError))
+                    {
+                        <div class="alert alert-danger">
+                            <strong class="d-block">No se pudo completar la revisión</strong>
+                            <p class="mb-2">@LifecycleAssessmentError</p>
+                            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RefreshLifecycleAssessmentAsync">Intentar de nuevo</button>
+                        </div>
+                    }
+                    else if (LifecycleAssessment is { Exists: false })
+                    {
+                        <div class="alert alert-warning mb-0">
+                            <strong class="d-block">El socio ya no está disponible</strong>
+                            <span>Pudo ser eliminado por otro usuario o pertenecer a otra empresa. Actualiza la búsqueda antes de continuar.</span>
+                        </div>
+                    }
+                    else if (LifecycleAssessment is { Exists: true } assessment)
+                    {
+                        @if (assessment.OperationalBlockers.Count > 0)
+                        {
+                            <div class="alert alert-danger">
+                                <strong class="d-block">Retiro bloqueado</strong>
+                                <span>@assessment.OperationalReferenceCount.ToString("N0") vínculo(s) operativo(s) deben resolverse. Termina, retira o reasigna estas relaciones en su módulo y vuelve a revisar. No se desvincula información automáticamente.</span>
+                            </div>
+                        }
+                        else if (!assessment.CanDelete)
+                        {
+                            <div class="alert alert-warning">
+                                <strong class="d-block">Referencias pendientes</strong>
+                                <span>@assessment.TotalReferences.ToString("N0") referencia(s) apuntan al socio. El historial nunca se elimina: si debe conservarse, desmarca <em>Activo</em> en la ficha para sacarlo de los flujos operativos sin borrarlo.</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-success">
+                                <strong class="d-block">Todos los vínculos están libres</strong>
+                                <span>La revisión no encontró materiales, compras, pagos recurrentes, hospedaje ni registros heredados que apunten a @assessment.DisplayName.</span>
+                            </div>
+                        }
+
+                        @foreach (var section in GetDependencySections(assessment))
+                        {
+                            <section class="mb-3">
+                                <h3 class="h6 d-flex align-items-center gap-2 text-@section.ToneClass">
+                                    <i class="bi @section.IconClass" aria-hidden="true"></i>
+                                    @section.Title
+                                </h3>
+                                <p class="text-muted small">@section.Description</p>
+                                @foreach (var dependency in section.Dependencies)
+                                {
+                                    <article class="border rounded p-3 mb-2">
+                                        <header class="d-flex justify-content-between align-items-start gap-2">
+                                            <h4 class="h6 mb-0">@dependency.Title</h4>
+                                            <span class="badge text-bg-@section.ToneClass">@dependency.ReferenceCount.ToString("N0")</span>
+                                        </header>
+                                        <p class="text-muted small mb-2">@dependency.Explanation</p>
+                                        @if (dependency.Examples.Count > 0)
+                                        {
+                                            <ul class="small mb-2">
+                                                @foreach (var example in dependency.Examples)
+                                                {
+                                                    <li>@example</li>
+                                                }
+                                            </ul>
+                                        }
+                                        @if (dependency.ReferenceCount > dependency.Examples.Count)
+                                        {
+                                            <div class="small text-muted mb-2">
+                                                +@((dependency.ReferenceCount - dependency.Examples.Count).ToString("N0")) referencia(s) adicional(es)
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(dependency.ResolutionUrl))
+                                        {
+                                            <a class="small" href="@dependency.ResolutionUrl">
+                                                @(dependency.ResolutionLabel ?? "Revisar relación")
+                                                <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+                                            </a>
+                                        }
+                                    </article>
+                                }
+                            </section>
+                        }
+
+                        @if (assessment.OwnedRecords.Count > 0)
+                        {
+                            <section class="mb-3">
+                                <h3 class="h6 d-flex align-items-center gap-2">
+                                    <i class="bi bi-trash3" aria-hidden="true"></i>
+                                    Se eliminará junto con el socio
+                                </h3>
+                                <p class="text-muted small">
+                                    Datos propios del socio. No lo retienen, pero su borrado también es permanente.
+                                </p>
+                                <ul class="list-group list-group-flush small">
+                                    @foreach (var owned in assessment.OwnedRecords)
+                                    {
+                                        <li class="list-group-item px-0">
+                                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                                <span class="fw-semibold">@owned.Title</span>
+                                                <span class="badge text-bg-light">@owned.ReferenceCount.ToString("N0")</span>
+                                            </div>
+                                            <div class="text-muted">@owned.Explanation</div>
+                                            @if (owned.Examples.Count > 0)
+                                            {
+                                                <div class="text-muted">@string.Join(" · ", owned.Examples)</div>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            </section>
+                        }
+
+                        @if (assessment.CanDelete && IsAdministrator)
+                        {
+                            <div class="border border-danger rounded p-3">
+                                <div class="d-flex align-items-start gap-2 mb-2">
+                                    <i class="bi bi-exclamation-triangle-fill text-danger" aria-hidden="true"></i>
+                                    <div>
+                                        <strong class="d-block">Esta acción es irreversible</strong>
+                                        <span class="text-muted small">La ficha del socio y todo lo listado arriba se eliminarán permanentemente.</span>
+                                    </div>
+                                </div>
+                                @* La confirmación distingue mayúsculas: el tema pone todas las etiquetas en
+                                   altas y mostraría "DELETE", que no es lo que acepta el servicio. *@
+                                <label class="form-label" for="vendor-delete-confirmation" style="text-transform: none;">
+                                    Para confirmar, escribe <code>Delete</code> exactamente como aparece.
+                                </label>
+                                <input id="vendor-delete-confirmation"
+                                       class="form-control form-control-lg"
+                                       autocomplete="off"
+                                       spellcheck="false"
+                                       value="@DeletionConfirmationText"
+                                       @oninput="args => DeletionConfirmationText = args.Value?.ToString() ?? string.Empty"
+                                       disabled="@IsProcessingLifecycle" />
+                                @if (!string.IsNullOrEmpty(DeletionConfirmationText) && !DeletionConfirmationMatches)
+                                {
+                                    <small class="text-danger">La confirmación distingue mayúsculas y minúsculas.</small>
+                                }
+                            </div>
+                        }
+                        else if (!IsAdministrator && assessment.CanDelete)
+                        {
+                            <div class="alert alert-info mb-0">
+                                <strong class="d-block">Se requiere un administrador</strong>
+                                <span>La revisión está disponible para Logística, pero la eliminación permanente está reservada al rol Administrador.</span>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CerrarReporteRetiro" disabled="@IsProcessingLifecycle">Cerrar</button>
+                    @if (!IsLoadingLifecycleAssessment && LifecycleAssessment is { Exists: true })
+                    {
+                        <button type="button" class="btn btn-outline-primary" @onclick="RefreshLifecycleAssessmentAsync" disabled="@IsProcessingLifecycle">
+                            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                            Volver a revisar
+                        </button>
+                    }
+                    @if (LifecycleAssessment is { CanDelete: true } && IsAdministrator)
+                    {
+                        <button type="button"
+                                class="btn btn-danger"
+                                @onclick="EliminarSocioAsync"
+                                disabled="@(!DeletionConfirmationMatches || IsProcessingLifecycle)">
+                            @if (IsProcessingLifecycle)
+                            {
+                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                <span>Eliminando…</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-trash3-fill" aria-hidden="true"></i>
+                                <span>Eliminar permanentemente</span>
+                            }
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}

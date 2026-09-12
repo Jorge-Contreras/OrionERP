@@ -2,13 +2,14 @@ using System.Data;
 using System.Text;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 using OrionERP.Application.Common;
 using OrionERP.Application.Features.Logistica.BusinessPartners;
 using OrionERP.Application.Features.Logistica.Shared;
 
 namespace OrionERP.Infrastructure.Features.Logistica.BusinessPartners;
 
-public sealed class BusinessPartnerService : IBusinessPartnerService
+public sealed partial class BusinessPartnerService : IBusinessPartnerService
 {
   private static readonly string[] DefaultRoles =
   [
@@ -20,10 +21,12 @@ public sealed class BusinessPartnerService : IBusinessPartnerService
   ];
 
   private readonly IDbConnectionFactory _connectionFactory;
+  private readonly ILogger<BusinessPartnerService>? _logger;
 
-  public BusinessPartnerService(IDbConnectionFactory connectionFactory)
+  public BusinessPartnerService(IDbConnectionFactory connectionFactory, ILogger<BusinessPartnerService>? logger = null)
   {
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    _logger = logger;
   }
 
   public async Task<IReadOnlyList<BusinessPartnerListItemDto>> GetPartnersAsync(BusinessPartnerFilter filter, CancellationToken ct = default)

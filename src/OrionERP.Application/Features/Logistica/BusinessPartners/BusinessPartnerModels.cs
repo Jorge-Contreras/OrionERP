@@ -119,3 +119,74 @@ public sealed class BusinessPartnerCatalogDto
 {
   public IReadOnlyList<LookupOptionDto> Roles { get; set; } = Array.Empty<LookupOptionDto>();
 }
+
+public static class VendorDependencyKinds
+{
+  public const string Operational = "Operational";
+  public const string Historical = "Historical";
+  public const string Configuration = "Configuration";
+
+  /// <summary>
+  /// Datos que pertenecen al socio y desaparecen con él. No lo retienen, pero se
+  /// informan porque su borrado también es permanente.
+  /// </summary>
+  public const string Owned = "Owned";
+}
+
+public sealed class VendorDependencyDto
+{
+  public string Code { get; set; } = string.Empty;
+  public string Kind { get; set; } = string.Empty;
+  public string Title { get; set; } = string.Empty;
+  public string Explanation { get; set; } = string.Empty;
+  public long ReferenceCount { get; set; }
+  public IReadOnlyList<string> Examples { get; set; } = Array.Empty<string>();
+  public string? ResolutionLabel { get; set; }
+  public string? ResolutionUrl { get; set; }
+}
+
+public sealed class VendorLifecycleAssessmentDto
+{
+  public bool Exists { get; set; }
+  public int BusinessPartnerId { get; set; }
+  public string DisplayName { get; set; } = string.Empty;
+  public string? Rfc { get; set; }
+  public bool IsActive { get; set; }
+  public int? LegacyProveedorId { get; set; }
+
+  /// <summary>Vínculos que impiden eliminar al socio.</summary>
+  public IReadOnlyList<VendorDependencyDto> Dependencies { get; set; } = Array.Empty<VendorDependencyDto>();
+
+  /// <summary>Datos propios del socio que se eliminan junto con él.</summary>
+  public IReadOnlyList<VendorDependencyDto> OwnedRecords { get; set; } = Array.Empty<VendorDependencyDto>();
+
+  public IReadOnlyList<VendorDependencyDto> OperationalBlockers
+    => Dependencies.Where(dependency => dependency.Kind == VendorDependencyKinds.Operational).ToArray();
+  public IReadOnlyList<VendorDependencyDto> HistoricalReferences
+    => Dependencies.Where(dependency => dependency.Kind == VendorDependencyKinds.Historical).ToArray();
+  public IReadOnlyList<VendorDependencyDto> ConfigurationReferences
+    => Dependencies.Where(dependency => dependency.Kind == VendorDependencyKinds.Configuration).ToArray();
+
+  public bool HasHistory => HistoricalReferences.Count > 0;
+  public bool CanDelete => Exists && Dependencies.Count == 0;
+  public long TotalReferences => Dependencies.Sum(dependency => dependency.ReferenceCount);
+  public long OperationalReferenceCount => OperationalBlockers.Sum(dependency => dependency.ReferenceCount);
+  public long HistoricalReferenceCount => HistoricalReferences.Sum(dependency => dependency.ReferenceCount);
+  public long ConfigurationReferenceCount => ConfigurationReferences.Sum(dependency => dependency.ReferenceCount);
+  public long OwnedRecordCount => OwnedRecords.Sum(record => record.ReferenceCount);
+}
+
+public sealed class VendorDeleteRequest
+{
+  [Required]
+  public string OwnerRfc { get; set; } = string.Empty;
+
+  [Range(1, int.MaxValue)]
+  public int BusinessPartnerId { get; set; }
+
+  [Required]
+  public string ConfirmationText { get; set; } = string.Empty;
+
+  [StringLength(256)]
+  public string? DeletedBy { get; set; }
+}

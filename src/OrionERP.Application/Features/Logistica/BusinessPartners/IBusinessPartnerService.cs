@@ -11,4 +11,6 @@ public interface IBusinessPartnerService
   Task<IReadOnlyList<LookupOptionDto>> GetVendorLookupAsync(string rfc, CancellationToken ct = default);
   Task<BusinessPartnerCatalogDto> GetCatalogAsync(string rfc, CancellationToken ct = default);
   Task<LogisticsCommandResult> SavePartnerAsync(BusinessPartnerUpsertRequest request, CancellationToken ct = default);
+  Task<VendorLifecycleAssessmentDto> GetVendorLifecycleAssessmentAsync(string rfc, int businessPartnerId, CancellationToken ct = default);
+  Task<LogisticsCommandResult> DeleteVendorAsync(VendorDeleteRequest request, CancellationToken ct = default);
 }

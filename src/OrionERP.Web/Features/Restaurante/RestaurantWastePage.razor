@@ -1,0 +1,291 @@
+@page "/restaurante/mermas"
+@attribute [Authorize(Policy = "RestaurantWaste")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Features.Logistica.Stock
+@using OrionERP.Web.State
+@inject IWasteService WasteService
+@inject ICurrentCompanyContext RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAuthorizationService AuthorizationService
+@inject IOperationErrorPresenter Errors
+
+<PageTitle>Restaurante · Merma</PageTitle>
+
+<main class="waste-shell">
+  <header class="waste-hero">
+    <div>
+      <span>Bajas de inventario</span>
+      <h1>Merma</h1>
+      <p>Saca del inventario lo que ya no se puede vender: caducado, dañado o no vendido. La baja se aplica al momento y se corrige con una reversa, nunca borrándola.</p>
+    </div>
+    <button type="button" class="btn btn-light" disabled="@isBusy" @onclick="LoadAsync">Actualizar</button>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="alert @(isError ? "alert-danger" : "alert-success")" role="alert">@message</div>
+  }
+
+  <section class="waste-kpis">
+    <div><span>Merma de hoy</span><strong>@workspace.TodayCost.ToString("C", MoneyCulture)</strong></div>
+    <div><span>Últimos 7 días</span><strong>@workspace.WeekCost.ToString("C", MoneyCulture)</strong></div>
+    <button type="button" class="waste-kpis__action @(statusFilter == WasteStatuses.PendingReview ? "is-active" : null)"
+            @onclick="ShowPendingOnlyAsync">
+      <span>Pendientes de revisión</span><strong>@workspace.PendingReviewCount</strong>
+    </button>
+    <div><span>Motivo principal (30 días)</span><strong>@(string.IsNullOrWhiteSpace(workspace.TopReasonCode) ? "—" : WasteReasonCatalog.LabelFor(workspace.TopReasonCode))</strong></div>
+  </section>
+
+  @if (workspace.Locations.Count == 0)
+  {
+    <section class="waste-empty">
+      <h2>No hay ubicaciones con inventario</h2>
+      <p>Para registrar merma hace falta al menos un almacén o punto de consumo habilitado. Créalo en <a href="/logistica/ubicaciones">Ubicaciones</a>.</p>
+    </section>
+  }
+  else
+  {
+    <section class="waste-capture">
+      <header><div><span>Paso a paso</span><h2>Registrar merma</h2></div></header>
+
+      <div class="waste-field">
+        <label for="waste-location">Ubicación</label>
+        <select id="waste-location" @bind="locationId" @bind:after="OnLocationChanged">
+          @if (workspace.Locations.Count != 1)
+          {
+            <option value="0">Seleccionar…</option>
+          }
+          @foreach (var location in workspace.Locations)
+          {
+            <option value="@location.Id">@location.Code · @location.Name</option>
+          }
+        </select>
+      </div>
+
+      <div class="waste-field">
+        <span id="waste-reason-label">Motivo</span>
+        <div class="waste-reasons" role="radiogroup" aria-labelledby="waste-reason-label">
+          @foreach (var reason in WasteReasonCatalog.Selectable)
+          {
+            <button type="button"
+                    class="waste-reason @(reasonCode == reason.Code ? "is-selected" : null)"
+                    role="radio"
+                    aria-checked="@((reasonCode == reason.Code).ToString().ToLowerInvariant())"
+                    title="@reason.Help"
+                    @onclick="() => reasonCode = reason.Code">
+              <strong>@reason.Label</strong><small>@reason.Help</small>
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="waste-lines">
+        @foreach (var entry in entries)
+        {
+          <div class="waste-line">
+            <RestaurantMaterialPicker Options="@MaterialOptions"
+                                      @bind-Value="entry.MaterialId"
+                                      Changed="@(_ => OnMaterialChanged(entry))"
+                                      Compact="true"
+                                      Disabled="@(locationId <= 0)"
+                                      Placeholder="Buscar material en la ubicación…"
+                                      EmptyText="No hay existencia de ese material en esta ubicación."
+                                      EmptyActionHref="/logistica/materiales" />
+            @if (LotOptions(entry.MaterialId) is { Count: > 0 } lots)
+            {
+              <select class="waste-line__lot" aria-label="Lote" @bind="entry.MaterialLotId" @bind:after="() => OnLotChanged(entry)">
+                <option value="">Lote…</option>
+                @foreach (var lot in lots)
+                {
+                  <option value="@lot.Id">@lot.LotCode · @lot.AvailableQuantity.ToString("0.####")@ExpirationLabel(lot)</option>
+                }
+              </select>
+            }
+            <div class="waste-line__quantity">
+              <input type="number" min="0.0001" step="0.0001" inputmode="decimal"
+                     aria-label="Cantidad que se tira"
+                     value="@QuantityText(entry)" @onchange="args => SetQuantity(entry, args)" />
+              <span class="waste-line__unit">@UnitFor(entry.MaterialId)</span>
+              <button type="button" class="waste-line__all" disabled="@(AvailableFor(entry) <= 0)"
+                      title="Dar de baja todo el disponible" @onclick="() => TakeAll(entry)">Todo</button>
+            </div>
+            <span class="waste-line__cost">@CostFor(entry).ToString("C", MoneyCulture)</span>
+            <button type="button" class="waste-line__remove" aria-label="Quitar partida"
+                    disabled="@(entries.Count == 1)" @onclick="() => RemoveEntry(entry)">×</button>
+          </div>
+        }
+        <button type="button" class="waste-add" @onclick="AddEntry">Agregar otro material</button>
+      </div>
+
+      <div class="waste-details">
+        <div class="waste-field">
+          <label for="waste-date">Fecha en que se tiró</label>
+          <input id="waste-date" type="date" value="@occurredOn.ToString("yyyy-MM-dd")"
+                 min="@MinimumDate.ToString("yyyy-MM-dd")" max="@Today.ToString("yyyy-MM-dd")"
+                 @onchange="SetOccurredOn" />
+        </div>
+        <div class="waste-field">
+          <label for="waste-reason-note">Justificación @(NoteRequired ? "(obligatoria)" : "(opcional)")</label>
+          <textarea id="waste-reason-note" rows="2" @bind="reasonNote"
+                    placeholder="@(NoteRequired ? "El motivo elegido no se explica solo: di qué pasó." : "Sólo si hace falta algún detalle.")"></textarea>
+        </div>
+        <div class="waste-field waste-evidence">
+          <label for="waste-evidence">Evidencia (obligatoria)</label>
+          <InputFile id="waste-evidence" OnChange="CaptureEvidenceAsync" accept="image/*,.pdf" capture="environment" />
+          <span>@(string.IsNullOrWhiteSpace(evidenceFileName) ? "Toma la foto de lo que vas a tirar. Imagen o PDF, máximo 10 MB." : evidenceFileName)</span>
+        </div>
+      </div>
+
+      <footer class="waste-submit">
+        <div><span>Costo total de la merma</span><strong>@TotalCost.ToString("C", MoneyCulture)</strong></div>
+        <button type="button" class="btn btn-danger" disabled="@(isBusy || !CanSubmit)" @onclick="() => showConfirm = true">Registrar merma</button>
+      </footer>
+      @if (!CanSubmit && !isBusy)
+      {
+        <p class="waste-hint">@MissingSummary</p>
+      }
+    </section>
+  }
+  <section class="waste-history">
+    <header>
+      <div><span>@history.TotalCount registro@(history.TotalCount == 1 ? null : "s") · suma de lo listado @history.TotalCost.ToString("C", MoneyCulture)</span><h2>Mermas registradas</h2></div>
+    </header>
+
+    <div class="waste-filters">
+      <label>Desde<input type="date" value="@fromDate.ToString("yyyy-MM-dd")" @onchange="SetFromDateAsync" /></label>
+      <label>Hasta<input type="date" value="@toDate.ToString("yyyy-MM-dd")" @onchange="SetToDateAsync" /></label>
+      <label>Ubicación
+        <select @bind="filterLocationId" @bind:after="ReloadHistoryAsync">
+          <option value="0">Todas</option>
+          @foreach (var location in workspace.Locations)
+          {
+            <option value="@location.Id">@location.Name</option>
+          }
+        </select>
+      </label>
+      <label>Motivo
+        <select @bind="filterReasonCode" @bind:after="ReloadHistoryAsync">
+          <option value="">Todos</option>
+          @foreach (var reason in WasteReasonCatalog.Selectable)
+          {
+            <option value="@reason.Code">@reason.Label</option>
+          }
+          <option value="@WasteReasonCatalog.Reversal">Reversa</option>
+        </select>
+      </label>
+      <label>Estado
+        <select @bind="statusFilter" @bind:after="ReloadHistoryAsync">
+          <option value="">Todos</option>
+          <option value="@WasteStatuses.PendingReview">Pendiente de revisión</option>
+          <option value="@WasteStatuses.Approved">Aprobada</option>
+          <option value="@WasteStatuses.Reversed">Reversada</option>
+        </select>
+      </label>
+    </div>
+
+    @if (history.Documents.Count == 0)
+    {
+      <div class="waste-empty"><h3>Sin mermas en este filtro</h3><p>Cambia el rango de fechas o quita los filtros para ver más.</p></div>
+    }
+    else
+    {
+      <div class="waste-cards">
+        @foreach (var document in history.Documents)
+        {
+          <article class="waste-card waste-card--@document.Status.ToLowerInvariant()">
+            <header>
+              <div>
+                <span>@document.WasteCode · @DocumentDate(document).ToString("dd/MM/yyyy")</span>
+                <h3>@WasteReasonCatalog.LabelFor(document.ReasonCode)</h3>
+              </div>
+              <b class="waste-status">@WasteStatuses.LabelFor(document.Status)</b>
+            </header>
+            <p class="waste-card__reason">@document.Reason</p>
+            <dl>
+              <div><dt>Costo</dt><dd>@document.TotalCost.ToString("C", MoneyCulture)</dd></div>
+              <div><dt>Partidas</dt><dd>@document.Lines.Count</dd></div>
+              <div><dt>Registró</dt><dd>@document.CreatedBy</dd></div>
+              <div><dt>Revisó</dt><dd>@(string.IsNullOrWhiteSpace(document.ApprovedBy) ? "—" : document.ApprovedBy)</dd></div>
+            </dl>
+            <ul class="waste-card__lines">
+              @foreach (var documentLine in document.Lines)
+              {
+                <li>
+                  <span>@documentLine.MaterialName</span>
+                  <em>@documentLine.Quantity.ToString("0.####") @documentLine.UnitCode</em>
+                  <span>@documentLine.LocationName@(string.IsNullOrWhiteSpace(documentLine.LotCode) ? null : $" · lote {documentLine.LotCode}")</span>
+                  <b>@documentLine.Cost.ToString("C", MoneyCulture)</b>
+                </li>
+              }
+            </ul>
+            <footer>
+              @if (document.HasEvidence)
+              {
+                <a href="/api/logistica/merma/@document.Id/evidencia" target="_blank" rel="noopener">Ver evidencia</a>
+              }
+              @if (document.ReversedByAdjustmentId.HasValue)
+              {
+                <span class="waste-card__link">Reversada</span>
+              }
+              else if (document.IsReversal)
+              {
+                <span class="waste-card__link">Reversa de otra merma</span>
+              }
+              <AuthorizeView Policy="RestaurantAdmin">
+                @if (document.CanReview)
+                {
+                  <button type="button" class="btn btn-success" disabled="@isBusy" @onclick="() => ApproveAsync(document)">Aprobar</button>
+                }
+                @if (document.CanReverse)
+                {
+                  <button type="button" class="btn btn-outline-danger" disabled="@isBusy" @onclick="() => BeginReversal(document)">Reversar</button>
+                }
+              </AuthorizeView>
+            </footer>
+          </article>
+        }
+      </div>
+      @if (history.TotalCount > history.Documents.Count)
+      {
+        <button type="button" class="waste-more" disabled="@isBusy" @onclick="ShowMoreAsync">Ver más</button>
+      }
+    }
+  </section>
+</main>
+
+@if (showConfirm)
+{
+  <div class="waste-backdrop" @onclick="() => showConfirm = false">
+    <section class="waste-dialog" role="dialog" aria-modal="true" aria-labelledby="waste-confirm-title" @onclick:stopPropagation>
+      <h2 id="waste-confirm-title">Confirmar la baja</h2>
+      <p>
+        Vas a dar de baja <strong>@entries.Count(HasQuantity) partida@(entries.Count(HasQuantity) == 1 ? null : "s")</strong>
+        por <strong>@TotalCost.ToString("C", MoneyCulture)</strong> de <strong>@LocationName</strong>.
+      </p>
+      <p class="waste-dialog__warning">El inventario baja de inmediato y queda en el kardex. Si te equivocas, se corrige con una reversa: no se puede borrar.</p>
+      <footer>
+        <button type="button" class="btn btn-link" @onclick="() => showConfirm = false">Cancelar</button>
+        <button type="button" class="btn btn-danger" disabled="@isBusy" @onclick="PostAsync">Confirmar baja</button>
+      </footer>
+    </section>
+  </div>
+}
+
+@if (reversalTarget is not null)
+{
+  <div class="waste-backdrop" @onclick="CancelReversal">
+    <section class="waste-dialog" role="dialog" aria-modal="true" aria-labelledby="waste-reversal-title" @onclick:stopPropagation>
+      <h2 id="waste-reversal-title">Reversar la merma @reversalTarget.WasteCode</h2>
+      <p>Se devolverán @reversalTarget.TotalCost.ToString("C", MoneyCulture) al inventario con un documento nuevo. La merma original queda marcada como reversada.</p>
+      <label for="waste-reversal-reason">Motivo de la reversa</label>
+      <textarea id="waste-reversal-reason" rows="3" @bind="reversalReason"
+                placeholder="Sin motivo no es auditable: di por qué esta merma no debió registrarse."></textarea>
+      <footer>
+        <button type="button" class="btn btn-link" @onclick="CancelReversal">Cancelar</button>
+        <button type="button" class="btn btn-danger" disabled="@(isBusy || string.IsNullOrWhiteSpace(reversalReason))" @onclick="ReverseAsync">Reversar</button>
+      </footer>
+    </section>
+  </div>
+}

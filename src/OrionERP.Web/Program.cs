@@ -34,6 +34,7 @@ using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 using OrionERP.Web.Configuration;
 using OrionERP.Web.Features.Cfdi.DescargaMasiva;
 using OrionERP.Web.Features.Documents;
+using OrionERP.Web.Features.Logistica.Stock;
 using OrionERP.Web.Features.Restaurante;
 using OrionERP.Web.Features.TrainingSafety;
 using OrionERP.Web.Identity;
@@ -465,6 +466,10 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy("RestaurantKitchen", policy => policy.RequireCompanyRoles("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin"));
   options.AddPolicy("RestaurantDisplay", policy => policy.RequireCompanyRoles("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin"));
   options.AddPolicy("RestaurantCash", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+  // La merma la ve quien la produce. Cocina y caja capturan; el rango de supervisor sólo se
+  // exige para cerrar la revisión y para reversar, dentro de la página.
+  options.AddPolicy("RestaurantWaste", policy => policy.RequireCompanyRoles(
+      "RestauranteCocina", "RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
   // QZ calls these endpoints through a regular browser fetch, outside the
   // Blazor circuit that owns the selected-RFC state. Keep the bridge limited
   // to restaurant cash roles without relying on circuit-scoped state.
@@ -600,6 +605,7 @@ app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
 app.MapRestaurantProductImagesApi();
+app.MapWasteEvidenceApi();
 app.MapRestaurantSignageApi();
 app.MapTrainingReadiness();
 app.MapRestaurantQzTraySigningApi();

@@ -7,24 +7,39 @@
 <PageTitle>Logística · Compras</PageTitle>
 
 <div class="container-fluid py-3 compras-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="compras-page-head">
         <div>
+            <span class="compras-eyebrow">
+                <i class="bi bi-cart3" aria-hidden="true"></i>
+                @(IsEditorOpen ? "Documento abierto" : "Lista de compras")
+            </span>
             <h1 class="h3 mb-1">Compras</h1>
             <p class="text-muted mb-0">Prepara la compra, recibe contra el ticket y termina con precios actualizados.</p>
         </div>
 
         <div class="compras-action-bar">
-            <button type="button" class="btn btn-outline-secondary" @onclick="AlternarExploradorOrdenes" disabled="@IsMutating">
-                @(ShowOrderBrowser ? "Ocultar compras" : "Buscar compra")
-            </button>
-            <button type="button" class="btn btn-outline-secondary" @onclick="NuevaOrden" disabled="@IsMutating">
+            @if (IsEditorOpen)
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="VolverALaListaAsync" disabled="@IsMutating">
+                    <i class="bi bi-arrow-left" aria-hidden="true"></i>
+                    Lista de compras
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="AlternarExploradorOrdenes" disabled="@IsMutating">
+                    @(ShowOrderBrowser ? "Ocultar lista" : "Ver lista")
+                </button>
+            }
+            <button type="button" class="btn @(IsEditorOpen ? "btn-outline-secondary" : "btn-primary")" @onclick="NuevaOrden" disabled="@IsMutating">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
                 Nueva compra
             </button>
-            @if (IsDraftMode)
+            @if (!IsEditorOpen || IsDraftMode)
             {
                 <button type="button" class="btn btn-outline-success" @onclick="AbrirAutoPoModalAsync" disabled="@IsMutating">
                     @(IsCreatingAutoPo ? "Preparando..." : "Sugerir compra")
                 </button>
+            }
+            @if (IsEditorOpen && IsDraftMode)
+            {
                 <button type="button" class="btn btn-primary" @onclick="GuardarBorradorAsync" disabled="@IsMutating">
                     @(IsSavingDraft ? "Guardando..." : "Guardar")
                 </button>
@@ -62,131 +77,177 @@
         </div>
     </div>
 
-    <section class="compras-process" aria-label="Proceso de compra">
-        <ol class="compras-process-steps">
-            <li class="@GetProcessStepClass(1)"><span>1</span><div><strong>Preparar</strong><small>Proveedor y materiales</small></div></li>
-            <li class="@GetProcessStepClass(2)"><span>2</span><div><strong>Enviar</strong><small>Orden al proveedor</small></div></li>
-            <li class="@GetProcessStepClass(3)"><span>3</span><div><strong>Recibir</strong><small>Cantidades y ticket</small></div></li>
-            <li class="@GetProcessStepClass(4)"><span>4</span><div><strong>Terminar</strong><small>Actualizar precios</small></div></li>
-        </ol>
-        <p>@ProcessGuidance</p>
-    </section>
+    @if (IsEditorOpen)
+    {
+        <section class="compras-process" aria-label="Proceso de compra">
+            <ol class="compras-process-steps">
+                <li class="@GetProcessStepClass(1)"><span>1</span><div><strong>Preparar</strong><small>Proveedor y materiales</small></div></li>
+                <li class="@GetProcessStepClass(2)"><span>2</span><div><strong>Enviar</strong><small>Orden al proveedor</small></div></li>
+                <li class="@GetProcessStepClass(3)"><span>3</span><div><strong>Recibir</strong><small>Cantidades y ticket</small></div></li>
+                <li class="@GetProcessStepClass(4)"><span>4</span><div><strong>Terminar</strong><small>Actualizar precios</small></div></li>
+            </ol>
+            <p>@ProcessGuidance</p>
+        </section>
+    }
 
     <div class="row g-3">
-        <div class="col-12 col-xxl-4 compras-order-browser @(ShowOrderBrowser ? "is-open" : null)">
-            <section class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Filtros</h2>
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label">Buscar</label>
-                            <input class="form-control" type="search" placeholder="PO, proveedor o nota" @bind="Filter.SearchText" @bind:event="oninput" @onkeyup="OnOrderSearchKeyUpAsync" />
+        <div class="@OrderBrowserColumnClass compras-order-browser @(ShowOrderBrowser ? "is-open" : null)">
+            <div class="row g-3">
+                <div class="@OrderFilterColumnClass">
+                <section class="compras-panel compras-panel-filters">
+                    <header class="compras-panel-head">
+                        <div class="compras-panel-title">
+                            <span class="compras-panel-icon"><i class="bi bi-funnel" aria-hidden="true"></i></span>
+                            <div>
+                                <h2>Filtros</h2>
+                                <p>Acota la lista de compras.</p>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Proveedor</label>
-                            <LookupSearchBox Options="VendorOptions" @bind-Value="FilterVendorId" Placeholder="Todos" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Estado</label>
-                            <select class="form-select" @bind="Filter.Status">
-                                <option value="">Todos</option>
-                                @foreach (var status in StatusOptions)
-                                {
-                                    <option value="@status">@GetStatusLabel(status)</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-check d-flex align-items-center gap-2 mb-0">
-                                <input class="form-check-input" type="checkbox" @bind="Filter.OpenOnly" />
-                                <span class="form-check-label">Solo abiertas</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <button type="button" class="btn btn-primary mt-3" @onclick="BuscarOrdenesAsync" disabled="@IsLoadingOrders">
-                        @(IsLoadingOrders ? "Buscando..." : "Buscar")
-                    </button>
-                </div>
-            </section>
-
-            <section class="card shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h2 class="h5 mb-0">Órdenes</h2>
-                        <span class="text-muted small">@Orders.Count registros</span>
-                    </div>
-
-                    <div class="table-responsive compras-orders-scroll">
-                        <table class="table table-sm table-hover align-middle compras-orders-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Orden</th>
-                                    <th>Proveedor</th>
-                                    <th class="text-end">Materiales</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (Orders.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">No hay órdenes para el filtro actual.</td>
-                                    </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var order in Orders)
+                        @if (HasActiveFilters)
+                        {
+                            <button type="button" class="compras-panel-link" @onclick="LimpiarFiltrosAsync" disabled="@IsLoadingOrders">
+                                Limpiar
+                            </button>
+                        }
+                    </header>
+                    <div class="compras-panel-body">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Buscar</label>
+                                <input class="form-control" type="search" placeholder="PO, proveedor o nota" @bind="Filter.SearchText" @bind:event="oninput" @onkeyup="OnOrderSearchKeyUpAsync" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Proveedor</label>
+                                <LookupSearchBox Options="VendorOptions" @bind-Value="FilterVendorId" Placeholder="Todos" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Estado</label>
+                                <select class="form-select" @bind="Filter.Status">
+                                    <option value="">Todos</option>
+                                    @foreach (var status in StatusOptions)
                                     {
-                                        <tr class="@GetOrderRowClass(order)" style="cursor: pointer;" @onclick="() => SeleccionarOrdenAsync(order.Id)">
-                                            <td>
-                                                <div class="fw-semibold">@order.PurchaseOrderCode</div>
-                                                <div class="small text-muted">@order.OrderDate.ToShortDateString()</div>
-                                                <span class="@GetStatusBadgeClass(order.Status)">@GetStatusLabel(order.Status)</span>
-                                            </td>
-                                            <td>
-                                                <div>@order.VendorName</div>
-                                                <small class="text-muted">@(order.ExpectedDate.HasValue ? $"Esp: {order.ExpectedDate.Value:dd/MM/yyyy}" : "Sin fecha esperada")</small>
-                                            </td>
-                                            <td class="text-end">
-                                                <div>@order.LineCount.ToString("N0")</div>
-                                                <small class="text-muted">@order.AllocationCount.ToString("N0") ubicaciones</small>
+                                        <option value="@status">@GetStatusLabel(status)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-check d-flex align-items-center gap-2 mb-0">
+                                    <input class="form-check-input" type="checkbox" @bind="Filter.OpenOnly" />
+                                    <span class="form-check-label">Solo abiertas</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn btn-primary w-100 mt-3" @onclick="BuscarOrdenesAsync" disabled="@IsLoadingOrders">
+                            <i class="bi bi-search me-1" aria-hidden="true"></i>
+                            @(IsLoadingOrders ? "Buscando..." : "Buscar")
+                        </button>
+                    </div>
+                </section>
+                </div>
+                <div class="@OrderListColumnClass">
+                <section class="compras-panel compras-panel-orders">
+                    <header class="compras-panel-head">
+                        <div class="compras-panel-title">
+                            <span class="compras-panel-icon"><i class="bi bi-card-list" aria-hidden="true"></i></span>
+                            <div>
+                                <h2>Compras registradas</h2>
+                                <p>Elige una para abrirla.</p>
+                            </div>
+                        </div>
+                        <span class="compras-panel-count">@Orders.Count</span>
+                    </header>
+                    <div class="compras-panel-body">
+                        <div class="table-responsive compras-orders-scroll">
+                            <table class="table table-sm table-hover align-middle compras-orders-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Orden</th>
+                                        <th>Proveedor</th>
+                                        <th class="text-end">Materiales</th>
+                                        <th class="compras-orders-open-col"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Orders.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="4" class="compras-empty-cell">
+                                                <div class="compras-empty">
+                                                    <i class="bi bi-inbox" aria-hidden="true"></i>
+                                                    <strong>No hay compras con este filtro</strong>
+                                                    <span>Cambia el filtro o arranca una compra nueva.</span>
+                                                    <button type="button" class="btn btn-sm btn-primary" @onclick="NuevaOrden" disabled="@IsMutating">
+                                                        Nueva compra
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     }
-                                }
-                            </tbody>
-                        </table>
+                                    else
+                                    {
+                                        @foreach (var order in Orders)
+                                        {
+                                            <tr class="compras-order-row @GetOrderRowClass(order)" title="Abrir @order.PurchaseOrderCode" @onclick="() => SeleccionarOrdenAsync(order.Id)">
+                                                <td>
+                                                    <div class="fw-semibold">@order.PurchaseOrderCode</div>
+                                                    <div class="small text-muted">@order.OrderDate.ToShortDateString()</div>
+                                                    <span class="@GetStatusBadgeClass(order.Status)">@GetStatusLabel(order.Status)</span>
+                                                </td>
+                                                <td>
+                                                    <div>@order.VendorName</div>
+                                                    <small class="text-muted">@(order.ExpectedDate.HasValue ? $"Esp: {order.ExpectedDate.Value:dd/MM/yyyy}" : "Sin fecha esperada")</small>
+                                                </td>
+                                                <td class="text-end">
+                                                    <div>@order.LineCount.ToString("N0")</div>
+                                                    <small class="text-muted">@order.AllocationCount.ToString("N0") ubicaciones</small>
+                                                </td>
+                                                <td class="compras-orders-open-col text-end">
+                                                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
+                </section>
                 </div>
-            </section>
+            </div>
         </div>
 
-        <div class="col-12 col-xxl-8">
+        @if (IsEditorOpen)
+        {
+        <div class="@EditorColumnClass">
             <EditForm Model="Editor">
                 <DataAnnotationsValidator />
 
-                <section class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                <section class="compras-panel compras-panel-order mb-3">
+                    <header class="compras-panel-head">
+                        <div class="compras-panel-title">
+                            <span class="compras-panel-icon"><i class="bi bi-file-earmark-text" aria-hidden="true"></i></span>
                             <div>
-                                <h2 class="h4 mb-1">@CurrentOrderCode</h2>
-                                <div class="text-muted">Status actual</div>
-                                <span class="@CurrentStatusBadgeClass">@CurrentStatusLabel</span>
+                                <span class="compras-section-kicker">Paso 1 · Prepara la compra</span>
+                                <h2>@CurrentOrderCode</h2>
+                                <p>@(IsNewOrder ? "El folio se genera cuando guardas." : "Proveedor, fechas y notas de la compra.")</p>
                             </div>
-
-                            <div class="compras-summary-grid">
-                                <div class="compras-summary-card">
-                                    <div class="compras-summary-label">Materiales</div>
-                                    <div class="compras-summary-value">@CurrentMaterialCount.ToString("N0")</div>
-                                </div>
-                                <div class="compras-summary-card">
-                                    <div class="compras-summary-label">Ubicaciones</div>
-                                    <div class="compras-summary-value">@CurrentAllocationCount.ToString("N0")</div>
-                                </div>
-                                <div class="compras-summary-card">
-                                    <div class="compras-summary-label">Pendientes</div>
-                                    <div class="compras-summary-value">@CurrentPendingAllocationCount.ToString("N0")</div>
-                                </div>
+                        </div>
+                        <span class="@CurrentStatusBadgeClass">@CurrentStatusLabel</span>
+                    </header>
+                    <div class="compras-panel-body">
+                        <div class="compras-summary-grid mb-3">
+                            <div class="compras-summary-card">
+                                <div class="compras-summary-label">Materiales</div>
+                                <div class="compras-summary-value">@CurrentMaterialCount.ToString("N0")</div>
+                            </div>
+                            <div class="compras-summary-card">
+                                <div class="compras-summary-label">Ubicaciones</div>
+                                <div class="compras-summary-value">@CurrentAllocationCount.ToString("N0")</div>
+                            </div>
+                            <div class="compras-summary-card">
+                                <div class="compras-summary-label">Pendientes</div>
+                                <div class="compras-summary-value">@CurrentPendingAllocationCount.ToString("N0")</div>
                             </div>
                         </div>
 
@@ -246,9 +307,18 @@
 
                 @if (IsDraftMode)
                 {
-                    <section class="card shadow-sm mb-3">
-                        <div class="card-body">
-                            <h3 class="h5 mb-3">Agregar materiales</h3>
+                    <section class="compras-panel compras-panel-materials mb-3">
+                        <header class="compras-panel-head">
+                            <div class="compras-panel-title">
+                                <span class="compras-panel-icon"><i class="bi bi-search" aria-hidden="true"></i></span>
+                                <div>
+                                    <span class="compras-section-kicker">Paso 1 · Prepara la compra</span>
+                                    <h2>Agregar materiales</h2>
+                                    <p>Busca en el catálogo y agrégalos a esta compra.</p>
+                                </div>
+                            </div>
+                        </header>
+                        <div class="compras-panel-body">
                             <div class="row g-3 align-items-end">
                                 <div class="col-md-8">
                                     <label class="form-label" for="compras-material-search">Buscar material</label>
@@ -391,15 +461,18 @@
                     </section>
                 }
 
-                <section class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
+                <section class="compras-panel compras-panel-lines mb-3">
+                    <header class="compras-panel-head">
+                        <div class="compras-panel-title">
+                            <span class="compras-panel-icon"><i class="bi bi-list-check" aria-hidden="true"></i></span>
                             <div>
-                                <h3 class="h5 mb-0">Líneas de la orden</h3>
-                                <p class="text-muted small mb-0">Las cantidades se muestran en presentación de compra; el precio se captura por unidad base para conservar el costo de inventario.</p>
+                                <h2>Líneas de la orden</h2>
+                                <p>Las cantidades se muestran en presentación de compra; el precio se captura por unidad base para conservar el costo de inventario.</p>
                             </div>
-                            <span class="text-muted small">@Lines.Count materiales</span>
                         </div>
+                        <span class="compras-panel-count">@Lines.Count</span>
+                    </header>
+                    <div class="compras-panel-body">
 
                         @if (IsDraftMode && UnlinkedMaterialNames.Count > 0)
                         {
@@ -509,8 +582,17 @@
 
                 @if (SelectedLine is not null)
                 {
-                    <section class="card shadow-sm mb-3">
-                        <div class="card-body">
+                    <section class="compras-panel compras-panel-allocations mb-3">
+                        <header class="compras-panel-head">
+                            <div class="compras-panel-title">
+                                <span class="compras-panel-icon"><i class="bi bi-geo-alt" aria-hidden="true"></i></span>
+                                <div>
+                                    <h2>Reparto por ubicación</h2>
+                                    <p>Del material seleccionado en la tabla de arriba.</p>
+                                </div>
+                            </div>
+                        </header>
+                        <div class="compras-panel-body">
                             <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
                                 @{
                                     var selectedThumbnail = GetMaterialThumbnailDataUrl(SelectedLine.MaterialId);
@@ -660,18 +742,21 @@
 
                 @if (CanEnterReceipt)
                 {
-                    <section class="card shadow-sm mb-3 compras-receipt-section">
-                        <div class="card-body">
-                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <section class="compras-panel compras-panel-receipt mb-3">
+                        <header class="compras-panel-head">
+                            <div class="compras-panel-title">
+                                <span class="compras-panel-icon"><i class="bi bi-box-seam" aria-hidden="true"></i></span>
                                 <div>
                                     <span class="compras-section-kicker">Paso 3 · Compara con el ticket</span>
-                                    <h3 class="h4 mb-1">¿Qué llegó y cuánto costó?</h3>
-                                    <p class="text-muted mb-0">Captura el total impreso para la cantidad recibida de cada artículo.</p>
+                                    <h2>¿Qué llegó y cuánto costó?</h2>
+                                    <p>Captura el total impreso para la cantidad recibida de cada artículo.</p>
                                 </div>
-                                <button type="button" class="btn btn-outline-success" @onclick="RecibirTodo" disabled="@(!CanEnterReceipt)">
-                                    Recibir todo lo pendiente
-                                </button>
                             </div>
+                            <button type="button" class="btn btn-outline-success" @onclick="RecibirTodo" disabled="@(!CanEnterReceipt)">
+                                Recibir todo lo pendiente
+                            </button>
+                        </header>
+                        <div class="compras-panel-body">
 
                             <div class="row g-3 mb-3">
                                 <div class="col-md-4">
@@ -792,12 +877,18 @@
 
                 @if (ReceiptHistory.Count > 0)
                 {
-                    <section class="card shadow-sm">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h3 class="h5 mb-0">Historial de recepciones</h3>
-                                <span class="text-muted small">@ReceiptHistory.Select(item => item.ReceiptId).Distinct().Count() recepciones</span>
+                    <section class="compras-panel compras-panel-history">
+                        <header class="compras-panel-head">
+                            <div class="compras-panel-title">
+                                <span class="compras-panel-icon"><i class="bi bi-clock-history" aria-hidden="true"></i></span>
+                                <div>
+                                    <h2>Historial de recepciones</h2>
+                                    <p>Lo que ya entró a inventario con esta compra.</p>
+                                </div>
                             </div>
+                            <span class="compras-panel-count">@ReceiptHistory.Select(item => item.ReceiptId).Distinct().Count()</span>
+                        </header>
+                        <div class="compras-panel-body">
 
                             <div class="compras-history-list">
                                 @foreach (var receiptGroup in ReceiptHistory.GroupBy(item => new { item.ReceiptId, item.ReceiptCode, item.ReceiptDate }))
@@ -858,6 +949,7 @@
                 }
             </EditForm>
         </div>
+        }
     </div>
 </div>
 

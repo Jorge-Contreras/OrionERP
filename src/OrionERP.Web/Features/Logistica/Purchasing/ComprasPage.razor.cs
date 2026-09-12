@@ -67,6 +67,29 @@ public partial class ComprasPage : ComponentBase
   protected IReadOnlyList<LookupOptionDto>? VendorsBelowMinimum { get; set; }
   protected bool ShowOrderBrowser { get; set; }
 
+  /// <summary>
+  /// La pantalla arranca en la lista. El formulario sólo aparece cuando el usuario abre una
+  /// compra o pide una nueva, para no recibirlo con un documento en blanco y el proceso encima.
+  /// </summary>
+  protected bool IsEditorOpen { get; set; }
+
+  /// <summary>Sin editor abierto la lista ocupa el ancho completo; con editor se vuelve columna.</summary>
+  protected string OrderBrowserColumnClass => IsEditorOpen ? "col-12 col-xxl-4" : "col-12";
+
+  /// <summary>En modo lista el filtro va al lado; apilado dentro de la columna cuando hay editor.</summary>
+  protected string OrderFilterColumnClass => IsEditorOpen ? "col-12" : "col-12 col-lg-4 col-xl-3";
+  protected string OrderListColumnClass => IsEditorOpen ? "col-12" : "col-12 col-lg-8 col-xl-9";
+
+  /// <summary>Ocultar la lista le devuelve el ancho completo al documento abierto.</summary>
+  protected string EditorColumnClass => ShowOrderBrowser ? "col-12 col-xxl-8" : "col-12";
+
+  /// <summary>El filtro se movió de su estado de arranque: vale la pena ofrecer limpiarlo.</summary>
+  protected bool HasActiveFilters
+    => !string.IsNullOrWhiteSpace(Filter.SearchText)
+    || Filter.VendorId.HasValue
+    || !string.IsNullOrWhiteSpace(Filter.Status)
+    || !Filter.OpenOnly;
+
   protected bool IsDraftMode => SelectedPurchaseOrder is null || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Draft, StringComparison.OrdinalIgnoreCase);
   protected bool CanEditVendor => IsDraftMode && Lines.Count == 0;
   /// <summary>
@@ -123,7 +146,9 @@ public partial class ComprasPage : ComponentBase
     && !IsMutating;
   protected bool CanPrint => SelectedPurchaseOrder is not null && !IsMutating;
   protected bool IsMutating => IsSavingDraft || IsIssuing || IsReceiving || IsCompleting || IsCancelling || IsPrinting || IsCreatingAutoPo;
-  protected string CurrentOrderCode => SelectedPurchaseOrder?.PurchaseOrderCode ?? "Se asignará al guardar";
+  /// <summary>Una compra sin guardar todavía no tiene folio: el encabezado la nombra, no la explica.</summary>
+  protected bool IsNewOrder => SelectedPurchaseOrder is null;
+  protected string CurrentOrderCode => SelectedPurchaseOrder?.PurchaseOrderCode ?? "Compra nueva";
   protected string CurrentStatusLabel => GetStatusLabel(SelectedPurchaseOrder?.Status ?? PurchaseOrderStatuses.Draft);
   protected string CurrentStatusBadgeClass => GetStatusBadgeClass(SelectedPurchaseOrder?.Status ?? PurchaseOrderStatuses.Draft);
   protected decimal CurrentOrderedQuantity => Lines.Sum(line => line.OrderedQuantity);
@@ -205,8 +230,9 @@ public partial class ComprasPage : ComponentBase
     Catalog = await PurchaseOrderService.GetCatalogAsync();
     ResetAutoPoRequest();
     await LoadOrdersAsync();
-    NuevaOrden();
+    LimpiarEditor();
     ShowOrderBrowser = true;
+    IsEditorOpen = false;
   }
 
   protected async Task BuscarOrdenesAsync()
@@ -218,6 +244,34 @@ public partial class ComprasPage : ComponentBase
     => args.Key == "Enter" ? BuscarOrdenesAsync() : Task.CompletedTask;
 
   protected void NuevaOrden()
+  {
+    LimpiarEditor();
+    IsEditorOpen = true;
+    ShowOrderBrowser = false;
+  }
+
+  /// <summary>
+  /// Cierra el formulario y devuelve la pantalla a la lista. Una compra nueva sin guardar se
+  /// pierde al salir, así que se confirma antes de descartarla.
+  /// </summary>
+  protected async Task VolverALaListaAsync()
+  {
+    if (SelectedPurchaseOrder is null && (Lines.Count > 0 || Editor.BusinessPartnerId > 0))
+    {
+      var confirmed = await ConfirmAsync("La compra nueva aún no se guarda. ¿Deseas descartarla y volver a la lista?");
+      if (!confirmed)
+      {
+        return;
+      }
+    }
+
+    LimpiarEditor();
+    IsEditorOpen = false;
+    ShowOrderBrowser = true;
+  }
+
+  /// <summary>Deja el formulario en blanco sin decidir si se muestra: eso lo elige quien llama.</summary>
+  private void LimpiarEditor()
   {
     SelectedPurchaseOrder = null;
     Editor = CreateEditor();
@@ -234,11 +288,20 @@ public partial class ComprasPage : ComponentBase
     UnlinkedMaterialNames.Clear();
     LinkMaterialsToVendor = true;
     ShowAutoPoModal = false;
-    ShowOrderBrowser = false;
   }
 
   protected void AlternarExploradorOrdenes()
     => ShowOrderBrowser = !ShowOrderBrowser;
+
+  /// <summary>Regresa el filtro a su estado de arranque y vuelve a consultar.</summary>
+  protected async Task LimpiarFiltrosAsync()
+  {
+    Filter.SearchText = string.Empty;
+    Filter.VendorId = null;
+    Filter.Status = string.Empty;
+    Filter.OpenOnly = true;
+    await LoadOrdersAsync();
+  }
 
   protected async Task SeleccionarOrdenAsync(int purchaseOrderId)
   {
@@ -256,6 +319,7 @@ public partial class ComprasPage : ComponentBase
       }
 
       SelectedPurchaseOrder = detail;
+      IsEditorOpen = true;
       ShowOrderBrowser = false;
       Editor = new PurchaseOrderUpsertRequest
       {

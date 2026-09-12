@@ -1735,6 +1735,35 @@ public class PurchaseOrderServiceTests
     return table;
   }
 
+  // Sin suites seleccionadas el filtro opcional de ROOM no se agrega, y el ORDER BY
+  // quedaba pegado al ultimo predicado del WHERE ("...IS NOT NULLORDER BY ...").
+  [Fact]
+  public async Task CreateAutoDraftAsync_WithoutRoomScope_SeparatesOrderByFromWhereClause()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) => new DataTable(),
+      ScalarResultFactory = (commandText, _) =>
+        commandText.Contains("FROM dbo.BusinessPartner bp", StringComparison.Ordinal) ? true : null,
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    await service.CreateAutoDraftAsync(new AutoPurchaseOrderCreateRequest
+    {
+      BusinessPartnerId = 7,
+      OrderDate = new DateTime(2026, 4, 17)
+    }, "Ana");
+
+    var candidateQuery = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("WITH OpenPurchaseAllocations", StringComparison.Ordinal));
+    Assert.DoesNotContain("NULLORDER BY", candidateQuery.CommandText, StringComparison.Ordinal);
+    Assert.Contains("IS NOT NULL", candidateQuery.CommandText, StringComparison.Ordinal);
+    Assert.Matches(@"IS NOT NULL\s+ORDER BY", candidateQuery.CommandText);
+  }
+
   private static DataTable CreateExistingDraftTable(int? purchaseOrderId = null)
   {
     var table = new DataTable();

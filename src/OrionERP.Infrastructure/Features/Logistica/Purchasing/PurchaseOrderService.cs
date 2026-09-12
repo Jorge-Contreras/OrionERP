@@ -1780,6 +1780,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         AND sb.MinQuantity IS NOT NULL
         AND sb.MaxQuantity IS NOT NULL
       """);
+    // El literal cierra sin salto de linea: sin esto el ORDER BY se pega al ultimo filtro.
+    sql.AppendLine();
 
     var parameters = new DynamicParameters();
     parameters.Add("@BusinessPartnerId", businessPartnerId, DbType.Int32);

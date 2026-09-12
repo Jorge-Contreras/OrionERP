@@ -81,14 +81,12 @@ public abstract class WorkforceServiceBase
   }
 
   /// <summary>
-  /// Fija el RFC de la conexion para la seguridad a nivel de fila del esquema rh.
+  /// Fija la empresa y el RFC de la conexion para la seguridad a nivel de fila de rh.
   ///
-  /// La fabrica de conexiones escribe la literal '__UNSCOPED__' en
-  /// SESSION_CONTEXT('OrionRfc') cuando no hay RFC de sesion, y el predicado de rh
-  /// solo deja pasar la fila cuando ese contexto es NULL o coincide con su Rfc. El
-  /// kiosco es anonimo por diseno: la tableta no inicia sesion. Sin este ajuste el
-  /// registro veria cero filas y el evento quedaria bloqueado justo en produccion,
-  /// aunque todo funcione con una sesion iniciada.
+  /// La fabrica abre las conexiones anonimas con un alcance vacio. El kiosco y los
+  /// procesos programados conocen el RFC operativo despues de abrirlas, por lo que
+  /// este ajuste resuelve la empresa activa y escribe ambas claves como una unidad.
+  /// Los predicados fail-closed exigen que CompanyId y RFC coincidan.
   ///
   /// El RFC nunca lo elige quien usa el kiosco: sale del dispositivo ya vinculado
   /// o del comando que la propia aplicacion construyo.
@@ -99,7 +97,17 @@ public abstract class WorkforceServiceBase
     string rfc,
     CancellationToken ct)
     => connection.ExecuteAsync(new CommandDefinition(
-      "EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@Rfc, @read_only=0;",
+      """
+      DECLARE @CompanyId bigint =
+      (
+        SELECT CompanyId FROM orion.Company
+        WHERE Rfc=@Rfc AND IsActive=1
+      );
+      IF @CompanyId IS NULL
+        THROW 53220,'El RFC de Workforce no corresponde a una empresa activa.',1;
+      EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@Rfc, @read_only=0;
+      EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=@CompanyId, @read_only=0;
+      """,
       new { Rfc = NormalizeRfc(rfc) },
       transaction,
       cancellationToken: ct));

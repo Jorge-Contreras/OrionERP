@@ -67,6 +67,9 @@ public class WorkforceRlsAndAccessTests
   {
     var baseService = RepoFile.Read("src/OrionERP.Infrastructure/Features/CapitalHumano/Workforce/WorkforceServiceBase.cs");
     Assert.Contains("PinRfcScopeAsync", baseService, StringComparison.Ordinal);
+    Assert.Contains("FROM orion.Company", baseService, StringComparison.Ordinal);
+    Assert.Contains("@key=N'OrionERP.CompanyId'", baseService, StringComparison.Ordinal);
+    Assert.Contains("El RFC de Workforce no corresponde a una empresa activa.", baseService, StringComparison.Ordinal);
     // E8c dejó el agregado de asistencia fail-closed, así que el helper que borraba el
     // RFC para aprovechar el bypass por contexto nulo ya no existe. Dejarlo invitaría a
     // reintroducirlo.

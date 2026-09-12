@@ -337,6 +337,14 @@
       ]
     },
     {
+      "id": "20260911_workforce_rfc_rls_fail_closed_correction",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_workforce_rfc_rls_fail_closed_correction.sql",
+      "description": "Corrección aditiva: cierra el bypass NULL del predicado RFC propio de Workforce y conserva sus 48 predicados.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
+    },
+    {
       "id": "20260911_synthetic_dual_company",
       "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_synthetic_dual_company.sql",
       "description": "Fixture determinista de empresa dual, identidad, datos mínimos, principales y perfiles públicos para aceptación integral.",

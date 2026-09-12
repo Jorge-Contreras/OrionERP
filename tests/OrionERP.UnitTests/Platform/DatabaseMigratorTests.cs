@@ -602,6 +602,16 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("WHERE USER_NAME()=N'dbo'", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
+        case "20260911_workforce_rfc_rls_fail_closed_correction":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ALTER FUNCTION rh.fn_RfcAccessPredicate", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicSqlPrincipalBinding", sql, StringComparison.Ordinal);
+          Assert.Contains("SESSION_CONTEXT(N'OrionERP.CompanyId')", sql, StringComparison.Ordinal);
+          Assert.Contains("OrionWorkforceRlsVerifier_532", sql, StringComparison.Ordinal);
+          Assert.Contains("@MissingAllowed<>0 OR @RfcOnlyAllowed<>0", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
         case "20260911_synthetic_dual_company":
           Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);

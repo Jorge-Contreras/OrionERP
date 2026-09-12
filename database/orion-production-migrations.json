@@ -245,6 +245,15 @@
       ]
     },
     {
+      "id": "20260911_workforce_rfc_rls_fail_closed_correction",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_workforce_rfc_rls_fail_closed_correction.sql",
+      "description": "Corrección aditiva: cierra el bypass NULL del predicado RFC propio de Workforce y conserva sus 48 predicados.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
+    },
+    {
       "id": "20260911_legacy_write_compatibility",
       "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_legacy_write_compatibility.sql",
       "description": "Puente fail-closed para escritores heredados de bindings Restaurant durante la ventana de compatibilidad.",

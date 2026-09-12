@@ -183,6 +183,24 @@ public sealed class RestaurantPublicPresentationTests
   }
 
   [Fact]
+  public void Restaurant_public_legacy_services_open_with_the_verified_public_site_scope()
+  {
+    var program = ReadRepoFile("src/OrionERP.Bruno.Web/Program.cs");
+    var factory = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Platform/PublicWebsiteSqlConnectionFactory.cs");
+
+    Assert.Contains("AddScoped<PublicWebsiteSqlConnectionFactory>", program, StringComparison.Ordinal);
+    Assert.Contains("GetRequiredService<PublicWebsiteSqlConnectionFactory>", program, StringComparison.Ordinal);
+    Assert.DoesNotContain("AddScoped<SqlConnectionFactory>", program, StringComparison.Ordinal);
+    Assert.Contains("ResolveRequiredAsync", factory, StringComparison.Ordinal);
+    Assert.Contains("PlatformExecutionScope.FromPublicSite(binding)", factory, StringComparison.Ordinal);
+    Assert.Contains("OrionSqlSessionFactory.InitializeAsync", factory, StringComparison.Ordinal);
+    Assert.Contains("PublicSiteScopedDbConnection", factory, StringComparison.Ordinal);
+    Assert.Contains("await _inner.OpenAsync", factory, StringComparison.Ordinal);
+    Assert.DoesNotContain("connection.StateChange +=", factory, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Runtime_surfaces_do_not_embed_the_development_restaurant_identity()
   {
     var hostRoot = RepoPath("src/OrionERP.Bruno.Web");
@@ -271,7 +289,12 @@ public sealed class RestaurantPublicPresentationTests
       "sectionDtos.Count == 0 && includeActiveProductFallback",
       catalog,
       StringComparison.Ordinal);
-    Assert.Contains("WHERE @IncludeOperations = 1", catalog, StringComparison.Ordinal);
+    Assert.Contains(
+      "includeActiveProductFallback ? posOperationsSql : publicEmptyOperationsSql",
+      catalog,
+      StringComparison.Ordinal);
+    Assert.Contains("WHERE 1=0", catalog, StringComparison.Ordinal);
+    Assert.DoesNotContain("@IncludeOperations", catalog, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

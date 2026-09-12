@@ -182,8 +182,8 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddPublicWebsiteInstance(connectionString, publicWebsite, presentation);
-builder.Services.AddScoped<SqlConnectionFactory>();
-builder.Services.AddScoped<IDbConnectionFactory>(sp => sp.GetRequiredService<SqlConnectionFactory>());
+builder.Services.AddScoped<PublicWebsiteSqlConnectionFactory>();
+builder.Services.AddScoped<IDbConnectionFactory>(sp => sp.GetRequiredService<PublicWebsiteSqlConnectionFactory>());
 builder.Services.AddScoped<IRestaurantCatalogService, RestaurantCatalogService>();
 builder.Services.AddScoped<IRestaurantPromotionService, RestaurantPromotionService>();
 builder.Services.AddScoped<IRestaurantLoyaltyService, LoyaltyService>();

@@ -584,7 +584,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
     var local = TimeZoneInfo.ConvertTime(at, timeZone);
     var products = await GetProductsAsync(normalizedRfc, siteId, ct);
 
-    const string sql =
+    const string menuSql =
       """
       DECLARE @MenuId bigint =
       (
@@ -635,11 +635,21 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       WHERE item.Rfc = @Rfc AND item.MenuSectionId IN
         (SELECT Id FROM restaurante.MenuSection WHERE Rfc = @Rfc AND MenuId = @MenuId)
       ORDER BY item.MenuSectionId, item.SortOrder, item.ProductId;
-      SELECT Id, TableCode AS Code, [Name] FROM restaurante.DiningTable
-      WHERE @IncludeOperations = 1 AND Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
-      SELECT Id, [Name] FROM restaurante.ExternalProvider
-      WHERE @IncludeOperations = 1 AND Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
       """;
+    const string posOperationsSql =
+      """
+      SELECT Id, TableCode AS Code, [Name] FROM restaurante.DiningTable
+      WHERE Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
+      SELECT Id, [Name] FROM restaurante.ExternalProvider
+      WHERE Rfc = @Rfc AND SiteId = @SiteId AND IsActive = 1 ORDER BY [Name], Id;
+      """;
+    const string publicEmptyOperationsSql =
+      """
+      SELECT CAST(NULL AS bigint) AS Id, CAST(NULL AS nvarchar(40)) AS Code,
+             CAST(NULL AS nvarchar(200)) AS [Name] WHERE 1=0;
+      SELECT CAST(NULL AS bigint) AS Id, CAST(NULL AS nvarchar(200)) AS [Name] WHERE 1=0;
+      """;
+    var sql = menuSql + (includeActiveProductFallback ? posOperationsSql : publicEmptyOperationsSql);
 
     using var conn = CreateConnection();
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new
@@ -648,8 +658,7 @@ public sealed class RestaurantCatalogService : IRestaurantCatalogService
       SiteId = siteId,
       DayOfWeek = (byte)local.DayOfWeek,
       PreviousDayOfWeek = (byte)(((int)local.DayOfWeek + 6) % 7),
-      LocalTime = local.TimeOfDay,
-      IncludeOperations = includeActiveProductFallback
+      LocalTime = local.TimeOfDay
     }, cancellationToken: ct));
     var menuName = await multi.ReadSingleAsync<string>();
     var sections = (await multi.ReadAsync<MenuSectionRow>()).AsList();

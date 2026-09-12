@@ -288,6 +288,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260911_restaurant_public_catalog_permissions",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_restaurant_public_catalog_permissions.sql",
+      "description": "Perfil Restaurant v6 con lectura mínima de la estación requerida para limitar el catálogo público a su sede.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

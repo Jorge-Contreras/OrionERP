@@ -577,6 +577,14 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("ProfileVersion=5", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
+        case "20260911_restaurant_public_catalog_permissions":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ProfileVersion=6", sql, StringComparison.Ordinal);
+          Assert.Contains("OBJECT::[restaurante].[KitchenStation]", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicSqlPrincipalBinding", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
         case "20260911_public_rls_principal_binding":
           Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);

@@ -109,6 +109,10 @@ END;
 CLOSE permiso_cursor;
 DEALLOCATE permiso_cursor;
 
+/* Readiness verifies that the scoped Identity policy remains enabled and complete. */
+SET @Sql = N'GRANT VIEW DEFINITION ON OBJECT::[orion].[PublicIdentityScopePolicy] TO ' + QUOTENAME(@Usuario) + N';';
+EXEC sys.sp_executesql @Sql;
+
 /* Identity, membresia, cookies y recuperacion: CRUD sobre su propio esquema, con sus
    indices, claves foraneas y el trigger de AspNetUsers, que corre con el dueno de la
    tabla y no exige permiso aparte. */

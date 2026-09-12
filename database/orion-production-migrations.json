@@ -261,6 +261,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260911_public_identity_policy_metadata_visibility",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_identity_policy_metadata_visibility.sql",
+      "description": "Perfil público v4 con visibilidad mínima de la política RLS requerida por readiness Restaurant.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

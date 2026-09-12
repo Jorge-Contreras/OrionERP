@@ -569,6 +569,14 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("ProfileVersion=4", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
           break;
+        case "20260911_public_rls_policy_metadata_permissions":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("GRANT VIEW DEFINITION ON OBJECT::[orion].[HospitalityScopePolicy]", sql, StringComparison.Ordinal);
+          Assert.Contains("GRANT VIEW DEFINITION ON OBJECT::[orion].[PublicIdentityScopePolicy]", sql, StringComparison.Ordinal);
+          Assert.Contains("ProfileVersion=5", sql, StringComparison.Ordinal);
+          Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
         case "20260911_public_rls_principal_binding":
           Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);

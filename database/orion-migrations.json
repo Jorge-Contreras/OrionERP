@@ -367,6 +367,14 @@
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
+    },
+    {
+      "id": "20260911_public_rls_policy_metadata_permissions",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260911_public_rls_policy_metadata_permissions.sql",
+      "description": "Perfil público v5 que restaura la visibilidad mínima de políticas después de recrear RLS.",
+      "allowedDatabases": [
+        "Orion_Sandbox"
+      ]
     }
   ]
 }

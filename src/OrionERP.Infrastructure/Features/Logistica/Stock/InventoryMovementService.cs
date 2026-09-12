@@ -24,44 +24,11 @@ public sealed class InventoryMovementService : IInventoryMovementService
   public async Task<InventoryMovementWorkspaceDto> GetWorkspaceAsync(string rfc, CancellationToken ct = default)
   {
     var normalizedRfc = LogisticsRfc.Require(rfc);
-    var sql =
-      $$"""
-      SELECT locationInfo.Id,locationInfo.LocationCode AS Code,locationInfo.LocationName AS [Name]
-      FROM logistica.Location locationInfo
-      WHERE locationInfo.Rfc=@Rfc AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
-        AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}}
-      ORDER BY locationInfo.LocationName,locationInfo.LocationCode;
-
-      SELECT balanceInfo.MaterialId,balanceInfo.LocationId,material.MaterialCode,
-             material.[Description] AS MaterialName,unitInfo.Abbreviation AS UnitCode,
-             balanceInfo.Quantity,balanceInfo.ReservedQuantity,balanceInfo.AverageUnitCost,material.TrackLots
-      FROM logistica.StockBalance balanceInfo
-      JOIN logistica.Material material ON material.Rfc=balanceInfo.Rfc AND material.Id=balanceInfo.MaterialId
-      JOIN logistica.Location locationInfo ON locationInfo.Rfc=balanceInfo.Rfc AND locationInfo.Id=balanceInfo.LocationId
-      LEFT JOIN logistica.UnitOfMeasure unitInfo ON unitInfo.Id=material.BaseUnitId
-      WHERE balanceInfo.Rfc=@Rfc AND ISNULL(balanceInfo.IsRemoved,0)=0
-        AND material.IsActive=1 AND locationInfo.IsActive=1 AND locationInfo.IsInventoryEnabled=1
-        AND {{LogisticsLocationScope.VisibilitySql("locationInfo")}}
-      ORDER BY material.[Description],material.MaterialCode,locationInfo.LocationName;
-
-      SELECT lotInfo.Id,lotInfo.MaterialId,lotBalance.LocationId,lotInfo.LotCode,lotInfo.ExpiresAt AS ExpirationDate,
-             lotBalance.Quantity,lotBalance.ReservedQuantity
-      FROM logistica.MaterialLot lotInfo
-      JOIN logistica.LotBalance lotBalance ON lotBalance.Rfc=lotInfo.Rfc AND lotBalance.MaterialLotId=lotInfo.Id
-      WHERE lotInfo.Rfc=@Rfc AND lotInfo.IsBlocked=0
-        AND lotBalance.Quantity-lotBalance.ReservedQuantity>0
-        AND {{LogisticsLocationScope.ForLocationIdSql("lotBalance.LocationId","lotBalance.Rfc")}}
-      ORDER BY COALESCE(lotInfo.ExpiresAt,'9999-12-31'),lotInfo.LotCode;
-      """;
+    var sql = InventoryOptionsQuery.Sql;
     await using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory,_hospitalityScope,ct);
     await LogisticsLocationScope.EnsureRfcAsync(conn,null,normalizedRfc,ct);
     using var multi = await conn.QueryMultipleAsync(new CommandDefinition(sql, new { Rfc = normalizedRfc }, cancellationToken: ct));
-    return new InventoryMovementWorkspaceDto
-    {
-      Locations = (await multi.ReadAsync<InventoryLocationOptionDto>()).AsList(),
-      Balances = (await multi.ReadAsync<InventoryBalanceOptionDto>()).AsList(),
-      Lots = (await multi.ReadAsync<InventoryLotOptionDto>()).AsList()
-    };
+    return await InventoryOptionsQuery.ReadAsync(multi);
   }
 
   public async Task<LogisticsCommandResult> PostTransferAsync(
@@ -141,12 +108,12 @@ public sealed class InventoryMovementService : IInventoryMovementService
 
       foreach (var line in lines)
       {
-        var material = await LoadMaterialAsync(conn, tx, rfc, line.MaterialId, ct);
+        var material = await InventoryAdjustmentWriter.LoadMaterialAsync(conn, tx, rfc, line.MaterialId, ct);
         if (material is null) throw new InvalidOperationException("Un material no pertenece al RFC o está inactivo.");
         if (material.TrackLots && !line.MaterialLotId.HasValue)
           throw new InvalidOperationException($"El material {material.MaterialCode} requiere seleccionar lote.");
 
-        var source = await LoadBalanceAsync(conn, tx, rfc, request.FromLocationId, line.MaterialId, ct)
+        var source = await InventoryAdjustmentWriter.LoadBalanceAsync(conn, tx, rfc, request.FromLocationId, line.MaterialId, ct)
           ?? throw new InvalidOperationException($"No existe saldo de {material.MaterialCode} en el origen.");
         if (source.Quantity - source.ReservedQuantity < line.Quantity)
           throw new InvalidOperationException($"El disponible de {material.MaterialCode} no alcanza para el traspaso.");
@@ -154,13 +121,13 @@ public sealed class InventoryMovementService : IInventoryMovementService
         MovementLotRow? sourceLot = null;
         if (line.MaterialLotId.HasValue)
         {
-          sourceLot = await LoadLotAsync(conn, tx, rfc, request.FromLocationId, line.MaterialId, line.MaterialLotId.Value, ct)
+          sourceLot = await InventoryAdjustmentWriter.LoadLotAsync(conn, tx, rfc, request.FromLocationId, line.MaterialId, line.MaterialLotId.Value, ct)
             ?? throw new InvalidOperationException($"El lote de {material.MaterialCode} no existe en el origen.");
           if (sourceLot.Quantity - sourceLot.ReservedQuantity < line.Quantity)
             throw new InvalidOperationException($"El disponible del lote {sourceLot.LotCode} no alcanza.");
         }
 
-        var destination = await LoadBalanceAsync(conn, tx, rfc, request.ToLocationId, line.MaterialId, ct);
+        var destination = await InventoryAdjustmentWriter.LoadBalanceAsync(conn, tx, rfc, request.ToLocationId, line.MaterialId, ct);
         var destinationAfter = (destination?.Quantity ?? 0) + line.Quantity;
         var destinationCost = destination is null || destinationAfter == 0
           ? source.AverageUnitCost
@@ -219,11 +186,10 @@ public sealed class InventoryMovementService : IInventoryMovementService
             }, tx, cancellationToken: ct));
         }
 
-        var referenceId = checked((int)transferId);
-        await InsertTransactionAsync(conn, tx, rfc, source.Id, request.FromLocationId, line.MaterialId,
-          "TransferOut", -line.Quantity, source.Quantity - line.Quantity, "InventoryTransfer", referenceId, request.Reason, userName, ct);
-        await InsertTransactionAsync(conn, tx, rfc, destinationBalanceId, request.ToLocationId, line.MaterialId,
-          "TransferIn", line.Quantity, destinationAfter, "InventoryTransfer", referenceId, request.Reason, userName, ct);
+        await InventoryAdjustmentWriter.InsertTransactionAsync(conn, tx, rfc, source.Id, request.FromLocationId, line.MaterialId,
+          "TransferOut", -line.Quantity, source.Quantity - line.Quantity, "InventoryTransfer", transferId, request.Reason, userName, ct);
+        await InventoryAdjustmentWriter.InsertTransactionAsync(conn, tx, rfc, destinationBalanceId, request.ToLocationId, line.MaterialId,
+          "TransferIn", line.Quantity, destinationAfter, "InventoryTransfer", transferId, request.Reason, userName, ct);
       }
 
       await conn.ExecuteAsync(new CommandDefinition(
@@ -319,74 +285,9 @@ public sealed class InventoryMovementService : IInventoryMovementService
         }, tx, cancellationToken: ct));
 
       foreach (var line in lines)
-      {
-        var material = await LoadMaterialAsync(conn, tx, rfc, line.MaterialId, ct)
-          ?? throw new InvalidOperationException("Un material no pertenece al RFC o está inactivo.");
-        if (material.TrackLots && !line.MaterialLotId.HasValue)
-          throw new InvalidOperationException($"El material {material.MaterialCode} requiere seleccionar lote.");
-        if (!await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-          "SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM logistica.Location WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@LocationId AND IsActive=1 AND IsInventoryEnabled=1) THEN 1 ELSE 0 END AS bit);",
-          new { Rfc = rfc, line.LocationId }, tx, cancellationToken: ct)))
-          throw new InvalidOperationException("Una ubicación no pertenece al RFC o está inactiva.");
-
-        var balance = await LoadBalanceAsync(conn, tx, rfc, line.LocationId, line.MaterialId, ct);
-        if (balance is null && line.QuantityDelta < 0)
-          throw new InvalidOperationException($"No existe saldo de {material.MaterialCode} para descontar.");
-        if (balance is not null && line.QuantityDelta < 0 && balance.Quantity - balance.ReservedQuantity < -line.QuantityDelta)
-          throw new InvalidOperationException($"El ajuste excede el disponible de {material.MaterialCode}.");
-        var balanceId = balance?.Id ?? await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-          """
-          INSERT INTO logistica.StockBalance (Rfc,LocationId,MaterialId,Quantity,ReservedQuantity,AverageUnitCost)
-          VALUES (@Rfc,@LocationId,@MaterialId,0,0,0);
-          SELECT CAST(SCOPE_IDENTITY() AS int);
-          """, new { Rfc = rfc, line.LocationId, line.MaterialId }, tx, cancellationToken: ct));
-        var quantityAfter = (balance?.Quantity ?? 0) + line.QuantityDelta;
-
-        if (line.MaterialLotId.HasValue)
-        {
-          var lot = await LoadMaterialLotAsync(conn, tx, rfc, line.MaterialId, line.MaterialLotId.Value, ct)
-            ?? throw new InvalidOperationException($"El lote de {material.MaterialCode} no pertenece al RFC/material.");
-          var lotBalance = await LoadLotAsync(conn, tx, rfc, line.LocationId, line.MaterialId, line.MaterialLotId.Value, ct);
-          if (lotBalance is null && line.QuantityDelta < 0)
-            throw new InvalidOperationException($"El lote {lot.LotCode} no tiene saldo en la ubicación.");
-          if (lotBalance is not null && line.QuantityDelta < 0 && lotBalance.Quantity - lotBalance.ReservedQuantity < -line.QuantityDelta)
-            throw new InvalidOperationException($"El ajuste excede el disponible del lote {lot.LotCode}.");
-          if (lotBalance is null)
-          {
-            await conn.ExecuteAsync(new CommandDefinition(
-              "INSERT INTO logistica.LotBalance (Rfc,MaterialLotId,MaterialId,LocationId,Quantity,ReservedQuantity) VALUES (@Rfc,@LotId,@MaterialId,@LocationId,@Quantity,0);",
-              new { Rfc = rfc, LotId = line.MaterialLotId.Value, line.MaterialId, line.LocationId, Quantity = line.QuantityDelta }, tx, cancellationToken: ct));
-          }
-          else
-          {
-            await conn.ExecuteAsync(new CommandDefinition(
-              "UPDATE logistica.LotBalance SET Quantity=Quantity+@Delta,UpdatedAt=SYSUTCDATETIME() WHERE Rfc=@Rfc AND MaterialLotId=@LotId AND LocationId=@LocationId;",
-              new { Rfc = rfc, Delta = line.QuantityDelta, LotId = line.MaterialLotId.Value, line.LocationId }, tx, cancellationToken: ct));
-          }
-        }
-
-        await conn.ExecuteAsync(new CommandDefinition(
-          """
-          UPDATE logistica.StockBalance SET Quantity=Quantity+@Delta,UpdatedAt=SYSUTCDATETIME()
-          WHERE Rfc=@Rfc AND Id=@BalanceId;
-          INSERT INTO logistica.InventoryAdjustmentLine
-            (Rfc,AdjustmentId,MaterialId,LocationId,MaterialLotId,QuantityDelta,FrozenUnitCost)
-          VALUES
-            (@Rfc,@AdjustmentId,@MaterialId,@LocationId,@MaterialLotId,@Delta,@UnitCost);
-          """, new
-          {
-            Rfc = rfc,
-            Delta = line.QuantityDelta,
-            BalanceId = balanceId,
-            AdjustmentId = adjustmentId,
-            line.MaterialId,
-            line.LocationId,
-            line.MaterialLotId,
-            UnitCost = balance?.AverageUnitCost ?? 0
-          }, tx, cancellationToken: ct));
-        await InsertTransactionAsync(conn, tx, rfc, balanceId, line.LocationId, line.MaterialId,
-          adjustmentType, line.QuantityDelta, quantityAfter, "InventoryAdjustment", checked((int)adjustmentId), request.Reason, userName, ct);
-      }
+        await InventoryAdjustmentWriter.ApplyLineAsync(conn, tx, rfc, adjustmentId, adjustmentType, "El ajuste",
+          line.MaterialId, line.LocationId, line.MaterialLotId, line.QuantityDelta,
+          frozenUnitCost: null, request.Reason, userName, ct);
 
       await conn.ExecuteAsync(new CommandDefinition(
         """
@@ -403,57 +304,4 @@ public sealed class InventoryMovementService : IInventoryMovementService
       throw;
     }
   }
-
-  private static Task InsertTransactionAsync(
-    DbConnection conn,
-    DbTransaction tx,
-    string rfc,
-    int balanceId,
-    int locationId,
-    int materialId,
-    string type,
-    decimal delta,
-    decimal quantityAfter,
-    string referenceType,
-    int referenceId,
-    string notes,
-    string userName,
-    CancellationToken ct)
-    => conn.ExecuteAsync(new CommandDefinition(
-      """
-      INSERT INTO logistica.StockTransaction
-        (Rfc,StockBalanceId,LocationId,MaterialId,TransactionType,QuantityDelta,QuantityAfter,ReferenceType,ReferenceId,Notes,PerformedBy)
-      VALUES
-        (@Rfc,@BalanceId,@LocationId,@MaterialId,@Type,@Delta,@QuantityAfter,@ReferenceType,@ReferenceId,@Notes,@UserName);
-      """, new { Rfc = rfc, BalanceId = balanceId, LocationId = locationId, MaterialId = materialId, Type = type, Delta = delta, QuantityAfter = quantityAfter, ReferenceType = referenceType, ReferenceId = referenceId, Notes = notes.Trim(), UserName = userName }, tx, cancellationToken: ct));
-
-  private static Task<MovementMaterialRow?> LoadMaterialAsync(DbConnection conn, DbTransaction tx, string rfc, int materialId, CancellationToken ct)
-    => conn.QuerySingleOrDefaultAsync<MovementMaterialRow>(new CommandDefinition(
-      "SELECT Id,MaterialCode,TrackLots FROM logistica.Material WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@MaterialId AND IsActive=1;",
-      new { Rfc = rfc, MaterialId = materialId }, tx, cancellationToken: ct));
-
-  private static Task<MovementBalanceRow?> LoadBalanceAsync(DbConnection conn, DbTransaction tx, string rfc, int locationId, int materialId, CancellationToken ct)
-    => conn.QuerySingleOrDefaultAsync<MovementBalanceRow>(new CommandDefinition(
-      "SELECT Id,Quantity,ReservedQuantity,AverageUnitCost FROM logistica.StockBalance WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND LocationId=@LocationId AND MaterialId=@MaterialId AND ISNULL(IsRemoved,0)=0;",
-      new { Rfc = rfc, LocationId = locationId, MaterialId = materialId }, tx, cancellationToken: ct));
-
-  private static Task<MovementLotRow?> LoadLotAsync(DbConnection conn, DbTransaction tx, string rfc, int locationId, int materialId, long lotId, CancellationToken ct)
-    => conn.QuerySingleOrDefaultAsync<MovementLotRow>(new CommandDefinition(
-      """
-      SELECT lotInfo.Id,lotInfo.LotCode,lotBalance.Quantity,lotBalance.ReservedQuantity
-      FROM logistica.MaterialLot lotInfo WITH (UPDLOCK,HOLDLOCK)
-      JOIN logistica.LotBalance lotBalance WITH (UPDLOCK,HOLDLOCK)
-        ON lotBalance.Rfc=lotInfo.Rfc AND lotBalance.MaterialLotId=lotInfo.Id
-      WHERE lotInfo.Rfc=@Rfc AND lotInfo.Id=@LotId AND lotInfo.MaterialId=@MaterialId
-        AND lotBalance.LocationId=@LocationId AND lotInfo.IsBlocked=0;
-      """, new { Rfc = rfc, LocationId = locationId, MaterialId = materialId, LotId = lotId }, tx, cancellationToken: ct));
-
-  private static Task<MovementLotRow?> LoadMaterialLotAsync(DbConnection conn, DbTransaction tx, string rfc, int materialId, long lotId, CancellationToken ct)
-    => conn.QuerySingleOrDefaultAsync<MovementLotRow>(new CommandDefinition(
-      "SELECT Id,LotCode FROM logistica.MaterialLot WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@LotId AND MaterialId=@MaterialId AND IsBlocked=0;",
-      new { Rfc = rfc, MaterialId = materialId, LotId = lotId }, tx, cancellationToken: ct));
-
-  private sealed class MovementMaterialRow { public int Id { get; set; } public string MaterialCode { get; set; } = string.Empty; public bool TrackLots { get; set; } }
-  private sealed class MovementBalanceRow { public int Id { get; set; } public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } public decimal AverageUnitCost { get; set; } }
-  private sealed class MovementLotRow { public long Id { get; set; } public string LotCode { get; set; } = string.Empty; public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } }
 }

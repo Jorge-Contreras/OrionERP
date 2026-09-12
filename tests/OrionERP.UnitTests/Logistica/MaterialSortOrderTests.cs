@@ -35,7 +35,9 @@ public class MaterialSortOrderTests
   // Conteos antepone el orden de recorrido (secuencia y ubicación) porque una sesión puede cruzar
   // varias ubicaciones; la descripción sigue siendo el desempate dentro de cada parada.
   [InlineData("src/OrionERP.Infrastructure/Features/Logistica/PhysicalCounts/PhysicalCountService.cs", "ORDER BY line.CountSequence, loc.LocationCode, m.[Description], m.MaterialCode, line.Id;")]
-  [InlineData("src/OrionERP.Infrastructure/Features/Logistica/Stock/InventoryMovementService.cs", "ORDER BY material.[Description],material.MaterialCode,locationInfo.LocationName;")]
+  // La consulta de opciones se extrajo a InventoryOptionsQuery para que movimientos y merma lean
+  // los mismos saldos; el orden por descripción se mudó con ella.
+  [InlineData("src/OrionERP.Infrastructure/Features/Logistica/Stock/InventoryOptionsQuery.cs", "ORDER BY material.[Description],material.MaterialCode,locationInfo.LocationName;")]
   [InlineData("src/OrionERP.Infrastructure/Features/Logistica/Purchasing/PurchaseOrderService.cs", "ORDER BY line.MaterialDescriptionSnapshot, line.MaterialCodeSnapshot, line.Id;")]
   [InlineData("src/OrionERP.Infrastructure/Features/Logistica/Stock/StockService.cs", "MaterialSortOrder.SqlKeys(\"m\")")]
   public void ListQueries_OrderMaterialsByDescription(string relativePath, string expectedFragment)

@@ -520,6 +520,7 @@ VALUES
 
   (N'REST-INVENTARIO-TURNOS', N'OPERAR', 3, 1, N'ENLACE', N'Abrir movimientos de inventario', N'/restaurante/inventario', N'Acceso local a traspasos, ajustes y merma del restaurante ficticio.'),
   (N'REST-INVENTARIO-TURNOS', N'OPERAR', 3, 2, N'ENLACE', N'Abrir turnos de caja', N'/restaurante/turnos', N'Acceso local a apertura, conteo ciego y corte de caja.'),
+  (N'REST-INVENTARIO-TURNOS', N'OPERAR', 3, 3, N'ENLACE', N'Abrir merma', N'/restaurante/mermas', N'Acceso local a la baja de producto caducado o dañado, con evidencia y reversa.'),
 
   (N'REST-CATALOGO-CONFIG', N'OPERAR', 3, 1, N'ENLACE', N'Abrir menús y modificadores', N'/restaurante/menus', N'Acceso local a menús, secciones y modificadores ficticios.'),
   (N'REST-CATALOGO-CONFIG', N'OPERAR', 3, 2, N'ENLACE', N'Abrir administración de restaurante', N'/restaurante/admin', N'Acceso local a sedes, productos, variantes y precios ficticios.'),

@@ -101,10 +101,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        var wasExcluded = selectedEmitida.D == "✓";
+        var willExclude = !string.Equals(selectedEmitida.D, "X", StringComparison.OrdinalIgnoreCase);
         await DeclaracionService.ToggleInclusionAsync(selectedEmitida.Comprobante_Id);
         await LoadAllData();
-        statusMessage = $"Factura recibida marcada como {(wasExcluded ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
+        statusMessage = $"Factura emitida marcada como {(willExclude ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
       }
       catch (Exception ex)
       {
@@ -122,10 +122,10 @@ namespace OrionERP.Web.Features.Cfdi.DeclaracionPrevia.Pages
       }
       try
       {
-        var wasExcluded = selectedRecibida.D == "✓";
+        var willExclude = !string.Equals(selectedRecibida.D, "X", StringComparison.OrdinalIgnoreCase);
         await DeclaracionService.ToggleInclusionAsync(selectedRecibida.Comprobante_Id);
         await LoadAllData();
-        statusMessage = $"Factura recibida marcada como {(wasExcluded ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
+        statusMessage = $"Factura recibida marcada como {(willExclude ? "EXCLUIDA" : "INCLUIDA")} en la declaración.";
       }
       catch (Exception ex)
       {

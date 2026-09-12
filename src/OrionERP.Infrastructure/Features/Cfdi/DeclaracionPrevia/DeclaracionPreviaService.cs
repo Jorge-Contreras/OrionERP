@@ -209,9 +209,20 @@ public class DeclaracionPreviaService : IDeclaracionPreviaService
 
   public async Task ToggleInclusionAsync(int comprobanteId)
   {
-    const string sql = "UPDATE Comprobante SET Incluir_En_Declaracion = CASE WHEN Incluir_En_Declaracion = 1 THEN 0 ELSE 1 END WHERE Comprobante_Id = @Id";
+    const string sql = """
+UPDATE cfdi.Comprobante
+SET Incluir_En_Declaracion = CASE WHEN ISNULL(Incluir_En_Declaracion, 1) = 1 THEN 0 ELSE 1 END
+WHERE Comprobante_Id = @Id
+  AND ISNULL(LTRIM(RTRIM(Estatus)), '') NOT IN ('Cancelado', 'Cancelada')
+  AND FechaCancelacion IS NULL;
+""";
+
     using var conn = await _connections.OpenAsync();
-    await conn.ExecuteAsync(sql, new { Id = comprobanteId });
+    var affected = await conn.ExecuteAsync(sql, new { Id = comprobanteId });
+    if (affected == 0)
+    {
+      throw new InvalidOperationException("No se puede cambiar la inclusión de un CFDI cancelado o inexistente.");
+    }
   }
 
   public async Task<int> ExcludePagosYDevolucionesAsync(string rfc, int year, int? month)

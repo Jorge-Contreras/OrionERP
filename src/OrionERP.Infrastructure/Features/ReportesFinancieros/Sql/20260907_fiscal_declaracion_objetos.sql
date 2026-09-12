@@ -784,6 +784,9 @@ BEGIN
     Cadena de IVA.
       ValorSat     = precarga estricta (PUE + bancarizada + G01/G03) + complementos
       ValorNuestro = base de flujo: PUE + complementos - notas de credito
+    Para la base de actos pagados se conserva tambien el Actos_16 operativo de
+    Declaracion Previa. Ese importe incluye efectivo y solo obedece la marca
+    Incluir_En_Declaracion; es el que se captura manualmente en el portal.
     La tercera cifra, "IVA de todas las recibidas", va como renglon informativo
     porque es la que se ha venido capturando y conviene verla al lado.
   ----------------------------------------------------------------------*/
@@ -802,6 +805,28 @@ BEGIN
          @AcredIva16Todas = AcredIva16Todas,
          @AcredIva16E = AcredIva16TipoE, @IvaRetNos = IvaRetenidoEmitidas
   FROM #Agg WHERE Mes = @Periodo;
+
+  -- Debe coincidir centavo por centavo con la columna Actos16 de Declaracion
+  -- Previa. No se reconstruye desde Base16: esa base XML conserva mas de dos
+  -- decimales y, para agosto 2026 de OHM191112Q26, produciria 116,337.05 en vez
+  -- de los 116,336.93 que el usuario revisa y captura. La columna SAT mantiene
+  -- sus condiciones de precarga; la columna Nuestra solo excluye los CFDI que
+  -- el usuario marco manualmente fuera de la declaracion.
+  DECLARE @AcredActos16Sat decimal(19,4) = ISNULL((
+    SELECT SUM(CAST(cd.Actos_16 AS decimal(19,4)))
+    FROM fiscal.fn_Cfdi_Periodo(@Rfc, @Ejercicio, @Periodo) AS f
+    INNER JOIN cfdi.COMPROBANTE_DETALLE AS cd ON cd.Comprobante_Id = f.Comprobante_Id
+    WHERE f.EsRecibida = 1 AND f.EsVigente = 1 AND f.TipoDeComprobante = 'I'
+      AND f.EsPue = 1 AND f.EsBancarizada = 1 AND f.UsoAcreditable = 1
+  ), 0);
+
+  DECLARE @AcredActos16Incluidos decimal(19,4) = ISNULL((
+    SELECT SUM(CAST(cd.Actos_16 AS decimal(19,4)))
+    FROM fiscal.fn_Cfdi_Periodo(@Rfc, @Ejercicio, @Periodo) AS f
+    INNER JOIN cfdi.COMPROBANTE_DETALLE AS cd ON cd.Comprobante_Id = f.Comprobante_Id
+    WHERE f.EsRecibida = 1 AND f.EsVigente = 1 AND f.TipoDeComprobante = 'I'
+      AND f.EsPue = 1 AND f.IncluirEnDeclaracion = 1
+  ), 0);
 
   DECLARE @IvaCargoSat decimal(19,4) = @TrasIva16 + @TrasIva16C;
   DECLARE @IvaAcredSat decimal(19,4) = CAST((@AcredIva16S + @AcredIva16C) * @ProporcionIva AS decimal(19,4));
@@ -886,23 +911,25 @@ BEGIN
     UNION ALL SELECT  6, 'IVA 16% de facturas emitidas tipo Ingreso (PUE)', 'money', 0, @TrasIva16, @TrasIva16, NULL
     UNION ALL SELECT  7, 'IVA 16% de complementos de pago emitidos', 'money', 0, @TrasIva16C, @TrasIva16C, NULL
     UNION ALL SELECT  8, 'Total de IVA a cargo', 'money', 1, @IvaCargoSat, @IvaCargoSat, @DeclIvaACargo
-    UNION ALL SELECT  9, 'Actos pagados 16% - facturas recibidas tipo Ingreso', 'money', 0, @AcredBase16S, @AcredBase16S, NULL
+    UNION ALL SELECT  9, 'Actos pagados 16% - facturas recibidas tipo Ingreso (incluidas manualmente)', 'money', 0, @AcredActos16Sat, @AcredActos16Incluidos, NULL
     UNION ALL SELECT 10, 'Actos pagados 16% - complementos de pago recibidos', 'money', 0, @AcredBase16C, @AcredBase16C, NULL
-    UNION ALL SELECT 11, 'Actos pagados a la tasa 0%', 'money', 0, @AcredBase0S, @AcredBase0S, NULL
-    UNION ALL SELECT 12, 'IVA 16% de facturas recibidas tipo Ingreso', 'money', 0, @AcredIva16S, @AcredIva16Pue, NULL
-    UNION ALL SELECT 13, 'IVA 16% de complementos de pago recibidos', 'money', 0, @AcredIva16C, @AcredIva16C, NULL
-    UNION ALL SELECT 14, 'IVA 16% de notas de credito recibidas (tipo E)', 'money', 0, 0, -@AcredIva16E, NULL
-    UNION ALL SELECT 15, 'Proporcion de IVA acreditable', 'rate', 0, @ProporcionIva, @ProporcionIva, NULL
-    UNION ALL SELECT 16, 'Total de IVA acreditable', 'money', 1, @IvaAcredSat, @IvaAcredNuestro, @DeclIvaAcreditable
-    UNION ALL SELECT 17, 'IVA retenido al contribuyente', 'money', 0, @IvaRetNos, @IvaRetNos, NULL
-    UNION ALL SELECT 18, 'Saldo a favor', 'money', 1,
+    UNION ALL SELECT 11, 'Total de actos o actividades pagados a la tasa del 16% (captura SAT)', 'money', 1,
+                     @AcredActos16Sat + @AcredBase16C, @AcredActos16Incluidos + @AcredBase16C, NULL
+    UNION ALL SELECT 12, 'Actos pagados a la tasa 0%', 'money', 0, @AcredBase0S, @AcredBase0S, NULL
+    UNION ALL SELECT 13, 'IVA 16% de facturas recibidas tipo Ingreso', 'money', 0, @AcredIva16S, @AcredIva16Pue, NULL
+    UNION ALL SELECT 14, 'IVA 16% de complementos de pago recibidos', 'money', 0, @AcredIva16C, @AcredIva16C, NULL
+    UNION ALL SELECT 15, 'IVA 16% de notas de credito recibidas (tipo E)', 'money', 0, 0, -@AcredIva16E, NULL
+    UNION ALL SELECT 16, 'Proporcion de IVA acreditable', 'rate', 0, @ProporcionIva, @ProporcionIva, NULL
+    UNION ALL SELECT 17, 'Total de IVA acreditable', 'money', 1, @IvaAcredSat, @IvaAcredNuestro, @DeclIvaAcreditable
+    UNION ALL SELECT 18, 'IVA retenido al contribuyente', 'money', 0, @IvaRetNos, @IvaRetNos, NULL
+    UNION ALL SELECT 19, 'Saldo a favor', 'money', 1,
                      CASE WHEN @SaldoSat > 0 THEN @SaldoSat ELSE 0 END,
                      CASE WHEN @SaldoNuestro > 0 THEN @SaldoNuestro ELSE 0 END, @DeclSaldoFavor
-    UNION ALL SELECT 19, 'IVA a cargo (a pagar)', 'money', 1,
+    UNION ALL SELECT 20, 'IVA a cargo (a pagar)', 'money', 1,
                      CASE WHEN @SaldoSat < 0 THEN -@SaldoSat ELSE 0 END,
                      CASE WHEN @SaldoNuestro < 0 THEN -@SaldoNuestro ELSE 0 END, NULL
-    UNION ALL SELECT 20, 'Informativo: IVA 16% de todas las facturas recibidas tipo I (incluye PPD)', 'money', 0, NULL, @AcredIva16Todas, NULL
-    UNION ALL SELECT 21, 'Informativo: IVA de pagos en efectivo <= $2,000 (acreditable, no precargado - agregar en el portal)', 'money', 0, NULL, @AcredIva16Efvo, NULL
+    UNION ALL SELECT 21, 'Informativo: IVA 16% de todas las facturas recibidas tipo I (incluye PPD)', 'money', 0, NULL, @AcredIva16Todas, NULL
+    UNION ALL SELECT 22, 'Informativo: IVA de pagos en efectivo <= $2,000 (acreditable, no precargado - agregar en el portal)', 'money', 0, NULL, @AcredIva16Efvo, NULL
   )
   SELECT
     r.Orden, Seccion = 'IVA', r.Concepto, r.Formato, r.EsTotal,

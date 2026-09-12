@@ -39,6 +39,9 @@
                                              - Generar_Poliza_Isr + 7o conjunto de
                                                Rpt_Declaracion_Mensual (asiento de
                                                provision de ISR del mes)
+    20260911_declaracion_previa_show_excluded.sql
+                                             - conserva visibles los CFDI con X
+                                               para poder incluirlos de nuevo
 #>
 [CmdletBinding()]
 param(
@@ -54,7 +57,8 @@ $here = $PSScriptRoot
 if (-not $Scripts -or $Scripts.Count -eq 0) {
   $Scripts = @(
     (Join-Path $here '20260907_fiscal_declaracion_schema.sql'),
-    (Join-Path $here '20260907_fiscal_declaracion_objetos.sql')
+    (Join-Path $here '20260907_fiscal_declaracion_objetos.sql'),
+    (Join-Path $here '..\..\Cfdi\DeclaracionPrevia\Sql\20260911_declaracion_previa_show_excluded.sql')
   )
 }
 

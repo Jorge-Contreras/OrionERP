@@ -52,6 +52,20 @@
 .compras-panel-allocations { --panel-accent: #5b6fba; --panel-tint: #eef1fa; }
 .compras-panel-receipt { --panel-accent: #2f9e44; --panel-tint: #e9f7ec; }
 .compras-panel-history { --panel-accent: #6b7a90; --panel-tint: #f1f4f7; }
+.compras-panel-accounting { --panel-accent: #7b4bb3; --panel-tint: #f3eefa; }
+
+.compras-accounting-pill {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.compras-accounting-pill.is-pending { background: #fff1d6; color: #8a5400; }
+.compras-accounting-pill.is-done { background: #e3f5e8; color: #1d6b3b; }
 
 .compras-panel-receipt {
   box-shadow: 0 0.8rem 2rem rgba(47, 158, 68, 0.14);
@@ -214,7 +228,7 @@
 
 .compras-process-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.65rem;
   padding: 0;
   margin: 0;
@@ -287,6 +301,13 @@
   margin: 0.8rem 0 0;
   color: #395e61;
   font-weight: 600;
+}
+
+/* Con cinco pasos, el subtítulo de cada uno ya no cabe en pantallas medianas y cortaba el título. */
+@media (max-width: 1199.98px) {
+  .compras-process-steps small {
+    display: none;
+  }
 }
 
 .compras-summary-grid {

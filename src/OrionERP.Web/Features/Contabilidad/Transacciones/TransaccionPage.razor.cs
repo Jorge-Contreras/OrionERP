@@ -8,6 +8,7 @@ using OrionERP.Application.Features.Cfdi.DeclaracionPrevia;
 using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.CuentasPorPagar.Recurrentes;
+using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Web.Services;
 using OrionERP.Web.Shared;
 using OrionERP.Web.State;
@@ -30,6 +31,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     Comprobantes,
     Reservaciones,
     CuentasPorPagar,
+    Compras,
     Banco,
     Attachments,
     Resumen
@@ -83,6 +85,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   [Inject] public IDeclaracionPreviaService DeclaracionPreviaService { get; set; } = default!;
   [Inject] public IRecurrentApService RecurrentApService { get; set; } = default!;
   [Inject] public IAjustesService AjustesService { get; set; } = default!;
+  [Inject] public IPurchaseAccountingService PurchaseAccountingService { get; set; } = default!;
+  [Inject] public ICurrentUserAccessor CurrentUserAccessor { get; set; } = default!;
   [Inject] public IOperationErrorPresenter Errors { get; set; } = default!;
   [Inject] public IAccountingCycleService AccountingCycle { get; set; } = default!;
 
@@ -103,6 +107,8 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected List<TransaccionReservacionSearchItemDto> ReservacionCandidates { get; } = [];
   protected List<RecurrentApTransactionLinkDto> ApLinks { get; } = [];
   protected List<RecurrentApOccurrenceListItemDto> ApOccurrenceCandidates { get; } = [];
+  protected List<PurchaseAccountingLinkedOrderDto> CompraLinks { get; } = [];
+  protected List<PurchaseOrderAccountingCandidateDto> CompraCandidates { get; } = [];
   protected List<LookupInt32Dto> ProyectoOptions { get; } = [];
   protected List<LookupInt32Dto> CompraOptions { get; } = [];
   protected List<LookupInt32Dto> ServicioOptions { get; } = [];
@@ -117,6 +123,12 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected string CompraSearchTerm { get; set; } = string.Empty;
   protected string ReservacionSearchTerm { get; set; } = string.Empty;
   protected string ApOccurrenceSearchTerm { get; set; } = string.Empty;
+  protected string CompraOrderSearchTerm { get; set; } = string.Empty;
+  protected decimal CompraLinkMonto { get; set; }
+  protected PurchaseOrderAccountingCandidateDto? SelectedCompraCandidate { get; set; }
+  protected PurchasePolizaLinksDto? CompraLinksInfo { get; private set; }
+  protected string? CompraLinksError { get; private set; }
+  private bool _compraCandidatesLoaded;
   protected decimal ReservacionAmountInput { get; set; }
   protected string SelectedPublicoMonthCode { get; set; } = DateTime.Today.Month.ToString("00", CultureInfo.InvariantCulture);
   protected int SelectedPublicoYear { get; set; } = DateTime.Today.Year;
@@ -201,6 +213,9 @@ public partial class TransaccionPage : ComponentBase, IDisposable
   protected bool IsSearchingApOccurrences { get; private set; }
   protected bool IsLinkingApOccurrence { get; private set; }
   protected int? UnlinkingApPaymentId { get; private set; }
+  protected bool IsSearchingCompraCandidates { get; private set; }
+  protected bool IsLinkingCompra { get; private set; }
+  protected int? UnlinkingCompraLinkId { get; private set; }
   protected bool IsLoadingPlantillas { get; private set; }
   protected bool IsApplyingPlantilla { get; private set; }
   protected bool IsRegeneratingMovimientos { get; private set; }
@@ -753,6 +768,7 @@ public partial class TransaccionPage : ComponentBase, IDisposable
       await ReloadBancoMovimientosAsync(ct);
       await ReloadReservacionLinksAsync(ct);
       await ReloadApLinksAsync(ct);
+      await ReloadCompraLinksAsync(ct);
       await SearchReservacionesAsync(ct);
       await ReloadCycleStatusAsync(ct);
     }
@@ -792,6 +808,13 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     ReservacionCandidates.Clear();
     ApLinks.Clear();
     ApOccurrenceCandidates.Clear();
+    CompraLinks.Clear();
+    CompraCandidates.Clear();
+    SelectedCompraCandidate = null;
+    CompraLinksInfo = null;
+    CompraLinksError = null;
+    CompraOrderSearchTerm = string.Empty;
+    _compraCandidatesLoaded = false;
     Totals = new MovimientoTotalsDto();
     ClearReservacionSelection();
     CloseMovimientoModal();
@@ -802,6 +825,149 @@ public partial class TransaccionPage : ComponentBase, IDisposable
     ApLinks.Clear();
     var links = await RecurrentApService.GetTransactionLinksAsync(Id, ct);
     ApLinks.AddRange(links);
+  }
+
+  private async Task ReloadCompraLinksAsync(CancellationToken ct = default)
+  {
+    // Si el vínculo con Compras falla, la póliza se sigue abriendo: sólo esta pestaña lo avisa.
+    try
+    {
+      CompraLinksError = null;
+      CompraLinksInfo = await PurchaseAccountingService.GetTransaccionLinksAsync(Id, ct);
+      CompraLinks.Clear();
+      if (CompraLinksInfo is not null) CompraLinks.AddRange(CompraLinksInfo.PurchaseOrders);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+      CompraLinksInfo = null;
+      CompraLinks.Clear();
+      CompraLinksError = Errors.ToUserMessage(ex, "consultar las compras ligadas a la póliza", new { Id });
+    }
+  }
+
+  /// <summary>Las sugerencias se calculan al abrir la pestaña, no cada vez que se abre una póliza.</summary>
+  protected async Task ActivateComprasSectionAsync()
+  {
+    ActivateSection(SectionPanel.Compras);
+    if (!_compraCandidatesLoaded && CompraLinksError is null)
+    {
+      await SearchCompraCandidatesAsync();
+    }
+  }
+
+  protected async Task SearchCompraCandidatesAsync()
+  {
+    IsSearchingCompraCandidates = true;
+    SelectedCompraCandidate = null;
+    CompraLinkMonto = 0m;
+    try
+    {
+      var rows = await PurchaseAccountingService.SearchPurchaseOrderCandidatesAsync(Id, CompraOrderSearchTerm);
+      CompraCandidates.Clear();
+      CompraCandidates.AddRange(rows);
+      _compraCandidatesLoaded = true;
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "buscar compras pendientes de póliza", new { Id, CompraOrderSearchTerm }));
+    }
+    finally
+    {
+      IsSearchingCompraCandidates = false;
+    }
+  }
+
+  protected async Task HandleCompraSearchKeyDownAsync(KeyboardEventArgs args)
+  {
+    if (args.Key == "Enter")
+    {
+      await SearchCompraCandidatesAsync();
+    }
+  }
+
+  protected decimal MaxCompraLinkMonto => SelectedCompraCandidate is null
+    ? 0m
+    : Math.Max(Math.Min(SelectedCompraCandidate.PorContabilizar, CompraLinksInfo?.Summary.Disponible ?? 0m), 0m);
+
+  protected void SelectCompraCandidate(PurchaseOrderAccountingCandidateDto candidate)
+  {
+    SelectedCompraCandidate = candidate;
+    CompraLinkMonto = MaxCompraLinkMonto;
+  }
+
+  protected void CancelCompraSelection()
+  {
+    SelectedCompraCandidate = null;
+    CompraLinkMonto = 0m;
+  }
+
+  protected async Task LinkCompraAsync()
+  {
+    // El recuadro de la compra elegida, con su monto, ya es la confirmación; ligar se deshace con "Quitar".
+    if (SelectedCompraCandidate is not { } candidate || CompraLinkMonto <= 0m || CompraLinkMonto > MaxCompraLinkMonto) return;
+
+    IsLinkingCompra = true;
+    try
+    {
+      var result = await PurchaseAccountingService.LinkAsync(new PurchaseAccountingLinkRequest
+      {
+        PurchaseOrderId = candidate.PurchaseOrderId,
+        TransaccionId = Id,
+        Monto = CompraLinkMonto
+      }, await CurrentUserAccessor.GetUserNameAsync());
+
+      if (!result.Success)
+      {
+        UiMessages.ShowError(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await ReloadCompraLinksAsync();
+      await SearchCompraCandidatesAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "ligar la compra a la póliza", new { candidate.PurchaseOrderId, TransaccionId = Id }));
+    }
+    finally
+    {
+      IsLinkingCompra = false;
+    }
+  }
+
+  protected async Task UnlinkCompraAsync(PurchaseAccountingLinkedOrderDto link)
+  {
+    // Sólo el vínculo de una póliza generada pide confirmación: quitarlo deja la compra pendiente
+    // con el gasto ya registrado. Uno manual se vuelve a ligar si fue un error, como en AP.
+    if (link.FueGenerada)
+    {
+      var question = $"Esta póliza se creó desde la compra {link.PurchaseOrderCode}. Si quitas el vínculo, la compra volverá a verse pendiente y alguien podría registrar el gasto dos veces.\n\n¿Quitar el vínculo de todos modos?";
+      if (!await JsRuntime.InvokeAsync<bool>("confirm", question)) return;
+    }
+
+    UnlinkingCompraLinkId = link.LinkId;
+    try
+    {
+      var result = await PurchaseAccountingService.UnlinkAsync(link.LinkId);
+      if (!result.Success)
+      {
+        UiMessages.ShowWarning(result.Message);
+        return;
+      }
+
+      UiMessages.ShowSuccess(result.Message);
+      await ReloadCompraLinksAsync();
+      if (_compraCandidatesLoaded) await SearchCompraCandidatesAsync();
+    }
+    catch (Exception ex)
+    {
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "quitar la compra de la póliza", new { link.LinkId }));
+    }
+    finally
+    {
+      UnlinkingCompraLinkId = null;
+    }
   }
 
   protected async Task SearchApOccurrencesAsync(CancellationToken ct = default)

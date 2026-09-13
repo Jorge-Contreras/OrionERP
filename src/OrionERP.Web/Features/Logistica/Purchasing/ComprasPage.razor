@@ -85,6 +85,7 @@
                 <li class="@GetProcessStepClass(2)"><span>2</span><div><strong>Enviar</strong><small>Orden al proveedor</small></div></li>
                 <li class="@GetProcessStepClass(3)"><span>3</span><div><strong>Recibir</strong><small>Cantidades y ticket</small></div></li>
                 <li class="@GetProcessStepClass(4)"><span>4</span><div><strong>Terminar</strong><small>Actualizar precios</small></div></li>
+                <li class="@GetAccountingStepClass()"><span>5</span><div><strong>Póliza</strong><small>Registrar en contabilidad</small></div></li>
             </ol>
             <p>@ProcessGuidance</p>
         </section>
@@ -193,6 +194,12 @@
                                                     <div class="fw-semibold">@order.PurchaseOrderCode</div>
                                                     <div class="small text-muted">@order.OrderDate.ToShortDateString()</div>
                                                     <span class="@GetStatusBadgeClass(order.Status)">@GetStatusLabel(order.Status)</span>
+                                                    @if (PostingStatuses.TryGetValue(order.Id, out var posting) && posting.Recibido > 0m)
+                                                    {
+                                                        <span class="compras-accounting-pill @(posting.PorContabilizar > 0m ? "is-pending" : "is-done")">
+                                                            @(posting.PorContabilizar > 0m ? "Falta póliza" : "En contabilidad")
+                                                        </span>
+                                                    }
                                                 </td>
                                                 <td>
                                                     <div>@order.VendorName</div>
@@ -874,6 +881,34 @@
                         </div>
                     </section>
                 }
+            </EditForm>
+
+            @if (CanShowAccounting)
+            {
+                <section class="compras-panel compras-panel-accounting mb-3" aria-labelledby="compras-accounting-title">
+                    <header class="compras-panel-head">
+                        <div class="compras-panel-title">
+                            <span class="compras-panel-icon"><i class="bi bi-journal-check" aria-hidden="true"></i></span>
+                            <div>
+                                <span class="compras-section-kicker">Paso 5 · Contabilidad</span>
+                                <h2 id="compras-accounting-title">Registra la compra en contabilidad</h2>
+                                <p>Cada compra recibida necesita su póliza. Aquí la creas o ligas la que ya existe.</p>
+                            </div>
+                        </div>
+                        @if (CurrentAccountingSummary is { } accounting)
+                        {
+                            <span class="@PurchaseAccountingDisplay.StatusBadgeClass(accounting.Recibido, accounting.PorContabilizar)">
+                                @PurchaseAccountingDisplay.StatusLabel(accounting.Recibido, accounting.Contabilizado, accounting.PorContabilizar)
+                            </span>
+                        }
+                    </header>
+                    <div class="compras-panel-body">
+                        <PurchaseOrderAccountingPanel PurchaseOrderId="SelectedPurchaseOrder!.Id"
+                                                      RefreshKey="ReceiptHistory.Count"
+                                                      OnSummaryChanged="OnAccountingSummaryChanged" />
+                    </div>
+                </section>
+            }
 
                 @if (ReceiptHistory.Count > 0)
                 {
@@ -947,7 +982,6 @@
                         </div>
                     </section>
                 }
-            </EditForm>
         </div>
         }
     </div>

@@ -1,0 +1,289 @@
+@using OrionERP.Application.Features.Logistica.Purchasing
+
+@if (IsLoading && Workspace is null)
+{
+    <div class="accounting-loading" role="status">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Revisando la contabilidad de la compra…</span>
+    </div>
+}
+else if (LoadError is not null)
+{
+    <div class="accounting-message is-warning" role="alert">
+        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+        <div>
+            <strong>No pudimos consultar la contabilidad de esta compra.</strong>
+            <span>@LoadError</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary accounting-message-action" @onclick="RetryAsync">Reintentar</button>
+    </div>
+}
+else if (Summary is not { } summary)
+{
+    <p class="text-muted mb-0">No encontramos esta compra o no tienes acceso a ella.</p>
+}
+else
+{
+    <div class="accounting-totals @(IsLoading ? "is-refreshing" : null)" aria-live="polite">
+        <div class="accounting-total">
+            <span>Recibido</span>
+            <strong>@Money(summary.Recibido)</strong>
+            <small>Según los tickets capturados</small>
+        </div>
+        <div class="accounting-total">
+            <span>Ya en contabilidad</span>
+            <strong>@Money(summary.Contabilizado)</strong>
+            <small>@PolicyCountLabel</small>
+        </div>
+        <div class="accounting-total @(summary.PorContabilizar > 0m ? "is-pending" : summary.Recibido > 0m ? "is-done" : null)">
+            <span>Falta registrar</span>
+            <strong>@Money(summary.PorContabilizar)</strong>
+            <small>@(summary.PorContabilizar > 0m ? "Necesita póliza" : "Nada pendiente")</small>
+        </div>
+    </div>
+
+    @if (summary.PolizaSinTerminarId is int unfinishedId)
+    {
+        <div class="accounting-message is-warning" role="status">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+            <div>
+                <strong>La póliza @unfinishedId se empezó a crear y no se terminó.</strong>
+                <span>Pulsa «Terminar póliza» para completarla. No se creará una póliza nueva.</span>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary accounting-message-action" href="/contabilidad/transacciones/@unfinishedId" target="_blank" rel="noopener">Ver póliza</a>
+        </div>
+    }
+
+    @if (summary.Recibido <= 0m)
+    {
+        <div class="accounting-message is-info">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+            <div>
+                <strong>Todavía no hay importes recibidos.</strong>
+                <span>Cuando guardes una recepción con el total del ticket, aquí verás lo que falta registrar.</span>
+            </div>
+        </div>
+    }
+    else if (summary.PorContabilizar <= 0m)
+    {
+        <div class="accounting-message is-success">
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+            <div>
+                <strong>Listo: todo lo recibido ya está en contabilidad.</strong>
+                <span>No tienes que hacer nada más con esta compra.</span>
+            </div>
+        </div>
+    }
+    else if (!summary.CuentasListas)
+    {
+        <div class="accounting-message is-warning">
+            <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+            <div>
+                <strong>Todavía no se puede crear la póliza automáticamente.</strong>
+                <span>
+                    Falta que Contabilidad capture en <a href="/ajustes">Ajustes → Cuentas contables CFDI</a> las
+                    cuentas @string.Join(", ", summary.CuentasFaltantes) (esa sección pide todas sus cuentas a la vez).
+                    Avísale a tu contador. Mientras tanto puedes ligar una póliza que ya exista (abajo).
+                </span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="accounting-create">
+            <div class="accounting-create-copy">
+                <strong>@(summary.PolizaSinTerminarId is null ? "Crea la póliza de esta compra" : "Termina la póliza de esta compra")</strong>
+                <span>
+                    Se registrará un gasto por <b>@Money(summary.PorContabilizar)</b> con las cuentas que configuró
+                    Contabilidad. Solo revisa la fecha y cómo se pagó.
+                </span>
+            </div>
+            <div class="accounting-create-fields">
+                <label>
+                    <span>Fecha de la póliza</span>
+                    <input type="date" class="form-control" @bind="PolicyDate" @bind:format="yyyy-MM-dd" disabled="@(IsBusy || IsConfirmingGenerate)" />
+                </label>
+                <label>
+                    <span>¿Cómo se pagó?</span>
+                    <select class="form-select" @bind="PaymentMethod" disabled="@(IsBusy || IsConfirmingGenerate)">
+                        <option value="">Elige una opción</option>
+                        @foreach (var forma in Workspace!.FormasPago)
+                        {
+                            <option value="@forma.Clave">@forma.Descripcion (@forma.Clave)</option>
+                        }
+                    </select>
+                </label>
+                @if (!IsConfirmingGenerate && !IsGenerating)
+                {
+                    <button type="button" class="btn btn-success accounting-create-button" disabled="@(!CanGenerate)" @onclick="AskGenerate">
+                        <i class="bi bi-journal-plus" aria-hidden="true"></i>
+                        @(summary.PolizaSinTerminarId is null ? $"Crear póliza por {Money(summary.PorContabilizar)}" : "Terminar póliza")
+                    </button>
+                }
+            </div>
+            @if (string.IsNullOrWhiteSpace(PaymentMethod))
+            {
+                <small class="accounting-hint">Elige cómo se pagó para poder crear la póliza.</small>
+            }
+            @if (IsConfirmingGenerate || IsGenerating)
+            {
+                <div class="accounting-confirm" role="alert">
+                    <div class="accounting-confirm-copy">
+                        <strong>@(summary.PolizaSinTerminarId is null ? "¿Crear la póliza?" : "¿Terminar la póliza?")</strong>
+                        <span>
+                            Se registrará un gasto por <b>@Money(summary.PorContabilizar)</b> con fecha
+                            <b>@PolicyDate.ToString("dd/MM/yyyy")</b>, pagado con <b>@PaymentMethodLabel</b>.
+                            Una póliza creada ya no se puede borrar; si algo sale mal, Contabilidad la corrige.
+                        </span>
+                    </div>
+                    <div class="accounting-confirm-actions">
+                        <button type="button" class="btn btn-success" disabled="@IsGenerating" @onclick="GenerateAsync">
+                            @(IsGenerating ? "Creando póliza…" : summary.PolizaSinTerminarId is null ? "Sí, crear póliza" : "Sí, terminar póliza")
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" disabled="@IsGenerating" @onclick="CancelGenerate">Cancelar</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (Workspace!.Polizas.Count > 0)
+    {
+        <h3 class="accounting-subtitle">Pólizas de esta compra</h3>
+        <ul class="accounting-policies">
+            @foreach (var poliza in Workspace.Polizas)
+            {
+                <li class="accounting-policy">
+                    <div class="accounting-policy-main">
+                        <div class="accounting-policy-title">
+                            <strong>Póliza @poliza.TransaccionId</strong>
+                            <span class="badge @(poliza.FueGenerada ? "text-bg-primary" : "text-bg-light border")">@(poliza.FueGenerada ? "Creada aquí" : "Ligada")</span>
+                            @if (!poliza.EstaCuadrada)
+                            {
+                                <span class="badge text-bg-warning" title="La póliza no tiene movimientos o sus cargos y abonos no coinciden.">Revisar en Contabilidad</span>
+                            }
+                        </div>
+                        <small>@(poliza.Fecha?.ToString("dd/MM/yyyy") ?? "Sin fecha") · @(poliza.Concepto ?? "Sin concepto")</small>
+                    </div>
+                    <div class="accounting-policy-amount">
+                        <strong>@Money(poliza.MontoAsignado)</strong>
+                        @if (poliza.MontoPoliza is decimal montoPoliza && Math.Abs(montoPoliza - poliza.MontoAsignado) > 0.005m)
+                        {
+                            <small>de una póliza por @Money(montoPoliza)</small>
+                        }
+                    </div>
+                    <div class="accounting-policy-actions">
+                        @if (ConfirmingRemoveLinkId == poliza.LinkId)
+                        {
+                            <span class="accounting-confirm-inline">¿Quitarla de esta compra? La póliza no se borra.</span>
+                            <button type="button" class="btn btn-sm btn-danger" disabled="@IsBusy" @onclick="() => RemoveAsync(poliza)">
+                                @(RemovingLinkId == poliza.LinkId ? "Quitando…" : "Sí, quitar")
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@IsBusy" @onclick="CancelRemove">No</button>
+                        }
+                        else
+                        {
+                            <a class="btn btn-sm btn-outline-primary" href="/contabilidad/transacciones/@poliza.TransaccionId" target="_blank" rel="noopener">Ver póliza</a>
+                            @if (!poliza.FueGenerada)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" disabled="@IsBusy" @onclick="() => AskRemove(poliza)">Quitar</button>
+                            }
+                        }
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (summary.PorContabilizar > 0m)
+    {
+        <div class="accounting-link">
+            <button type="button"
+                    class="accounting-link-toggle"
+                    aria-expanded="@(ShowLinkSearch ? "true" : "false")"
+                    disabled="@IsBusy"
+                    @onclick="ToggleLinkSearchAsync">
+                <i class="bi @(ShowLinkSearch ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></i>
+                ¿La póliza ya existe en Contabilidad? Ligarla a esta compra
+            </button>
+
+            @if (ShowLinkSearch)
+            {
+                <div class="accounting-link-body">
+                    <p>Primero aparecen las pólizas con monto y fecha parecidos. Si no la ves, búscala por su número o por una palabra del concepto.</p>
+                    <div class="accounting-search">
+                        <input type="search"
+                               class="form-control"
+                               placeholder="Número de póliza o palabra del concepto"
+                               aria-label="Buscar póliza"
+                               @bind="CandidateSearch"
+                               @bind:event="oninput"
+                               @onkeydown="HandleSearchKeyDownAsync" />
+                        <button type="button" class="btn btn-outline-secondary" disabled="@IsSearching" @onclick="SearchAsync">
+                            @(IsSearching ? "Buscando…" : "Buscar")
+                        </button>
+                    </div>
+
+                    @if (IsSearching && Candidates.Count == 0)
+                    {
+                        <div class="accounting-loading" role="status">
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            <span>Buscando pólizas…</span>
+                        </div>
+                    }
+                    else if (HasSearched && Candidates.Count == 0)
+                    {
+                        <p class="text-muted mb-0">No encontramos pólizas con saldo disponible. Revisa el número o pide a Contabilidad que la capture primero.</p>
+                    }
+                    else if (Candidates.Count > 0)
+                    {
+                        <ul class="accounting-candidates">
+                            @foreach (var candidate in Candidates)
+                            {
+                                <li>
+                                    <button type="button"
+                                            class="accounting-candidate @(SelectedCandidate?.TransaccionId == candidate.TransaccionId ? "is-selected" : null)"
+                                            disabled="@IsLinking"
+                                            @onclick="() => SelectCandidate(candidate)">
+                                        <span class="accounting-candidate-id">#@candidate.TransaccionId</span>
+                                        <span class="accounting-candidate-main">
+                                            <strong>@(candidate.Concepto ?? "Sin concepto")</strong>
+                                            <small>@candidate.Fecha.ToString("dd/MM/yyyy") · @(candidate.TipoPoliza ?? "Sin tipo")</small>
+                                        </span>
+                                        <span class="accounting-candidate-amount">
+                                            <strong>@Money(candidate.Disponible)</strong>
+                                            <small>disponible</small>
+                                        </span>
+                                    </button>
+
+                                    @* La confirmación aparece bajo la póliza elegida: si apareciera arriba de la lista,
+                                       empujaría los renglones y el siguiente clic caería en otra póliza. *@
+                                    @if (SelectedCandidate?.TransaccionId == candidate.TransaccionId)
+                                    {
+                                        <div class="accounting-selected">
+                                            <div class="accounting-selected-copy">
+                                                <strong>Ligar la póliza @candidate.TransaccionId a esta compra</strong>
+                                                <small>La póliza tiene @Money(candidate.Disponible) disponibles; a la compra le faltan @Money(Summary?.PorContabilizar ?? 0m).</small>
+                                            </div>
+                                            <label>
+                                                <span>¿Cuánto de esta compra cubre?</span>
+                                                <input type="number" class="form-control text-end" min="0.01" step="0.01" max="@MaxLinkAmount" @bind="LinkAmount" disabled="@IsLinking" />
+                                                <small>Máximo @Money(MaxLinkAmount)</small>
+                                            </label>
+                                            <div class="accounting-selected-actions">
+                                                <button type="button" class="btn btn-primary" disabled="@(!CanLink)" @onclick="LinkAsync">
+                                                    @(IsLinking ? "Ligando…" : "Ligar póliza")
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary" disabled="@IsLinking" @onclick="CancelSelection">Cancelar</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+        </div>
+    }
+}

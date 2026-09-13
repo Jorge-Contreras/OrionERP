@@ -1,18 +1,16 @@
 using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Contabilidad.ContabilidadRegistros;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Contabilidad.ContabilidadRegistros;
 
 public sealed class CuentasContablesRepository : ICuentasContablesRepository
 {
-  private readonly string _connectionString;
+  private readonly AccountingConnectionFactory _connections;
 
-  public CuentasContablesRepository(IConfiguration configuration)
+  public CuentasContablesRepository(AccountingConnectionFactory connections)
   {
-    _connectionString = configuration.GetConnectionString("OrionDb")
-        ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
+    _connections = connections ?? throw new ArgumentNullException(nameof(connections));
   }
 
   public async Task<IEnumerable<CuentasContablesDto>> SearchUnifiedAsync(string rfc, string term, int take = 200)
@@ -67,7 +65,7 @@ WHERE account.RFC = @rfc
   )
 ORDER BY account.Nivel1, account.Nivel2, account.Nivel3;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _connections.OpenAsync();
     return await connection.QueryAsync<CuentasContablesDto>(
         sql,
         new
@@ -108,7 +106,7 @@ WHERE RFC = @rfc
   AND (@hasTerm = 0 OR Nivel1 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel1;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _connections.OpenAsync();
     return await connection.QueryAsync<CuentasContablesDto>(
         sql,
         new
@@ -150,7 +148,7 @@ WHERE RFC = @rfc
   AND (@hasTerm = 0 OR Nivel2 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel2;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _connections.OpenAsync();
     return await connection.QueryAsync<CuentasContablesDto>(
         sql,
         new
@@ -196,7 +194,7 @@ WHERE RFC = @rfc
   AND (@hasTerm = 0 OR Nivel3 = @exact OR Descripcion LIKE @like)
 ORDER BY Nivel3;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _connections.OpenAsync();
     return await connection.QueryAsync<CuentasContablesDto>(
         sql,
         new
@@ -223,7 +221,7 @@ SELECT id         AS Id,
 FROM dbo.CuentasContables
 WHERE id = @id;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _connections.OpenAsync();
     return await connection.QuerySingleOrDefaultAsync<CuentasContablesDto>(sql, new { id });
   }
 
@@ -261,7 +259,7 @@ LEFT JOIN dbo.CuentasContables AS nivel2
 WHERE account.RFC=@rfc AND account.Nivel1=@nivel1
   AND account.Nivel2=@nivel2 AND account.Nivel3=@nivel3;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _connections.OpenAsync();
     return await connection.QuerySingleOrDefaultAsync<CuentasContablesDto>(sql, new
     {
       rfc = rfc.Trim().ToUpperInvariant(),
@@ -319,7 +317,7 @@ INSERT INTO dbo.CuentasContables (RFC, Nivel1, Nivel2, Nivel3, Descripcion)
 VALUES (@rfc, @nivel1, @nivel2, @nivel3, @descripcion);
 SELECT CAST(SCOPE_IDENTITY() as int);";
 
-      using var connection = new SqlConnection(_connectionString);
+      await using var connection = await _connections.OpenAsync();
       var existingCount = await connection.ExecuteScalarAsync<int>(
           checkSql,
           parameters);
@@ -341,7 +339,7 @@ UPDATE dbo.CuentasContables
 SET Descripcion = @descripcion
 WHERE id = @id;";
 
-      using var connection = new SqlConnection(_connectionString);
+      await using var connection = await _connections.OpenAsync();
       await connection.ExecuteAsync(sql, new { id, descripcion = descripcion?.Trim() ?? string.Empty });
   }
 }

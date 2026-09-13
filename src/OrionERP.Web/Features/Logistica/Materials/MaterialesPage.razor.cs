@@ -806,6 +806,7 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     IsSavingMasterData = true;
     try
     {
+      UnitDraft.Rfc = CurrentRfc;
       var result = await MaterialService.CreateUnitAsync(UnitDraft);
       if (!result.Success)
       {

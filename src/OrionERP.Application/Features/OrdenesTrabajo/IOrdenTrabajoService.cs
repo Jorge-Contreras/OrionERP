@@ -2,7 +2,7 @@ namespace OrionERP.Application.Features.OrdenesTrabajo;
 
 public interface IOrdenTrabajoService
 {
-  Task<IReadOnlyList<OrdenTrabajoCategoriaDto>> GetCategoriesAsync(CancellationToken ct = default);
+  Task<IReadOnlyList<OrdenTrabajoCategoriaDto>> GetCategoriesAsync(string rfc, CancellationToken ct = default);
   Task<IReadOnlyList<OrdenTrabajoLookupDto>> GetActiveEmployeeOptionsAsync(string? rfc = null, CancellationToken ct = default);
   Task<IReadOnlyList<OrdenTrabajoLookupDto>> GetRoomOptionsAsync(CancellationToken ct = default);
   Task<OrdenTrabajoDashboardDto> GetDashboardAsync(OrdenTrabajoDashboardFilter filter, CancellationToken ct = default);

@@ -287,7 +287,7 @@ public class MaterialVendorLinkTests
       ReaderResultFactory = (_, _) => CreateLifecycleStateTable(),
       NonQueryResultFactory = (_, _) => 1,
       ScalarResultFactory = (commandText, _) =>
-        commandText.Contains("BusinessPartnerRfcScope", StringComparison.Ordinal) ? scopedPartnerCount : 1
+        commandText.Contains("partner.OwnerRfc = @Rfc", StringComparison.Ordinal) ? scopedPartnerCount : 1
     };
 
   private static DataTable CreateLifecycleStateTable()

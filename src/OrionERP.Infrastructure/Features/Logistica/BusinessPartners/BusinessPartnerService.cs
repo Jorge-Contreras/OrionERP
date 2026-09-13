@@ -42,11 +42,13 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
               MAX(CASE WHEN r.RoleCode = 'Vendor' THEN 1 ELSE 0 END) AS HasVendorRole,
               MIN(r.RoleCode) AS PrimaryRole
           FROM dbo.BusinessPartnerRole r
+          WHERE r.Rfc = @OwnerRfc
           GROUP BY r.BusinessPartnerId
       ),
       MaterialCounts AS (
           SELECT mv.BusinessPartnerId, COUNT(DISTINCT mv.MaterialId) AS MaterialCount
           FROM logistica.MaterialVendor mv
+          WHERE mv.Rfc = @OwnerRfc
           GROUP BY mv.BusinessPartnerId
       )
       SELECT
@@ -63,13 +65,11 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
       FROM dbo.BusinessPartner bp
       LEFT JOIN PartnerRoles pr
         ON pr.BusinessPartnerId = bp.Id
-      JOIN dbo.BusinessPartnerRfcScope partnerScope
-        ON partnerScope.BusinessPartnerId = bp.Id AND partnerScope.Rfc = @OwnerRfc AND partnerScope.IsActive = 1
       LEFT JOIN logistica.VendorProfile vp
         ON vp.Rfc = @OwnerRfc AND vp.BusinessPartnerId = bp.Id
       LEFT JOIN MaterialCounts mc
         ON mc.BusinessPartnerId = bp.Id
-      WHERE 1 = 1
+      WHERE bp.OwnerRfc = @OwnerRfc
       """);
 
     var parameters = new DynamicParameters();
@@ -88,7 +88,7 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
 
     if (!string.IsNullOrWhiteSpace(filter.Role))
     {
-      sql.AppendLine(" AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = @Role)");
+      sql.AppendLine(" AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=@OwnerRfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = @Role)");
       parameters.Add("@Role", filter.Role.Trim(), DbType.String);
     }
 
@@ -97,7 +97,7 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
       sql.AppendLine(
         """
          AND (
-             EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+             EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=@OwnerRfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
              OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp2 WHERE vp2.Rfc = @OwnerRfc AND vp2.BusinessPartnerId = bp.Id)
          )
         """);
@@ -133,11 +133,11 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
           bp.IsActive
       FROM dbo.BusinessPartner bp
       WHERE bp.Id = @BusinessPartnerId
-        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope WHERE scope.Rfc=@OwnerRfc AND scope.BusinessPartnerId=bp.Id AND scope.IsActive=1);
+        AND bp.OwnerRfc = @OwnerRfc;
 
       SELECT r.RoleCode
       FROM dbo.BusinessPartnerRole r
-      WHERE r.BusinessPartnerId = @BusinessPartnerId
+      WHERE r.Rfc = @OwnerRfc AND r.BusinessPartnerId = @BusinessPartnerId
       ORDER BY r.RoleCode;
 
       SELECT
@@ -174,10 +174,9 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
           bp.PartnerName AS Name,
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
-      JOIN dbo.BusinessPartnerRfcScope scope ON scope.BusinessPartnerId=bp.Id AND scope.Rfc=@OwnerRfc AND scope.IsActive=1
-      WHERE bp.IsActive = 1
+      WHERE bp.OwnerRfc=@OwnerRfc AND bp.IsActive = 1
         AND (
-            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=@OwnerRfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
             OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc=@OwnerRfc AND vp.BusinessPartnerId = bp.Id)
         )
       ORDER BY bp.PartnerName, bp.Id;
@@ -249,7 +248,7 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
               IsActive = @IsActive,
               UpdatedAt = SYSUTCDATETIME()
           WHERE Id = @Id
-            AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope WHERE scope.Rfc=@OwnerRfc AND scope.BusinessPartnerId=Id AND scope.IsActive=1);
+            AND OwnerRfc = @OwnerRfc;
           """;
 
         var affectedPartner = await conn.ExecuteAsync(
@@ -287,6 +286,7 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
           INSERT INTO dbo.BusinessPartner
           (
               LegacyProveedorId,
+              OwnerRfc,
               PartnerName,
               Rfc,
               Email,
@@ -303,6 +303,7 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
           VALUES
           (
               @LegacyProveedorId,
+              @OwnerRfc,
               @PartnerName,
               @Rfc,
               @Email,
@@ -326,6 +327,7 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
             new
             {
               request.LegacyProveedorId,
+              OwnerRfc = ownerRfc,
               PartnerName = name,
               Rfc = NullIfWhiteSpace(request.Rfc),
               Email = NullIfWhiteSpace(request.Email),
@@ -341,16 +343,12 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
             },
             tx,
             cancellationToken: ct));
-
-        await conn.ExecuteAsync(new CommandDefinition(
-          "INSERT INTO dbo.BusinessPartnerRfcScope (Rfc, BusinessPartnerId, CreatedBy) VALUES (@OwnerRfc, @BusinessPartnerId, 'BusinessPartnerService');",
-          new { OwnerRfc = ownerRfc, BusinessPartnerId = partnerId }, tx, cancellationToken: ct));
       }
 
       await conn.ExecuteAsync(
         new CommandDefinition(
-          "DELETE FROM dbo.BusinessPartnerRole WHERE BusinessPartnerId = @BusinessPartnerId;",
-          new { BusinessPartnerId = partnerId },
+          "DELETE FROM dbo.BusinessPartnerRole WHERE Rfc=@OwnerRfc AND BusinessPartnerId = @BusinessPartnerId;",
+          new { OwnerRfc = ownerRfc, BusinessPartnerId = partnerId },
           tx,
           cancellationToken: ct));
 
@@ -358,8 +356,8 @@ public sealed partial class BusinessPartnerService : IBusinessPartnerService
       {
         await conn.ExecuteAsync(
           new CommandDefinition(
-            "INSERT INTO dbo.BusinessPartnerRole (BusinessPartnerId, RoleCode) VALUES (@BusinessPartnerId, @RoleCode);",
-            roles.Select(role => new { BusinessPartnerId = partnerId, RoleCode = role }),
+            "INSERT INTO dbo.BusinessPartnerRole (Rfc, BusinessPartnerId, RoleCode) VALUES (@OwnerRfc, @BusinessPartnerId, @RoleCode);",
+            roles.Select(role => new { OwnerRfc = ownerRfc, BusinessPartnerId = partnerId, RoleCode = role }),
             tx,
             cancellationToken: ct));
       }

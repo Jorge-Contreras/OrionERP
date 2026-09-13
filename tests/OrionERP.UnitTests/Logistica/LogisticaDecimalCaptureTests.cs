@@ -27,8 +27,7 @@ public class LogisticaDecimalCaptureTests
     Assert.Contains("inputmode=\"decimal\"", component, StringComparison.Ordinal);
     Assert.DoesNotContain("type=\"number\"", component, StringComparison.Ordinal);
     Assert.Contains("if (IsEditing)", component, StringComparison.Ordinal);
-    Assert.Contains("CultureInfo.InvariantCulture, out var invariantValue", component, StringComparison.Ordinal);
-    Assert.Contains("CultureInfo.CurrentCulture, out var currentCultureValue", component, StringComparison.Ordinal);
+    Assert.Contains("DecimalTextParser.TryParse(Text, out var parsed)", component, StringComparison.Ordinal);
   }
 
   [Fact]

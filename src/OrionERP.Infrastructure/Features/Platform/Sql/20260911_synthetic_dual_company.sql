@@ -113,6 +113,12 @@ BEGIN TRY
   WHEN NOT MATCHED THEN INSERT(CompanyId,SiteId,ModuleCode,IsEnabled,UpdatedBy)
     VALUES(source.CompanyId,source.SiteId,source.ModuleCode,source.IsEnabled,N'20260911_synthetic_dual_company');
 
+  /* RLS is fail-closed even for dbo: seed restaurant rows under the tenant being created. */
+  EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId',@value=@CompanyId;
+  EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc;
+  EXEC sys.sp_set_session_context @key=N'OrionERP.SiteId',@value=@CampusSiteId;
+  EXEC sys.sp_set_session_context @key=N'OrionERP.ModuleCode',@value=N'RESTAURANT';
+
   MERGE restaurante.Site AS target
   USING(VALUES
     (@Rfc,'dual-campus','Campus dual',CONVERT(bit,1),@CompanyId,@CampusSiteId),
@@ -248,8 +254,8 @@ BEGIN TRY
   DELETE #PermissionResult;
   INSERT #PermissionResult EXEC orion.ApplyPublicPermissionProfile @RestaurantKey,@RestaurantPrincipal,1;
 
-  IF NOT EXISTS(SELECT 1 FROM orion.PublicSqlPrincipalBinding WHERE PrincipalName=@HospitalityPrincipal AND PublicSiteId=@HospitalityPublicSiteId AND PermissionProfile='HOSPITALITY_PUBLIC' AND PermissionVersion=2 AND IsActive=1)
-     OR NOT EXISTS(SELECT 1 FROM orion.PublicSqlPrincipalBinding WHERE PrincipalName=@RestaurantPrincipal AND PublicSiteId=@RestaurantPublicSiteId AND PermissionProfile='RESTAURANT_PUBLIC' AND PermissionVersion=2 AND IsActive=1)
+  IF NOT EXISTS(SELECT 1 FROM orion.PublicSqlPrincipalBinding WHERE PrincipalName=@HospitalityPrincipal AND PublicSiteId=@HospitalityPublicSiteId AND PermissionProfile='HOSPITALITY_PUBLIC' AND PermissionVersion=(SELECT MAX(ProfileVersion) FROM orion.PublicPermissionProfile WHERE ProfileCode='HOSPITALITY_PUBLIC' AND IsActive=1) AND IsActive=1)
+     OR NOT EXISTS(SELECT 1 FROM orion.PublicSqlPrincipalBinding WHERE PrincipalName=@RestaurantPrincipal AND PublicSiteId=@RestaurantPublicSiteId AND PermissionProfile='RESTAURANT_PUBLIC' AND PermissionVersion=(SELECT MAX(ProfileVersion) FROM orion.PublicPermissionProfile WHERE ProfileCode='RESTAURANT_PUBLIC' AND IsActive=1) AND IsActive=1)
     THROW 52916,'Los perfiles públicos no quedaron enlazados a sus PublicSites.',1;
 
   /* Hospitality fixture data under an explicit, complete execution scope. */
@@ -265,18 +271,28 @@ BEGIN TRY
   DECLARE @CustomerId int=(SELECT TOP(1) ID FROM dbo.Clientes WHERE Email='guest@synthetic-dual.invalid' ORDER BY ID);
   IF @CustomerId IS NULL
   BEGIN
-    INSERT dbo.Clientes(Nombre,Email,Notas) VALUES(N'Huésped sintético',N'guest@synthetic-dual.invalid',N'Fixture dual determinista');
+    INSERT dbo.Clientes(OwnerCompanyId,OwnerRfc,Nombre,Email,Notas)
+    VALUES(@CompanyId,@Rfc,N'Huésped sintético',N'guest@synthetic-dual.invalid',N'Fixture dual determinista');
     SET @CustomerId=SCOPE_IDENTITY();
   END;
   IF NOT EXISTS(SELECT 1 FROM orion.HospitalitySiteCustomer WHERE CompanyId=@CompanyId AND SiteId=@CampusSiteId AND ClienteId=@CustomerId)
     INSERT orion.HospitalitySiteCustomer(CompanyId,SiteId,ClienteId)
     VALUES(@CompanyId,@CampusSiteId,@CustomerId);
 
+  DECLARE @OwnerId int=(SELECT TOP(1) id FROM dbo.Proveedores WHERE OwnerCompanyId=@CompanyId AND RazonSocial=N'Arrendador sintético');
+  IF @OwnerId IS NULL
+  BEGIN
+    INSERT dbo.Proveedores
+      (RazonSocial,Calle,Colonia,Ciudad,Estado,CPostal,Giro,Tel,OwnerCompanyId,OwnerRfc)
+    VALUES(N'Arrendador sintético','','','','','','','',@CompanyId,@Rfc);
+    SET @OwnerId=CONVERT(int,SCOPE_IDENTITY());
+  END;
+
   DECLARE @RoomId int=(SELECT ID FROM dbo.ROOM WHERE OrionCompanyId=@CompanyId AND OrionSiteId=@CampusSiteId AND ROOM_NAME='SYNTHETIC-ROOM-01');
   IF @RoomId IS NULL
   BEGIN
-    INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE,ROOM_DESCRIPTION,BASE_PRICE,IsActive,IsRentable,OrionCompanyId,OrionSiteId)
-    VALUES('SYNTHETIC-ROOM-01','SUITE','Habitación sintética de validación',1000,1,1,@CompanyId,@CampusSiteId);
+    INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE,ROOM_DESCRIPTION,BASE_PRICE,IsActive,IsRentable,OWNER_ID,OrionCompanyId,OrionSiteId)
+    VALUES('SYNTHETIC-ROOM-01','SUITE','Habitación sintética de validación',1000,1,1,@OwnerId,@CompanyId,@CampusSiteId);
     SET @RoomId=SCOPE_IDENTITY();
   END;
   DECLARE @ReservationId int=(SELECT ID FROM dbo.RESERVATION WHERE OrionCompanyId=@CompanyId AND OrionSiteId=@CampusSiteId AND NOTES='SYNTHETIC-DUAL-RESERVATION-01');

@@ -145,10 +145,10 @@ public sealed class BomRecipeService : IBomRecipeService
              CAST(COALESCE(materialConversion.Factor, globalConversion.Factor,
                   CASE WHEN component.UnitId=material.BaseUnitId THEN 1 END) AS decimal(24,10)) AS ConversionFactor,
              baseUnit.UnitName AS BaseUnitName,
-             CAST(COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0),
+             CAST(COALESCE(subBom.UnitCost,
                   material.BaseUnitPrice, 0) AS decimal(24,10)) AS UnitCost,
              CASE
-               WHEN subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0) IS NOT NULL THEN 'Costo de subreceta activa'
+               WHEN subBom.UnitCost IS NOT NULL THEN 'Costo de subreceta activa'
                WHEN material.BaseUnitPrice IS NOT NULL THEN 'Precio de Materiales'
                ELSE 'Sin costo configurado'
              END AS CostSource,
@@ -182,7 +182,9 @@ public sealed class BomRecipeService : IBomRecipeService
       ) globalConversion
       OUTER APPLY
       (
-        SELECT TOP (1) childVersion.Id AS BomVersionId, childVersion.FrozenTheoreticalCost, childVersion.YieldQuantity
+        -- FrozenTheoreticalCost is already stored per yield/base unit. Dividing by the
+        -- child yield here would apply the yield twice and collapse nested recipe costs.
+        SELECT TOP (1) childVersion.Id AS BomVersionId, childVersion.FrozenTheoreticalCost AS UnitCost
         FROM logistica.BomHeader childHeader
         JOIN logistica.BomVersion childVersion ON childVersion.Rfc=childHeader.Rfc AND childVersion.BomHeaderId=childHeader.Id
         WHERE childHeader.Rfc=material.Rfc AND childHeader.ProductMaterialId=material.Id
@@ -890,7 +892,7 @@ public sealed class BomRecipeService : IBomRecipeService
     var normalizedRfc = LogisticsRfc.Require(rfc);
     const string sql =
       """
-      SELECT Id,Code,[Name],IsActive FROM logistica.Allergen ORDER BY [Name],Id;
+      SELECT Id,Code,[Name],IsActive FROM logistica.Allergen WHERE Rfc=@Rfc ORDER BY [Name],Id;
       SELECT AllergenId,MaterialId FROM logistica.MaterialAllergen WHERE Rfc=@Rfc;
       """;
     using var conn = CreateConnection();
@@ -905,6 +907,7 @@ public sealed class BomRecipeService : IBomRecipeService
   public async Task<RestaurantCommandResult> SaveAllergenAsync(RestaurantAllergenSaveRequest request, CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
+    var rfc = LogisticsRfc.Require(request.Rfc);
     var code = request.Code.Trim().ToUpperInvariant();
     var name = request.Name.Trim();
     if (code.Length == 0 || name.Length == 0) return RestaurantCommandResult.Fail("Código y nombre del alérgeno son obligatorios.");
@@ -914,15 +917,15 @@ public sealed class BomRecipeService : IBomRecipeService
       if (request.Id.HasValue)
       {
         var changed = await conn.ExecuteAsync(new CommandDefinition(
-          "UPDATE logistica.Allergen SET Code=@Code,[Name]=@Name,IsActive=@IsActive WHERE Id=@Id;",
-          new { request.Id, Code = code, Name = name, request.IsActive }, cancellationToken: ct));
+          "UPDATE logistica.Allergen SET Code=@Code,[Name]=@Name,IsActive=@IsActive WHERE Rfc=@Rfc AND Id=@Id;",
+          new { Rfc=rfc, request.Id, Code = code, Name = name, request.IsActive }, cancellationToken: ct));
         return changed == 1
           ? RestaurantCommandResult.Ok("Alérgeno actualizado.", request.Id.Value)
           : RestaurantCommandResult.Fail("El alérgeno no existe.");
       }
       var id = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-        "INSERT INTO logistica.Allergen (Code,[Name],IsActive) VALUES (@Code,@Name,@IsActive); SELECT CAST(SCOPE_IDENTITY() AS int);",
-        new { Code = code, Name = name, request.IsActive }, cancellationToken: ct));
+        "INSERT INTO logistica.Allergen (Rfc,Code,[Name],IsActive) VALUES (@Rfc,@Code,@Name,@IsActive); SELECT CAST(SCOPE_IDENTITY() AS int);",
+        new { Rfc=rfc, Code = code, Name = name, request.IsActive }, cancellationToken: ct));
       return RestaurantCommandResult.Ok("Alérgeno creado.", id);
     }
     catch (SqlException ex) when (ex.Number is 2601 or 2627)
@@ -949,8 +952,8 @@ public sealed class BomRecipeService : IBomRecipeService
         "SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM logistica.Material WHERE Rfc=@Rfc AND Id=@MaterialId) THEN 1 ELSE 0 END AS bit);",
         new { Rfc = normalizedRfc, MaterialId = materialId }, tx, cancellationToken: ct));
       var validAllergens = ids.Length == 0 ? 0 : await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-        "SELECT COUNT(*) FROM logistica.Allergen WHERE Id IN @Ids AND IsActive=1;",
-        new { Ids = ids }, tx, cancellationToken: ct));
+        "SELECT COUNT(*) FROM logistica.Allergen WHERE Rfc=@Rfc AND Id IN @Ids AND IsActive=1;",
+        new { Rfc=normalizedRfc, Ids = ids }, tx, cancellationToken: ct));
       if (!materialExists || validAllergens != ids.Length)
       {
         await tx.RollbackAsync(ct);
@@ -983,8 +986,8 @@ public sealed class BomRecipeService : IBomRecipeService
              conversionInfo.Factor,conversionInfo.Notes,conversionInfo.IsActive
       FROM logistica.MaterialUnitConversion conversionInfo
       JOIN logistica.Material material ON material.Rfc=conversionInfo.Rfc AND material.Id=conversionInfo.MaterialId
-      JOIN logistica.UnitOfMeasure fromUnit ON fromUnit.Id=conversionInfo.FromUnitId
-      JOIN logistica.UnitOfMeasure toUnit ON toUnit.Id=conversionInfo.ToUnitId
+      JOIN logistica.UnitOfMeasure fromUnit ON fromUnit.Rfc=conversionInfo.Rfc AND fromUnit.Id=conversionInfo.FromUnitId
+      JOIN logistica.UnitOfMeasure toUnit ON toUnit.Rfc=conversionInfo.Rfc AND toUnit.Id=conversionInfo.ToUnitId
       WHERE conversionInfo.Rfc=@Rfc
       ORDER BY material.[Description],fromUnit.UnitName;
       """;
@@ -1006,7 +1009,7 @@ public sealed class BomRecipeService : IBomRecipeService
       (
         SELECT 1 FROM logistica.Material material
         WHERE material.Rfc=@Rfc AND material.Id=@MaterialId AND material.BaseUnitId=@ToUnitId
-          AND EXISTS(SELECT 1 FROM logistica.UnitOfMeasure WHERE Id=@FromUnitId AND IsActive=1)
+          AND EXISTS(SELECT 1 FROM logistica.UnitOfMeasure WHERE Rfc=@Rfc AND Id=@FromUnitId AND IsActive=1)
       ) THEN 1 ELSE 0 END AS bit);
       """, new { Rfc = rfc, request.MaterialId, request.FromUnitId, request.ToUnitId }, cancellationToken: ct));
     if (!valid) return RestaurantCommandResult.Fail("La unidad destino debe ser la unidad base del material y ambas deben estar activas.");
@@ -1307,7 +1310,7 @@ public sealed class BomRecipeService : IBomRecipeService
         component.Quantity
         * (1 + component.ExpectedWastePercent / 100.0)
         * COALESCE(materialConversion.Factor, globalConversion.Factor, CASE WHEN component.UnitId = material.BaseUnitId THEN 1 END)
-        * COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), material.BaseUnitPrice, 0)
+        * COALESCE(subBom.UnitCost, material.BaseUnitPrice, 0)
       ), 0) / NULLIF(versionInfo.YieldQuantity, 0) AS decimal(18,6))
       FROM logistica.BomVersion versionInfo
       JOIN logistica.BomComponent component ON component.Rfc = versionInfo.Rfc AND component.BomVersionId = versionInfo.Id
@@ -1327,7 +1330,8 @@ public sealed class BomRecipeService : IBomRecipeService
       ) globalConversion
       OUTER APPLY
       (
-        SELECT TOP (1) childVersion.FrozenTheoreticalCost, childVersion.YieldQuantity
+        -- FrozenTheoreticalCost is the cost per yield/base unit, not the batch total.
+        SELECT TOP (1) childVersion.FrozenTheoreticalCost AS UnitCost
         FROM logistica.BomHeader childHeader
         JOIN logistica.BomVersion childVersion ON childVersion.Rfc = childHeader.Rfc AND childVersion.BomHeaderId = childHeader.Id
         WHERE childHeader.Rfc = material.Rfc AND childHeader.ProductMaterialId = material.Id AND childVersion.[Status] = 'Active'

@@ -357,6 +357,9 @@ public sealed class MaterialCategoryCreateRequest
 public sealed class UnitOfMeasureCreateRequest
 {
   [Required]
+  public string Rfc { get; set; } = string.Empty;
+
+  [Required]
   [StringLength(50)]
   public string Name { get; set; } = string.Empty;
 

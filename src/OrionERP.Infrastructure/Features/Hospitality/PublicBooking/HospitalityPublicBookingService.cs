@@ -744,8 +744,8 @@ END;
 
 IF @ClienteId IS NULL
 BEGIN
-    INSERT INTO dbo.Clientes (Nombre, Email, Cel)
-    VALUES (@Nombre, @Email, @Telefono);
+    INSERT INTO dbo.Clientes (OwnerCompanyId, OwnerRfc, Nombre, Email, Cel)
+    VALUES (@ScopeCompanyId, @ScopeCompanyRfc, @Nombre, @Email, @Telefono);
 
     SET @ClienteId = CAST(SCOPE_IDENTITY() AS int);
 
@@ -784,7 +784,8 @@ WHERE customer.ID = @ClienteId
           Email = email,
           Telefono = phone,
           ScopeCompanyId = scope.CompanyId,
-          ScopeSiteId = scope.SiteId
+          ScopeSiteId = scope.SiteId,
+          ScopeCompanyRfc = scope.CompanyRfc
         },
         tx,
         cancellationToken: ct));

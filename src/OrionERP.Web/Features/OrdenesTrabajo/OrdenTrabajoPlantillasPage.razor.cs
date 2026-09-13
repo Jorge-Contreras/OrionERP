@@ -47,7 +47,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
     ErrorMessage = null;
     try
     {
-      Categories = (await OrdenTrabajoService.GetCategoriesAsync()).ToList();
+      Categories = (await OrdenTrabajoService.GetCategoriesAsync(CurrentRfc)).ToList();
       Employees = (await OrdenTrabajoService.GetActiveEmployeeOptionsAsync(CurrentRfc)).ToList();
       Templates = (await OrdenTrabajoService.GetTemplatesAsync(CurrentRfc, SelectedCategoryCode)).ToList();
       EnsureCreateOwner();

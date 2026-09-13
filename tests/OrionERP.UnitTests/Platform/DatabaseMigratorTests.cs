@@ -247,6 +247,14 @@ public sealed class DatabaseMigrationManifestTests
       "src/OrionERP.Infrastructure/Features/Bonhomia/PublicBooking/Sql/20260905_hospitality_legal_consent_sandbox.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260903_restaurant_public_identity_scope_sandbox.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260912_nested_recipe_unit_cost_recalculation.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_expand.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_company_controls.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_fail_closed_principals.sql"));
 
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260908_hospitality_administration_scope_sandbox.sql"));
     actual.Add(NormalizePath("src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260908_accounting_company_identity_sandbox.sql"));
@@ -639,6 +647,40 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("WHERE OrionCompanyId IS NOT NULL AND OrionSiteId IS NOT NULL", sql, StringComparison.Ordinal);
           Assert.Contains("WHERE PublicSiteId IS NOT NULL", sql, StringComparison.Ordinal);
           Assert.Equal(["Orion_Sandbox"], migration.AllowedDatabases);
+          break;
+        case "20260912_nested_recipe_unit_cost_recalculation":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("COALESCE(subBom.UnitCost,material.BaseUnitPrice,0)", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260912_rfc_tenant_isolation_expand":
+          Assert.Contains("OwnerRfc", sql, StringComparison.Ordinal);
+          Assert.Contains("TenantIsolationMigrationAudit", sql, StringComparison.Ordinal);
+          Assert.Contains("FK_MaterialVendor_OwnerPartner", sql, StringComparison.Ordinal);
+          Assert.Contains("FK_PurchaseOrderRoomScope_CompanyRoom", sql, StringComparison.Ordinal);
+          Assert.Contains("FK_OrdenTrabajo_Rfc_Owner", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260912_rfc_tenant_isolation_company_controls":
+          Assert.Contains("fn_AccountingScopePredicate", sql, StringComparison.Ordinal);
+          Assert.Contains("GLOBAL_PLATFORM_METADATA", sql, StringComparison.Ordinal);
+          Assert.Contains("contabilidad.AccountingPeriod", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260912_rfc_tenant_isolation_fail_closed_principals":
+          Assert.Contains("REMOVE_DBO_BYPASS", sql, StringComparison.Ordinal);
+          Assert.Contains("NO_UNSCOPED_DBO_BYPASS", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION logistica.fn_RfcAccessPredicate", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
           break;
         default:
           throw new Xunit.Sdk.XunitException($"La migración {migration.Id} no tiene política explícita de literales heredados.");

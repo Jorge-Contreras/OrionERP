@@ -168,9 +168,13 @@
   }
   private void ToggleAllergen(int id) { if (!selectedAllergenIds.Remove(id)) selectedAllergenIds.Add(id); }
   private async Task SaveMaterialAllergensAsync() => await RunAsync(() => BomService.SaveMaterialAllergensAsync(CurrentRfc, allergenMaterialId, selectedAllergenIds));
-  private void NewAllergen() => allergenEditor = new() { IsActive = true };
-  private void EditAllergen(RestaurantAllergenDto item) => allergenEditor = new() { Id = item.Id, Code = item.Code, Name = item.Name, IsActive = item.IsActive };
-  private async Task SaveAllergenAsync() => await RunAsync(() => BomService.SaveAllergenAsync(allergenEditor));
+  private void NewAllergen() => allergenEditor = new() { Rfc = CurrentRfc, IsActive = true };
+  private void EditAllergen(RestaurantAllergenDto item) => allergenEditor = new() { Rfc = CurrentRfc, Id = item.Id, Code = item.Code, Name = item.Name, IsActive = item.IsActive };
+  private async Task SaveAllergenAsync()
+  {
+    allergenEditor.Rfc = CurrentRfc;
+    await RunAsync(() => BomService.SaveAllergenAsync(allergenEditor));
+  }
 
   private void NewConversion() => conversionEditor = new() { Rfc = CurrentRfc, IsActive = true, Factor = 1 };
   private void SetConversionMaterial(int materialId) => conversionEditor.ToUnitId = materials.FirstOrDefault(item => item.Id == materialId)?.BaseUnitId ?? 0;

@@ -1046,10 +1046,11 @@ public sealed class RecurrentApService : IRecurrentApService
           bp.PartnerName AS Name,
           bp.Rfc
       FROM dbo.BusinessPartner bp
-      WHERE bp.IsActive = 1
+      WHERE bp.OwnerRfc = CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
+        AND bp.IsActive = 1
         AND (
-            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole roleMap WHERE roleMap.BusinessPartnerId = bp.Id AND roleMap.RoleCode = 'Vendor')
-            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vendor WHERE vendor.BusinessPartnerId = bp.Id)
+            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole roleMap WHERE roleMap.Rfc=bp.OwnerRfc AND roleMap.BusinessPartnerId = bp.Id AND roleMap.RoleCode = 'Vendor')
+            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vendor WHERE vendor.Rfc=bp.OwnerRfc AND vendor.BusinessPartnerId = bp.Id)
         )
       ORDER BY bp.PartnerName, bp.Id;
       """;

@@ -615,7 +615,8 @@ ORDER BY
 
 IF @ClienteId IS NULL
 BEGIN
-  INSERT dbo.Clientes (Nombre) VALUES (N'COTIZACION');
+  INSERT dbo.Clientes (OwnerCompanyId, OwnerRfc, Nombre)
+  VALUES (@CompanyId, CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), N'COTIZACION');
   SET @ClienteId = CONVERT(int, SCOPE_IDENTITY());
 
   INSERT orion.HospitalitySiteCustomer (CompanyId, SiteId, ClienteId)
@@ -1178,8 +1179,13 @@ WHERE UPPER(LTRIM(RTRIM(c.Nombre))) = UPPER(@Nombre)
 ORDER BY c.ID;";
 
     const string insertSql = @"
-INSERT INTO dbo.Clientes (Nombre)
-VALUES (@Nombre);
+INSERT INTO dbo.Clientes (OwnerCompanyId,OwnerRfc,Nombre)
+VALUES
+(
+  CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')),
+  CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')),
+  @Nombre
+);
 DECLARE @NewClienteId int = CONVERT(int, SCOPE_IDENTITY());
 INSERT orion.HospitalitySiteCustomer (CompanyId,SiteId,ClienteId)
 VALUES(CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')),CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')),@NewClienteId);

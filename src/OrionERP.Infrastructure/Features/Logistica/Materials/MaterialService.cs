@@ -340,14 +340,15 @@ public sealed class MaterialService : IMaterialService
 
       SELECT Id, UnitName AS Name, Abbreviation AS Code
       FROM logistica.UnitOfMeasure unit
-      WHERE unit.IsActive = 1
+      WHERE unit.Rfc = @Rfc
+        AND (unit.IsActive = 1
          OR EXISTS
          (
              SELECT 1
              FROM logistica.Material material
              WHERE material.Rfc = @Rfc
                AND (material.BaseUnitId = unit.Id OR material.PurchaseUnitId = unit.Id)
-         )
+         ))
       ORDER BY unit.UnitName, unit.Id;
 
       SELECT
@@ -355,21 +356,14 @@ public sealed class MaterialService : IMaterialService
           bp.PartnerName AS Name,
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
-      WHERE EXISTS
-        (
-            SELECT 1
-            FROM dbo.BusinessPartnerRfcScope scope
-            WHERE scope.Rfc = @Rfc
-              AND scope.BusinessPartnerId = bp.Id
-              AND scope.IsActive = 1
-        )
+      WHERE bp.OwnerRfc = @Rfc
         AND
         (
             (
                 bp.IsActive = 1
                 AND
                 (
-                    EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+                    EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=@Rfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
                     OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc = @Rfc AND vp.BusinessPartnerId = bp.Id)
                 )
             )
@@ -1347,10 +1341,10 @@ public sealed class MaterialService : IMaterialService
       var scopedCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
         """
         SELECT COUNT(*)
-        FROM dbo.BusinessPartnerRfcScope scope
-        WHERE scope.Rfc = @Rfc
-          AND scope.BusinessPartnerId IN @PartnerIds
-          AND scope.IsActive = 1;
+        FROM dbo.BusinessPartner partner
+        WHERE partner.OwnerRfc = @Rfc
+          AND partner.Id IN @PartnerIds
+          AND partner.IsActive = 1;
         """,
         new { Rfc = rfc, PartnerIds = partnerIds },
         tx,
@@ -1556,8 +1550,8 @@ public sealed class MaterialService : IMaterialService
     }
 
     var newUnitName = await conn.ExecuteScalarAsync<string>(new CommandDefinition(
-      "SELECT UnitName FROM logistica.UnitOfMeasure WHERE Id = @Id;",
-      new { Id = newBaseUnitId }, tx, cancellationToken: ct)) ?? "la nueva unidad";
+      "SELECT UnitName FROM logistica.UnitOfMeasure WHERE Rfc=@Rfc AND Id = @Id;",
+      new { Rfc=rfc, Id = newBaseUnitId }, tx, cancellationToken: ct)) ?? "la nueva unidad";
 
     if (string.Equals(breakage.Kind, "yield", StringComparison.Ordinal))
     {
@@ -1669,6 +1663,7 @@ public sealed class MaterialService : IMaterialService
   public async Task<LogisticsCommandResult> CreateUnitAsync(UnitOfMeasureCreateRequest request, CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
+    var rfc = LogisticsRfc.Require(request.Rfc);
 
     var name = request.Name?.Trim();
     if (string.IsNullOrWhiteSpace(name))
@@ -1682,7 +1677,7 @@ public sealed class MaterialService : IMaterialService
       (
           SELECT TOP (1) Id
           FROM logistica.UnitOfMeasure
-          WHERE UnitName = @Name
+          WHERE Rfc = @Rfc AND UnitName = @Name
       );
 
       IF @ExistingId IS NOT NULL
@@ -1691,26 +1686,27 @@ public sealed class MaterialService : IMaterialService
           SET IsActive = 1,
               Abbreviation = COALESCE(@Abbreviation, Abbreviation),
               [Description] = COALESCE(@Description, [Description])
-          WHERE Id = @ExistingId;
+          WHERE Rfc = @Rfc AND Id = @ExistingId;
 
           SELECT @ExistingId;
           RETURN;
       END;
 
-      INSERT INTO logistica.UnitOfMeasure (UnitName, Abbreviation, [Description], IsActive)
-      VALUES (@Name, @Abbreviation, @Description, 1);
+      INSERT INTO logistica.UnitOfMeasure (Rfc, UnitName, Abbreviation, [Description], IsActive)
+      VALUES (@Rfc, @Name, @Abbreviation, @Description, 1);
 
       SELECT CAST(SCOPE_IDENTITY() AS int);
       """;
 
     try
     {
-      using var conn = await OpenScopedAsync(null, ct);
+      using var conn = await OpenScopedAsync(rfc, ct);
       var unitId = await conn.ExecuteScalarAsync<int>(
         new CommandDefinition(
           sql,
           new
           {
+            Rfc = rfc,
             Name = name,
             Abbreviation = NullIfWhiteSpace(request.Abbreviation),
             Description = NullIfWhiteSpace(request.Description)

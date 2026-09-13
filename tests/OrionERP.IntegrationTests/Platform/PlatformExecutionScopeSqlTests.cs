@@ -114,7 +114,7 @@ public sealed class PlatformExecutionScopeSqlTests
 
     var firstPreview=await provisioner.PreviewAsync(request);
     var secondPreview=await provisioner.PreviewAsync(request);
-    Assert.True(firstPreview.CanApply);
+    Assert.True(firstPreview.CanApply, string.Join(Environment.NewLine, firstPreview.Errors));
     Assert.Equal(firstPreview.Steps,secondPreview.Steps);
     Assert.All(firstPreview.Steps,step=>Assert.True(step.AlreadySatisfied,step.StepCode));
 

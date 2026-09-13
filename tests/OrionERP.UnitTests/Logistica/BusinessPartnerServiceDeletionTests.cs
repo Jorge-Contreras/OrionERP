@@ -15,7 +15,6 @@ public class BusinessPartnerServiceLifecycleTests
     "PurchaseOrder",
     "RecurringPayable",
     "HospitalityFiscalCustomer",
-    "OtherCompanyScope",
     "LegacyPurchase",
     "LegacyMaterial",
     "LegacyRoomOwner",
@@ -26,7 +25,6 @@ public class BusinessPartnerServiceLifecycleTests
 
   private static readonly string[] ExpectedOwnedCodes =
   [
-    "RfcScope",
     "PartnerRole",
     "VendorProfile",
     "CfdiProfile",
@@ -41,14 +39,12 @@ public class BusinessPartnerServiceLifecycleTests
       ["PurchaseOrder"] = "logistica.PurchaseOrder",
       ["RecurringPayable"] = "AP.RecurringPayable",
       ["HospitalityFiscalCustomer"] = "#OrionVendorFiscalCustomers",
-      ["OtherCompanyScope"] = "dbo.BusinessPartnerRfcScope",
       ["LegacyPurchase"] = "dbo.Compra",
       ["LegacyMaterial"] = "logistica.MATERIALES",
       ["LegacyRoomOwner"] = "dbo.ROOM",
       ["LegacySiteOwner"] = "orion.HospitalitySiteOwner",
       ["LegacyService"] = "dbo.Servicios",
       ["LegacyPortalUser"] = "auth.AspNetUsers",
-      ["RfcScope"] = "dbo.BusinessPartnerRfcScope",
       ["PartnerRole"] = "dbo.BusinessPartnerRole",
       ["VendorProfile"] = "logistica.VendorProfile",
       ["CfdiProfile"] = "dbo.BusinessPartnerCfdiProfile",
@@ -211,7 +207,7 @@ public class BusinessPartnerServiceLifecycleTests
     Assert.Contains("payable.IsActive = 1 THEN N'Operational' ELSE N'Historical'", sql, StringComparison.Ordinal);
     Assert.Contains("link.IsActive = 1 THEN N'Operational' ELSE N'Configuration'", sql, StringComparison.Ordinal);
     Assert.Contains("siteOwner.IsActive = 1 THEN N'Operational' ELSE N'Configuration'", sql, StringComparison.Ordinal);
-    Assert.Contains("scope.BusinessPartnerId = @BusinessPartnerId AND scope.Rfc <> @Rfc", sql, StringComparison.Ordinal);
+    Assert.Contains("partner.OwnerRfc = @Rfc", sql, StringComparison.Ordinal);
   }
 
   [Theory]
@@ -241,7 +237,7 @@ public class BusinessPartnerServiceLifecycleTests
   public async Task Delete_RollsBackWithoutTouchingAnything_WhenAssessmentFindsBlockers()
   {
     var blockerTable = CreateAssessmentTable();
-    AddAssessmentRow(blockerTable, "OtherCompanyScope", VendorDependencyKinds.Operational, 50, 1, "Bruno's · BRUNOS260707L26");
+    AddAssessmentRow(blockerTable, "PurchaseOrder", VendorDependencyKinds.Operational, 20, 1, "OC-000001 · Draft");
 
     var connection = CreateDeleteConnection(blockerTable, deleteResult: 1);
     var service = new BusinessPartnerService(new FakeQueryConnectionFactory(connection));
@@ -273,7 +269,7 @@ public class BusinessPartnerServiceLifecycleTests
 
     var commands = LifecycleCommands(connection).ToList();
     var assessmentIndex = commands.FindIndex(command => command.CommandText.Contains("WITH PartnerIdentity", StringComparison.Ordinal));
-    var ownedIndex = commands.FindIndex(command => command.CommandText.Contains("DELETE FROM dbo.BusinessPartnerRfcScope", StringComparison.Ordinal));
+    var ownedIndex = commands.FindIndex(command => command.CommandText.Contains("DELETE FROM logistica.MaterialVendorBackfill", StringComparison.Ordinal));
     var partnerIndex = commands.FindIndex(command => command.CommandText.StartsWith("DELETE FROM dbo.BusinessPartner WHERE", StringComparison.Ordinal));
     var legacyIndex = commands.FindIndex(command => command.CommandText.StartsWith("DELETE FROM dbo.Proveedores", StringComparison.Ordinal));
 

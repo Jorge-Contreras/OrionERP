@@ -17,7 +17,7 @@ public sealed class RestaurantComboSmokeRegressionTests
       page,
       StringComparison.Ordinal);
     Assert.Contains(
-      "<input type=\"number\" min=\"0\" step=\"0.01\" @bind=\"productEditor.Price\" @bind:event=\"oninput\" />",
+      "<DecimalInput TValue=\"decimal\" min=\"0\" step=\"0.01\" @bind-Value=\"productEditor.Price\" />",
       page,
       StringComparison.Ordinal);
     Assert.Contains(

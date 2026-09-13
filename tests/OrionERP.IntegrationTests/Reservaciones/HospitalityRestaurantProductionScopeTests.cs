@@ -197,7 +197,11 @@ public sealed class HospitalityRestaurantProductionScopeTests
           VALUES(@CompanyId,@SiteId,'HOSPITALITY',1,N'SqlIntegration'),
                 (@CompanyId,@SiteId,'RESTAURANT',1,N'SqlIntegration');
           """,new { f.Scope.CompanyId,SiteId=f._otherSite });
-        f._room = await f.Sql.ExecuteScalarAsync<int>("INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE) VALUES(@Marker,'SUITE'); SELECT CONVERT(int,SCOPE_IDENTITY());", new { f.Marker });
+        f._room = await f.Sql.ExecuteScalarAsync<int>("""
+          INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE,OWNER_ID)
+          SELECT @Marker,'SUITE',MIN(id) FROM dbo.Proveedores WHERE OwnerCompanyId=@CompanyId;
+          SELECT CONVERT(int,SCOPE_IDENTITY());
+          """, new { f.Marker,f.Scope.CompanyId });
         var locations = new LocationService(f.Factory(f.Rfc), new FixedScope(f.Scope));
         var privateLocation = await locations.SaveLocationAsync(new() { LocationName = f.Marker + "-private", RoomId = f._room });
         Assert.True(privateLocation.Success, privateLocation.Message);

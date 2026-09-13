@@ -271,6 +271,8 @@ public sealed class LocationService : ILocationService
               LocationType = @LocationType,
               ParentLocationId = @ParentLocationId,
               RoomId = @RoomId,
+              CompanyId = (SELECT CompanyId FROM orion.Company WHERE Rfc=CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))),
+              RoomSiteId = (SELECT OrionSiteId FROM dbo.ROOM WHERE ID=@RoomId),
               [Description] = @Description,
               IsInventoryEnabled = @IsInventoryEnabled,
               IsActive = @IsActive,
@@ -309,6 +311,8 @@ public sealed class LocationService : ILocationService
               LocationType,
               ParentLocationId,
               RoomId,
+              CompanyId,
+              RoomSiteId,
               [Description],
               IsInventoryEnabled,
               IsActive
@@ -320,6 +324,8 @@ public sealed class LocationService : ILocationService
               @LocationType,
               @ParentLocationId,
               @RoomId,
+              (SELECT CompanyId FROM orion.Company WHERE Rfc=CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))),
+              (SELECT OrionSiteId FROM dbo.ROOM WHERE ID=@RoomId),
               @Description,
               @IsInventoryEnabled,
               @IsActive

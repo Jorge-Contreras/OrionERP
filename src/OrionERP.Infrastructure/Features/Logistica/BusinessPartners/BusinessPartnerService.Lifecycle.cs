@@ -9,8 +9,8 @@ using OrionERP.Application.Features.Logistica.Shared;
 namespace OrionERP.Infrastructure.Features.Logistica.BusinessPartners;
 
 /// <summary>
-/// Retiro seguro de un socio de negocio. El maestro es global: el vínculo con la
-/// empresa vive en <c>dbo.BusinessPartnerRfcScope</c> y los documentos cuelgan de él,
+/// Retiro seguro de un socio de negocio. El maestro pertenece directamente a una
+/// empresa mediante <c>OwnerRfc</c>, y los documentos usan relaciones compuestas,
 /// así que el reporte revisa todo lo que apunta al socio —incluido el catálogo
 /// heredado <c>dbo.Proveedores</c> que lo volvería a crear— antes de permitir el
 /// borrado permanente.
@@ -27,14 +27,12 @@ public sealed partial class BusinessPartnerService
       new("PurchaseOrder", "Órdenes de compra", "El socio aparece en órdenes de compra, aunque estén terminadas o canceladas.", "Revisar compras", "/logistica/compras"),
       new("RecurringPayable", "Pagos recurrentes", "El socio es el beneficiario de pagos recurrentes de cuentas por pagar.", "Revisar pagos recurrentes", "/cuentas-por-pagar/recurrentes"),
       new("HospitalityFiscalCustomer", "Cliente fiscal de hospedaje", "El socio está publicado como cliente fiscal de una sede de hospedaje.", null, null),
-      new("OtherCompanyScope", "Alta en otras empresas", "El socio también está dado de alta en otra empresa del grupo y sus documentos no se ven desde aquí.", null, null),
       new("LegacyPurchase", "Compras heredadas", "El proveedor heredado aparece en compras que alimentan las pólizas de contabilidad.", "Revisar pólizas", "/contabilidad/transacciones/list"),
       new("LegacyMaterial", "Materiales heredados", "El proveedor heredado sigue asignado a materiales del catálogo anterior.", "Revisar materiales", "/logistica/materiales"),
       new("LegacyRoomOwner", "Habitaciones en arrendamiento", "El proveedor heredado es propietario de habitaciones y alimenta el estado de cuenta de arrendadores.", "Revisar catálogos", "/ajustes/catalogos"),
       new("LegacySiteOwner", "Arrendador de una sede", "El proveedor heredado está asociado como arrendador de una empresa y sede.", "Revisar catálogos", "/ajustes/catalogos"),
       new("LegacyService", "Servicios heredados", "El proveedor heredado es la entidad de cobro de servicios del catálogo anterior.", "Revisar pagos recurrentes", "/cuentas-por-pagar/recurrentes"),
       new("LegacyPortalUser", "Usuarios del portal de arrendadores", "Una cuenta de acceso está ligada al proveedor heredado para consultar su estado de cuenta.", "Revisar seguridad", "/admin/seguridad"),
-      new("RfcScope", "Alta en esta empresa", "El registro que da de alta al socio en la empresa actual.", null, null),
       new("PartnerRole", "Roles del socio", "Los roles asignados al socio de negocio.", null, null),
       new("VendorProfile", "Perfil vendor de logística", "Condiciones de pago, lead time y notas del perfil de proveedor.", null, null),
       new("CfdiProfile", "Perfil CFDI", "Nombre fiscal, régimen y uso de CFDI configurados para el socio.", null, null),
@@ -142,22 +140,21 @@ public sealed partial class BusinessPartnerService
     VendorLifecycleAssessmentDto assessment,
     CancellationToken ct)
   {
-    var parameters = new { BusinessPartnerId = assessment.BusinessPartnerId, LegacyProveedorId = assessment.LegacyProveedorId };
+    var parameters = new { OwnerRfc = ownerRfc, BusinessPartnerId = assessment.BusinessPartnerId, LegacyProveedorId = assessment.LegacyProveedorId };
 
     await connection.ExecuteAsync(new CommandDefinition(
       """
       DELETE FROM logistica.MaterialVendorBackfill WHERE OldBusinessPartnerId = @BusinessPartnerId;
-      DELETE FROM logistica.VendorProfile WHERE BusinessPartnerId = @BusinessPartnerId;
-      DELETE FROM dbo.BusinessPartnerCfdiProfile WHERE BusinessPartnerId = @BusinessPartnerId;
-      DELETE FROM dbo.BusinessPartnerRole WHERE BusinessPartnerId = @BusinessPartnerId;
-      DELETE FROM dbo.BusinessPartnerRfcScope WHERE BusinessPartnerId = @BusinessPartnerId;
+      DELETE FROM logistica.VendorProfile WHERE Rfc=@OwnerRfc AND BusinessPartnerId = @BusinessPartnerId;
+      DELETE FROM dbo.BusinessPartnerCfdiProfile WHERE Rfc=@OwnerRfc AND BusinessPartnerId = @BusinessPartnerId;
+      DELETE FROM dbo.BusinessPartnerRole WHERE Rfc=@OwnerRfc AND BusinessPartnerId = @BusinessPartnerId;
       """,
       parameters,
       transaction,
       cancellationToken: ct));
 
     var affected = await connection.ExecuteAsync(new CommandDefinition(
-      "DELETE FROM dbo.BusinessPartner WHERE Id = @BusinessPartnerId;",
+      "DELETE FROM dbo.BusinessPartner WHERE OwnerRfc=@OwnerRfc AND Id = @BusinessPartnerId;",
       parameters,
       transaction,
       cancellationToken: ct));
@@ -165,7 +162,7 @@ public sealed partial class BusinessPartnerService
     if (affected == 1 && assessment.LegacyProveedorId.HasValue)
     {
       await connection.ExecuteAsync(new CommandDefinition(
-        "DELETE FROM dbo.Proveedores WHERE id = @LegacyProveedorId;",
+        "DELETE FROM dbo.Proveedores WHERE OwnerRfc=@OwnerRfc AND id = @LegacyProveedorId;",
         parameters,
         transaction,
         cancellationToken: ct));
@@ -415,20 +412,6 @@ public sealed partial class BusinessPartnerService
       UNION ALL
 
       SELECT
-        N'OtherCompanyScope', N'Operational', 50,
-        CONVERT(nvarchar(100), scope.Rfc), scope.CreatedAt,
-        CAST(CONCAT(
-          COALESCE(NULLIF(company.DisplayName, ''), NULLIF(company.LegalName, ''), scope.Rfc),
-          ' · ', scope.Rfc,
-          CASE WHEN scope.IsActive = 1 THEN ' · Alta activa' ELSE ' · Alta inactiva' END
-        ) AS nvarchar(1000))
-      FROM dbo.BusinessPartnerRfcScope scope
-      LEFT JOIN orion.Company company ON company.Rfc = scope.Rfc
-      WHERE scope.BusinessPartnerId = @BusinessPartnerId AND scope.Rfc <> @Rfc
-
-      UNION ALL
-
-      SELECT
         N'LegacyPurchase', N'Historical', 60, CONVERT(nvarchar(100), purchase.ID), purchase.FechaCompra,
         CAST(CONCAT('Compra #', purchase.ID,
           ' · ', COALESCE(NULLIF(purchase.Descripcion, ''), 'Sin descripción'),
@@ -490,19 +473,10 @@ public sealed partial class BusinessPartnerService
       UNION ALL
 
       SELECT
-        N'RfcScope', N'Owned', 200, CONVERT(nvarchar(100), scope.Rfc), scope.CreatedAt,
-        CAST(CONCAT('Alta en ', scope.Rfc,
-          CASE WHEN scope.IsActive = 1 THEN ' · Activa' ELSE ' · Inactiva' END) AS nvarchar(1000))
-      FROM dbo.BusinessPartnerRfcScope scope
-      WHERE scope.BusinessPartnerId = @BusinessPartnerId AND scope.Rfc = @Rfc
-
-      UNION ALL
-
-      SELECT
         N'PartnerRole', N'Owned', 210, CONVERT(nvarchar(100), partnerRole.Id), partnerRole.CreatedAt,
         CAST(partnerRole.RoleCode AS nvarchar(1000))
       FROM dbo.BusinessPartnerRole partnerRole
-      WHERE partnerRole.BusinessPartnerId = @BusinessPartnerId
+      WHERE partnerRole.Rfc=@Rfc AND partnerRole.BusinessPartnerId = @BusinessPartnerId
 
       UNION ALL
 
@@ -524,7 +498,7 @@ public sealed partial class BusinessPartnerService
           CASE WHEN NULLIF(cfdiProfile.FiscalRegime, '') IS NULL THEN '' ELSE CONCAT(' · Régimen ', cfdiProfile.FiscalRegime) END,
           CASE WHEN NULLIF(cfdiProfile.DefaultCfdiUse, '') IS NULL THEN '' ELSE CONCAT(' · Uso ', cfdiProfile.DefaultCfdiUse) END) AS nvarchar(1000))
       FROM dbo.BusinessPartnerCfdiProfile cfdiProfile
-      WHERE cfdiProfile.BusinessPartnerId = @BusinessPartnerId
+      WHERE cfdiProfile.Rfc=@Rfc AND cfdiProfile.BusinessPartnerId = @BusinessPartnerId
 
       UNION ALL
 
@@ -574,13 +548,7 @@ public sealed partial class BusinessPartnerService
     LEFT JOIN RankedDependencies dependency
       ON dependency.ExampleOrdinal <= @ExampleLimit
     WHERE partner.Id = @BusinessPartnerId
-      AND EXISTS
-      (
-        SELECT 1 FROM dbo.BusinessPartnerRfcScope partnerScope
-        WHERE partnerScope.Rfc = @Rfc
-          AND partnerScope.BusinessPartnerId = partner.Id
-          AND partnerScope.IsActive = 1
-      )
+      AND partner.OwnerRfc = @Rfc
     ORDER BY
       CASE dependency.DependencyKind
         WHEN 'Operational' THEN 0

@@ -321,7 +321,8 @@ SET PartnerName = @PartnerName,
     PostalCode = COALESCE(@PostalCode, PostalCode),
     IsActive = 1,
     UpdatedAt = SYSUTCDATETIME()
-WHERE Id = @BusinessPartnerId;
+WHERE Id = @BusinessPartnerId
+  AND OwnerRfc = CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'));
 """;
 
           await conn.ExecuteAsync(
@@ -343,6 +344,7 @@ WHERE Id = @BusinessPartnerId;
           const string insertSql = """
 INSERT INTO dbo.BusinessPartner
 (
+    OwnerRfc,
     PartnerName,
     Rfc,
     Email,
@@ -351,6 +353,7 @@ INSERT INTO dbo.BusinessPartner
 )
 VALUES
 (
+    CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')),
     @PartnerName,
     @Rfc,
     @Email,
@@ -376,22 +379,24 @@ SELECT CAST(SCOPE_IDENTITY() AS int);
         }
 
         await conn.ExecuteAsync(new CommandDefinition("""
-IF NOT EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer WHERE BusinessPartnerId = @BusinessPartnerId)
-    INSERT INTO orion.HospitalityFiscalCustomer (CompanyId, SiteId, BusinessPartnerId)
+IF NOT EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer WHERE Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND BusinessPartnerId = @BusinessPartnerId)
+    INSERT INTO orion.HospitalityFiscalCustomer (CompanyId, SiteId, Rfc, BusinessPartnerId)
     VALUES (TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')),
-            TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')), @BusinessPartnerId);
+            TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')),
+            CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')), @BusinessPartnerId);
 """, new { BusinessPartnerId = businessPartnerId.Value }, tx, cancellationToken: ct));
 
         const string ensureCustomerRoleSql = """
 IF NOT EXISTS (
     SELECT 1
     FROM dbo.BusinessPartnerRole
-    WHERE BusinessPartnerId = @BusinessPartnerId
+    WHERE Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
+      AND BusinessPartnerId = @BusinessPartnerId
       AND RoleCode = 'Customer'
 )
 BEGIN
-    INSERT INTO dbo.BusinessPartnerRole (BusinessPartnerId, RoleCode)
-    VALUES (@BusinessPartnerId, 'Customer');
+    INSERT INTO dbo.BusinessPartnerRole (Rfc, BusinessPartnerId, RoleCode)
+    VALUES (CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')), @BusinessPartnerId, 'Customer');
 END;
 """;
 
@@ -404,8 +409,8 @@ END;
 
         const string mergeProfileSql = """
 MERGE dbo.BusinessPartnerCfdiProfile AS target
-USING (SELECT @BusinessPartnerId AS BusinessPartnerId) AS src
-ON target.BusinessPartnerId = src.BusinessPartnerId
+USING (SELECT CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AS Rfc,@BusinessPartnerId AS BusinessPartnerId) AS src
+ON target.Rfc=src.Rfc AND target.BusinessPartnerId = src.BusinessPartnerId
 WHEN MATCHED THEN
     UPDATE SET
         FiscalName = @FiscalName,
@@ -414,8 +419,8 @@ WHEN MATCHED THEN
         DefaultCfdiUse = @DefaultCfdiUse,
         UpdatedAt = SYSUTCDATETIME()
 WHEN NOT MATCHED THEN
-    INSERT (BusinessPartnerId, FiscalName, TaxZipCode, FiscalRegime, DefaultCfdiUse)
-    VALUES (@BusinessPartnerId, @FiscalName, @TaxZipCode, @FiscalRegime, @DefaultCfdiUse);
+    INSERT (Rfc, BusinessPartnerId, FiscalName, TaxZipCode, FiscalRegime, DefaultCfdiUse)
+    VALUES (src.Rfc, @BusinessPartnerId, @FiscalName, @TaxZipCode, @FiscalRegime, @DefaultCfdiUse);
 """;
 
         await conn.ExecuteAsync(
@@ -1266,10 +1271,13 @@ SELECT TOP (@Top)
 FROM dbo.BusinessPartner bp
 INNER JOIN dbo.BusinessPartnerRole role
     ON role.BusinessPartnerId = bp.Id
+   AND role.Rfc = bp.OwnerRfc
    AND role.RoleCode = 'Customer'
 INNER JOIN dbo.BusinessPartnerCfdiProfile profile
     ON profile.BusinessPartnerId = bp.Id
+   AND profile.Rfc = bp.OwnerRfc
 WHERE bp.IsActive = 1
+  AND bp.OwnerRfc = CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
   AND EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer customerScope WHERE customerScope.BusinessPartnerId = bp.Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')))
   AND (
       @SearchText IS NULL
@@ -1568,7 +1576,7 @@ WHERE ID = @TransaccionId
     {
       var byId = await conn.ExecuteScalarAsync<int?>(
           new CommandDefinition(
-              "SELECT TOP (1) bp.Id FROM dbo.BusinessPartner bp INNER JOIN orion.HospitalityFiscalCustomer customerScope ON customerScope.BusinessPartnerId = bp.Id WHERE bp.Id = @Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'));",
+              "SELECT TOP (1) bp.Id FROM dbo.BusinessPartner bp INNER JOIN orion.HospitalityFiscalCustomer customerScope ON customerScope.Rfc=bp.OwnerRfc AND customerScope.BusinessPartnerId = bp.Id WHERE bp.OwnerRfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND bp.Id = @Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId'));",
               new { Id = requestedId.Value },
               tx,
               cancellationToken: ct));
@@ -1581,7 +1589,8 @@ WHERE ID = @TransaccionId
             """
 SELECT TOP (1) bp.Id
 FROM dbo.BusinessPartner bp
-WHERE bp.Rfc = @Rfc
+WHERE bp.OwnerRfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
+  AND bp.Rfc = @Rfc
   AND EXISTS (SELECT 1 FROM orion.HospitalityFiscalCustomer customerScope WHERE customerScope.BusinessPartnerId = bp.Id AND customerScope.CompanyId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')) AND customerScope.SiteId = TRY_CONVERT(bigint, SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')))
 ORDER BY bp.IsActive DESC, bp.Id;
 """,

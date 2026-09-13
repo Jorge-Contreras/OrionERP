@@ -38,7 +38,11 @@ public sealed class HospitalityLogisticsLocationTests
     try
     {
       await HospitalityConnectionFactory.InitializeAsync(bootstrap,a);
-      roomId=await bootstrap.ExecuteScalarAsync<int>("INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE) VALUES(@Name,'SUITE'); SELECT CONVERT(int,SCOPE_IDENTITY());",new { Name=marker });
+      roomId=await bootstrap.ExecuteScalarAsync<int>("""
+        INSERT dbo.ROOM(ROOM_NAME,ROOM_TYPE,OWNER_ID)
+        SELECT @Name,'SUITE',MIN(id) FROM dbo.Proveedores WHERE OwnerCompanyId=@CompanyId;
+        SELECT CONVERT(int,SCOPE_IDENTITY());
+        """,new { Name=marker,a.CompanyId });
       var rootRequest=new LocationUpsertRequest { LocationName=marker+"-private",RoomId=roomId };
       var root=await serviceA.SaveLocationAsync(rootRequest);
       Assert.True(root.Success,root.Message); idsA.Add(root.EntityId!.Value);
@@ -87,7 +91,7 @@ public sealed class HospitalityLogisticsLocationTests
 
       // LegacyRoomId alone remains sensitive even when modern RoomId is NULL.
       await bootstrap.ExecuteAsync("EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@Rfc",new { Rfc=a.CompanyRfc });
-      var legacy=await bootstrap.ExecuteScalarAsync<int>("INSERT logistica.Location(LocationCode,LocationName,LocationType,LegacyRoomId) VALUES(@Name,@Name,'Storage',@RoomId); SELECT CONVERT(int,SCOPE_IDENTITY());",new { Name=marker+"-legacy",RoomId=roomId });
+      var legacy=await bootstrap.ExecuteScalarAsync<int>("INSERT logistica.Location(LocationCode,LocationName,LocationType,LegacyRoomId,CompanyId) VALUES(@Name,@Name,'Storage',@RoomId,@CompanyId); SELECT CONVERT(int,SCOPE_IDENTITY());",new { Name=marker+"-legacy",RoomId=roomId,a.CompanyId });
       idsA.Add(legacy);
       Assert.NotNull(await serviceA.GetLocationAsync(legacy));
       Assert.Null(await generalService.GetLocationAsync(legacy));

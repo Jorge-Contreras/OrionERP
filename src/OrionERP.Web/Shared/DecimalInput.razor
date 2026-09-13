@@ -62,7 +62,7 @@
     IsEditing = true;
     Text = args.Value?.ToString() ?? string.Empty;
 
-    return TryParseDecimal(Text, out var parsed)
+    return DecimalTextParser.TryParse(Text, out var parsed)
       ? EmitAsync(parsed)
       : Task.CompletedTask;
   }
@@ -71,7 +71,7 @@
   {
     IsEditing = false;
 
-    if (TryParseDecimal(Text, out var parsed))
+    if (DecimalTextParser.TryParse(Text, out var parsed))
     {
       await EmitAsync(parsed);
     }
@@ -99,29 +99,4 @@
     => parsed is null && AllowsNull
       ? default!
       : (TValue)(object)(parsed ?? 0m);
-
-  private static bool TryParseDecimal(string? text, out decimal? value)
-  {
-    var trimmed = text?.Trim();
-    if (string.IsNullOrEmpty(trimmed))
-    {
-      value = null;
-      return true;
-    }
-
-    if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue))
-    {
-      value = invariantValue;
-      return true;
-    }
-
-    if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.CurrentCulture, out var currentCultureValue))
-    {
-      value = currentCultureValue;
-      return true;
-    }
-
-    value = null;
-    return false;
-  }
 }

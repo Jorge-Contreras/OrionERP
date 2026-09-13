@@ -59,9 +59,9 @@ public sealed class HospitalityPurchasingScopeTests
       var generalOrder = await AddOrder(generalLocation, marker + "G");
       var mixedOrder = await AddOrder(generalLocation, marker + "M");
       await setup.ExecuteAsync("""
-        INSERT logistica.PurchaseOrderRoomScope(PurchaseOrderId,RoomId)
-        VALUES(@PurchaseOrderId,@RoomId);
-        """, new { PurchaseOrderId = mixedOrder, RoomId = roomId });
+        INSERT logistica.PurchaseOrderRoomScope(PurchaseOrderId,RoomId,CompanyId,SiteId)
+        VALUES(@PurchaseOrderId,@RoomId,@CompanyId,@SiteId);
+        """, new { PurchaseOrderId = mixedOrder, RoomId = roomId, a.CompanyId, a.SiteId });
       var factory = new CompanyFactory(cs, a.CompanyRfc);
       var serviceA = new PurchaseOrderService(factory, new FixedScope(scopeA));
       var serviceB = new PurchaseOrderService(factory, new FixedScope(scopeA with { SiteId = siteB }));
@@ -155,9 +155,10 @@ public sealed class HospitalityPurchasingScopeTests
     async Task<int> AddLocation(int? room, int? parent, string code)
     {
       var id = await setup.ExecuteScalarAsync<int>("""
-        INSERT logistica.Location(LocationCode,LocationName,LocationType,RoomId,ParentLocationId)
-        VALUES(@Code,@Code,'Warehouse',@RoomId,@ParentId); SELECT CONVERT(int,SCOPE_IDENTITY());
-        """, new { Code = code, RoomId = room, ParentId = parent });
+        INSERT logistica.Location(LocationCode,LocationName,LocationType,RoomId,ParentLocationId,CompanyId,RoomSiteId)
+        VALUES(@Code,@Code,'Warehouse',@RoomId,@ParentId,@CompanyId,CASE WHEN @RoomId IS NULL THEN NULL ELSE @SiteId END);
+        SELECT CONVERT(int,SCOPE_IDENTITY());
+        """, new { Code = code, RoomId = room, ParentId = parent, a.CompanyId, a.SiteId });
       locationIds.Add(id);
       return id;
     }

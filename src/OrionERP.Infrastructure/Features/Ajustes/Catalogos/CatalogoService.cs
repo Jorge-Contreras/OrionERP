@@ -70,7 +70,7 @@ public sealed class CatalogoService : ICatalogoService
           Key = CatalogoKey.FormasPago,
           Titulo = "Formas de pago",
           Descripcion = "Catálogo SAT c_FormaPago. Alimenta el selector de forma de pago en transacciones y CFDI. Las 22 claves publicadas por el SAT pueden reescribirse pero no eliminarse.",
-          EsPorRfc = false,
+          EsPorRfc = true,
           TieneCodigo = true,
           CodigoEtiqueta = "Clave",
           NombreEtiqueta = "Descripción",
@@ -84,7 +84,8 @@ public sealed class CatalogoService : ICatalogoService
         LlaveEsTexto = true,
         CodigoColumna = "Clave",
         NombreColumna = "Descripcion",
-        ReferenciasSql = "SELECT COUNT(*) FROM dbo.Transacciones WHERE Forma_Pago = @id"
+        RfcColumna = "Rfc",
+        ReferenciasSql = "SELECT COUNT(*) FROM dbo.Transacciones WHERE Forma_Pago = @id AND RFC = @rfc"
       },
       [CatalogoKey.Proyectos] = new()
       {
@@ -174,7 +175,7 @@ public sealed class CatalogoService : ICatalogoService
           Key = CatalogoKey.CategoriasOrdenTrabajo,
           Titulo = "Categorías de orden de trabajo",
           Descripcion = "Clasifica órdenes de trabajo y sus plantillas. Desactivar una categoría la oculta sin afectar las órdenes existentes.",
-          EsPorRfc = false,
+          EsPorRfc = true,
           TieneCodigo = true,
           CodigoEsLlave = false,
           TieneOrden = true,
@@ -188,9 +189,10 @@ public sealed class CatalogoService : ICatalogoService
         NombreColumna = "Nombre",
         OrdenColumna = "Orden",
         ActivoColumna = "Activa",
+        RfcColumna = "Rfc",
         ReferenciasSql = @"
-SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
-     + (SELECT COUNT(*) FROM dbo.OrdenTrabajoPlantilla WHERE CategoriaId = @id)"
+SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id AND Rfc=@rfc)
+     + (SELECT COUNT(*) FROM dbo.OrdenTrabajoPlantilla WHERE CategoriaId = @id AND Rfc=@rfc)"
       },
       [CatalogoKey.Alergenos] = new()
       {
@@ -199,7 +201,7 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
           Key = CatalogoKey.Alergenos,
           Titulo = "Alérgenos",
           Descripcion = "Se etiquetan sobre materiales y recetas del módulo de restaurante.",
-          EsPorRfc = false,
+          EsPorRfc = true,
           TieneCodigo = true,
           CodigoEsLlave = false,
           TieneOrden = false,
@@ -212,7 +214,8 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
         CodigoColumna = "Code",
         NombreColumna = "Name",
         ActivoColumna = "IsActive",
-        ReferenciasSql = "SELECT COUNT(*) FROM logistica.MaterialAllergen WHERE AllergenId = @id"
+        RfcColumna = "Rfc",
+        ReferenciasSql = "SELECT COUNT(*) FROM logistica.MaterialAllergen WHERE AllergenId = @id AND Rfc=@rfc"
       },
       [CatalogoKey.Arrendadores] = new()
       {
@@ -221,7 +224,7 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
           Key = CatalogoKey.Arrendadores,
           Titulo = "Arrendadores",
           Descripcion = "Propietarios de habitaciones. Alimentan el estado de cuenta de arrendadores a través de ROOM.OWNER_ID.",
-          EsPorRfc = false,
+          EsPorRfc = true,
           TieneCodigo = false,
           NombreEtiqueta = "Razón social",
           CodigoEsLlave = false,
@@ -233,7 +236,8 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
         LlaveColumna = "id",
         LlaveEsTexto = false,
         NombreColumna = "RazonSocial",
-        ReferenciasSql = "SELECT COUNT(*) FROM dbo.ROOM WHERE OWNER_ID = @id",
+        RfcColumna = "OwnerRfc",
+        ReferenciasSql = "SELECT COUNT(*) FROM dbo.ROOM room JOIN orion.Company company ON company.CompanyId=room.OrionCompanyId WHERE room.OWNER_ID = @id AND company.Rfc=@rfc",
         // Address and contact columns are NOT NULL with no default. Blanks let an
         // arrendador be registered here and completed in the module that owns it.
         ColumnasExtraInsert = "Calle, Colonia, Ciudad, Estado, CPostal, Giro, Tel",
@@ -259,6 +263,9 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
 
   private async Task<SqlConnection> OpenCatalogConnectionAsync(CatalogoKey key, string? rfc, CancellationToken ct)
   {
+    var catalogo = Resolve(key);
+    if (catalogo.RfcColumna is not null)
+      (_companyContext ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.")).EnsureRfc(rfc ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada."));
     if (key == CatalogoKey.Arrendadores)
       return await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Selecciona una sede autorizada de Hospedaje.")).OpenAsync(ct);
     if (key == CatalogoKey.Proyectos)
@@ -274,7 +281,7 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
     try
     {
       await connection.OpenAsync(ct);
-      if (key == CatalogoKey.Proyectos)
+      if (catalogo.RfcColumna is not null)
       {
         var context = _companyContext ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.");
         var companyRfc = rfc ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.");
@@ -288,6 +295,24 @@ SELECT (SELECT COUNT(*) FROM dbo.OrdenTrabajo WHERE CategoriaId = @id)
       return connection;
     }
     catch { await connection.DisposeAsync(); throw; }
+  }
+
+  private async Task<SqlConnection> OpenCompanyConnectionAsync(string rfc, CancellationToken ct)
+  {
+    var context = _companyContext ?? throw new UnauthorizedAccessException("Selecciona una empresa autorizada.");
+    context.EnsureRfc(rfc);
+    var connection = new SqlConnection(_connectionString);
+    try
+    {
+      await connection.OpenAsync(ct);
+      await AccountingConnectionFactory.InitializeAsync(connection, rfc, await context.RequireCompanyIdAsync(ct), ct);
+      return connection;
+    }
+    catch
+    {
+      await connection.DisposeAsync();
+      throw;
+    }
   }
 
   private static Task<bool> HasHospitalityActivityLinksAsync(SqlConnection connection, IDbTransaction? transaction, string id, string rfc, CancellationToken ct)
@@ -720,7 +745,7 @@ WHERE account.RFC = @rfc
        OR account.Nivel1 + '-' + account.Nivel2 + '-' + account.Nivel3 LIKE @search)
 ORDER BY account.Nivel1, account.Nivel2, account.Nivel3;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await OpenCompanyConnectionAsync(normalizedRfc, ct);
     var rows = await connection.QueryAsync<CuentaContableNodeDto>(
         new CommandDefinition(
             sql,
@@ -763,8 +788,7 @@ ORDER BY account.Nivel1, account.Nivel2, account.Nivel3;";
         "Una cuenta con Nivel 2 igual a 00 es un encabezado de Nivel 1 y su Nivel 3 también debe ser 00.");
     }
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync(ct);
+    await using var connection = await OpenCompanyConnectionAsync(rfc, ct);
 
     // The account picker resolves both parents with a double self-join, so a leaf
     // without its headers renders with blank group names. Refuse to create one.
@@ -872,7 +896,7 @@ WHERE id = @id AND RFC = @rfc AND Nivel1 = @nivel1 AND Nivel2 = @nivel2 AND Nive
 
     const string deleteSql = "DELETE FROM dbo.CuentasContables WHERE id = @id AND RFC = @rfc;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await OpenCompanyConnectionAsync(normalizedRfc, ct);
     var affected = await connection.ExecuteAsync(
         new CommandDefinition(deleteSql, new { id, rfc = normalizedRfc }, cancellationToken: ct));
 

@@ -2,9 +2,10 @@ using System.Data;
 using System.Globalization;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Ajustes;
 using OrionERP.Application.Features.Reservaciones.Extras;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
+using OrionERP.Infrastructure.Features.Reservaciones;
 
 namespace OrionERP.Infrastructure.Features.Ajustes;
 
@@ -40,12 +41,15 @@ public sealed class AjustesService : IAjustesService
     "FIJO"
   };
 
-  private readonly string _connectionString;
+  private readonly AccountingConnectionFactory _accountingConnections;
+  private readonly HospitalityConnectionFactory _hospitalityConnections;
 
-  public AjustesService(IConfiguration configuration)
+  public AjustesService(
+      AccountingConnectionFactory accountingConnections,
+      HospitalityConnectionFactory hospitalityConnections)
   {
-    _connectionString = configuration.GetConnectionString("OrionDb")
-        ?? throw new InvalidOperationException("Missing connection string 'OrionDb'.");
+    _accountingConnections = accountingConnections ?? throw new ArgumentNullException(nameof(accountingConnections));
+    _hospitalityConnections = hospitalityConnections ?? throw new ArgumentNullException(nameof(hospitalityConnections));
   }
 
   public async Task<AjustesGeneralSettingsDto> GetGeneralSettingsAsync(CancellationToken ct = default)
@@ -56,7 +60,7 @@ FROM dbo.PARAMETROS_CONFIGURACION
 WHERE PARAMETRO = @parameter
 ORDER BY ID DESC;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     var storedValue = await connection.QueryFirstOrDefaultAsync<string?>(
         new CommandDefinition(
             sql,
@@ -103,7 +107,7 @@ BEGIN
     );
 END;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     await connection.ExecuteAsync(
         new CommandDefinition(
             sql,
@@ -144,7 +148,7 @@ ORDER BY e.IsActive DESC, e.[Name], e.ExtraID;";
 
     var normalizedSearch = NormalizeNullable(search);
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _hospitalityConnections.OpenAsync(ct);
     var rows = await connection.QueryAsync<ExtraCatalogItemDto>(
         new CommandDefinition(
             sql,
@@ -195,6 +199,8 @@ INSERT INTO dbo.Extra
     [Description],
     Price,
     IsActive,
+    OrionCompanyId,
+    OrionSiteId,
     CreatedAtUtc,
     UpdatedAtUtc
 )
@@ -205,6 +211,8 @@ VALUES
     @description,
     @price,
     @isActive,
+    TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalityCompanyId')),
+    TRY_CONVERT(bigint,SESSION_CONTEXT(N'OrionERP.HospitalitySiteId')),
     SYSUTCDATETIME(),
     SYSUTCDATETIME()
 );";
@@ -218,8 +226,7 @@ SET [Name] = @name,
     UpdatedAtUtc = SYSUTCDATETIME()
 WHERE ExtraID = @extraId;";
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync(ct);
+    await using var connection = await _hospitalityConnections.OpenAsync(ct);
 
     var duplicateId = await connection.ExecuteScalarAsync<int?>(
         new CommandDefinition(duplicateSql, new { name, extraId }, cancellationToken: ct));
@@ -265,7 +272,7 @@ SET IsActive = 0,
     UpdatedAtUtc = SYSUTCDATETIME()
 WHERE ExtraID = @extraId;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _hospitalityConnections.OpenAsync(ct);
     var affected = await connection.ExecuteAsync(
         new CommandDefinition(sql, new { extraId }, cancellationToken: ct));
 
@@ -296,7 +303,7 @@ INNER JOIN dbo.CuentasContables AS cc
     ON cc.id = d.CuentaContableId
 WHERE d.Rfc = @rfc;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     var storedRows = await connection.QueryAsync<CfdiPolizaCuentaDefaultAccountDto>(
         new CommandDefinition(sql, new { rfc = normalizedRfc }, cancellationToken: ct));
     var rowsByKey = storedRows.ToDictionary(row => row.CuentaClave, StringComparer.OrdinalIgnoreCase);
@@ -347,7 +354,7 @@ SELECT id AS Id,
 FROM dbo.CuentasContables
 WHERE id IN @cuentaIds;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     var accountRows = (await connection.QueryAsync<CuentaContableRfcRow>(
         new CommandDefinition(accountSql, new { cuentaIds }, cancellationToken: ct))).AsList();
     var accountsById = accountRows.ToDictionary(row => row.Id);
@@ -385,7 +392,6 @@ VALUES
     SYSUTCDATETIME()
 );";
 
-    await connection.OpenAsync(ct);
     using var tx = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
 
     try
@@ -464,7 +470,7 @@ ORDER BY
     var normalizedRfc = NormalizeNullable(rfc);
     var normalizedSearch = NormalizeNullable(search);
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     var rows = await connection.QueryAsync<PlantillaContableListItemDto>(
         new CommandDefinition(
             sql,
@@ -520,7 +526,7 @@ WHERE l.PlantillaContableID = @plantillaContableId
   AND l.Activa = 1
 ORDER BY l.Orden, l.PlantillaContableLineaID;";
 
-    using var connection = new SqlConnection(_connectionString);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     using var multi = await connection.QueryMultipleAsync(
         new CommandDefinition(sql, new { plantillaContableId }, cancellationToken: ct));
 
@@ -547,8 +553,7 @@ ORDER BY l.Orden, l.PlantillaContableLineaID;";
         .Select((line, index) => line with { Orden = index + 1 })
         .ToList();
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync(ct);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     using var tx = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
 
     try
@@ -598,8 +603,7 @@ SET Activa = 0,
     ActualizadaEn = SYSDATETIME()
 WHERE PlantillaContableID = @plantillaContableId;";
 
-    using var connection = new SqlConnection(_connectionString);
-    await connection.OpenAsync(ct);
+    await using var connection = await _accountingConnections.OpenAsync(ct);
     using var tx = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
 
     try

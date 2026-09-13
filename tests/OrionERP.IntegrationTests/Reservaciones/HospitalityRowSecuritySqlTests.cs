@@ -108,12 +108,12 @@ public sealed class HospitalityRowSecuritySqlTests
     var b = await ScopeAsync(connection, transaction, "brunos-main");
     await SetScopeAsync(connection, transaction, b.Company, b.Site);
     var reservation = await ScalarAsync<int>(connection, transaction, """
-      INSERT dbo.Clientes(Nombre) VALUES(N'RLS transactional fixture');
+      INSERT dbo.Clientes(OwnerCompanyId,OwnerRfc,Nombre) VALUES(@companyId,@rfc,N'RLS transactional fixture');
       DECLARE @customer int=CONVERT(int,SCOPE_IDENTITY());
-      INSERT orion.HospitalitySiteCustomer(ClienteId) VALUES(@customer);
-      INSERT dbo.RESERVATION(CLIENTE_ID,RFC) VALUES(@customer,@rfc);
+      INSERT orion.HospitalitySiteCustomer(CompanyId,SiteId,ClienteId) VALUES(@companyId,@siteId,@customer);
+      INSERT dbo.RESERVATION(CLIENTE_ID,RFC,OrionCompanyId,OrionSiteId) VALUES(@customer,@rfc,@companyId,@siteId);
       SELECT CONVERT(int,SCOPE_IDENTITY());
-      """, ("@rfc", b.Rfc));
+      """, ("@rfc", b.Rfc), ("@companyId", b.Company), ("@siteId", b.Site));
     await SetScopeAsync(connection, transaction, a.Company, a.Site);
     var exception = await Assert.ThrowsAsync<SqlException>(() => ExecuteAsync(connection, transaction,
       "UPDATE TOP (1) dbo.ROOM_CALENDAR SET LOCK_DESCRIPTION=CONVERT(varchar(20),@reservation)", ("@reservation", reservation)));
@@ -193,7 +193,14 @@ public sealed class HospitalityRowSecuritySqlTests
   }
 
   private static Task<int> SetScopeAsync(SqlConnection connection, SqlTransaction? transaction, object? company, object? site) => ExecuteAsync(connection, transaction,
-    "EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId',@value=@company; EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId',@value=@site;", ("@company", company), ("@site", site));
+    """
+    DECLARE @companyId bigint=TRY_CONVERT(bigint,@company);
+    DECLARE @rfc varchar(50)=(SELECT Rfc FROM orion.Company WHERE CompanyId=@companyId AND IsActive=1);
+    EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId',@value=@company;
+    EXEC sys.sp_set_session_context @key=N'OrionRfc',@value=@rfc;
+    EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityCompanyId',@value=@company;
+    EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalitySiteId',@value=@site;
+    """, ("@company", company), ("@site", site));
   private static Task<int> InsertProviderAsync(SqlConnection connection, SqlTransaction transaction, string code) => ScalarAsync<int>(connection, transaction,
     "INSERT dbo.ExperienceProvider(Code,Name) VALUES(@code,N'RLS fixture'); SELECT CONVERT(int,SCOPE_IDENTITY());", ("@code", code));
   private static SqlCommand Command(SqlConnection connection, SqlTransaction? transaction, string sql, params (string Name,object? Value)[] values)

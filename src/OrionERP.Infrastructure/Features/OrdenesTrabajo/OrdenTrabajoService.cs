@@ -56,19 +56,21 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
     _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
   }
 
-  public async Task<IReadOnlyList<OrdenTrabajoCategoriaDto>> GetCategoriesAsync(CancellationToken ct = default)
+  public async Task<IReadOnlyList<OrdenTrabajoCategoriaDto>> GetCategoriesAsync(string rfc, CancellationToken ct = default)
   {
+    rfc = RequireCompanyRfc(rfc);
     const string sql =
       """
       SELECT Id, Codigo, Nombre, Activa, Orden
       FROM dbo.OrdenTrabajoCategoria
+      WHERE Rfc=@Rfc
       ORDER BY Orden, Nombre;
       """;
 
     try
     {
-      using var conn = CreateConnection();
-      var rows = await conn.QueryAsync<OrdenTrabajoCategoriaDto>(new CommandDefinition(sql, cancellationToken: ct));
+      using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: rfc, ct);
+      var rows = await conn.QueryAsync<OrdenTrabajoCategoriaDto>(new CommandDefinition(sql, new { Rfc=rfc }, cancellationToken: ct));
       return rows.AsList();
     }
     catch (Exception ex) when (IsMissingWorkOrderSchemaException(ex))
@@ -93,7 +95,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       ORDER BY [Name], ch.ID;
       """;
 
-    using var conn = CreateConnection();
+    using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: rfc, ct);
     var rows = await conn.QueryAsync<OrdenTrabajoLookupDto>(
       new CommandDefinition(sql, new { Rfc = NullIfWhiteSpace(rfc) }, cancellationToken: ct));
     return rows.AsList();
@@ -1681,7 +1683,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
 
     try
     {
-      using var conn = CreateConnection();
+      using var conn = await OpenHospitalityAwareAsync(required: false, requestedRfc: rfc, ct);
       var rows = await conn.QueryAsync<OrdenTrabajoTemplateSummaryDto>(
         new CommandDefinition(sql.ToString(), p, cancellationToken: ct));
       return rows.AsList();
@@ -2132,7 +2134,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
   private async Task<int?> ResolveCategoryIdAsync(DbConnection conn, IDbTransaction tx, string categoryCode, CancellationToken ct)
     => await conn.ExecuteScalarAsync<int?>(
       new CommandDefinition(
-        "SELECT Id FROM dbo.OrdenTrabajoCategoria WHERE Codigo = @CategoryCode AND Activa = 1;",
+        "SELECT Id FROM dbo.OrdenTrabajoCategoria WHERE Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc')) AND Codigo = @CategoryCode AND Activa = 1;",
         new { CategoryCode = categoryCode },
         tx,
         cancellationToken: ct));
@@ -2145,6 +2147,7 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
             SELECT 1
             FROM dbo.Capital_Humano
             WHERE ID = @EmployeeId
+              AND RFC=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
               AND UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) = 'ACTIVO'
         ) THEN 1 ELSE 0 END AS bit);
         """,
@@ -2290,8 +2293,8 @@ public sealed class OrdenTrabajoService : IOrdenTrabajoService
       await conn.ExecuteAsync(
         new CommandDefinition(
           """
-          INSERT INTO dbo.OrdenTrabajoParticipante (OrdenTrabajoId, EmployeeId, CreadoPor)
-          VALUES (@WorkOrderId, @EmployeeId, @Actor);
+          INSERT INTO dbo.OrdenTrabajoParticipante (Rfc, OrdenTrabajoId, EmployeeId, CreadoPor)
+          VALUES (CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')), @WorkOrderId, @EmployeeId, @Actor);
           """,
           new { WorkOrderId = workOrderId, EmployeeId = helperId, Actor = actor },
           tx,
@@ -2669,7 +2672,10 @@ EXEC sys.sp_set_session_context @key=N'OrionERP.HospitalityRfc', @value=NULL;
 """, cancellationToken: ct));
       }
       if (conn is SqlConnection)
-        await conn.ExecuteAsync(new CommandDefinition("EXEC sys.sp_set_session_context @key=N'OrionERP.WorkOrderRfc', @value=@Rfc;", new { Rfc = companyRfc }, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition("""
+EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=@Rfc;
+EXEC sys.sp_set_session_context @key=N'OrionERP.WorkOrderRfc', @value=@Rfc;
+""", new { Rfc = companyRfc }, cancellationToken: ct));
       return conn;
     }
     catch { await conn.DisposeAsync(); throw; }

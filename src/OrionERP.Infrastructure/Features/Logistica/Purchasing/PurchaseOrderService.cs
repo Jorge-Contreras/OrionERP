@@ -317,11 +317,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
       WHERE bp.IsActive = 1
-        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope vendorScope
-                    WHERE vendorScope.BusinessPartnerId = bp.Id AND vendorScope.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')))
+        AND bp.OwnerRfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
         AND (
-            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
+            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=bp.OwnerRfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc=bp.OwnerRfc AND vp.BusinessPartnerId = bp.Id)
         )
       ORDER BY bp.PartnerName, bp.Id;
 
@@ -387,11 +386,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
           bp.Rfc AS Code
       FROM dbo.BusinessPartner bp
       WHERE bp.IsActive = 1
-        AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope vendorScope
-                    WHERE vendorScope.BusinessPartnerId = bp.Id AND vendorScope.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')))
+        AND bp.OwnerRfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
         AND (
-            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
+            EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=bp.OwnerRfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+            OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc=bp.OwnerRfc AND vp.BusinessPartnerId = bp.Id)
         )
         AND EXISTS (
             SELECT 1
@@ -1305,12 +1303,16 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
               """
               INSERT INTO logistica.PurchaseOrderRoomScope
               (
+                  CompanyId,
+                  SiteId,
                   PurchaseOrderId,
                   RoomId,
                   CreatedAt
               )
               VALUES
               (
+                  (SELECT CompanyId FROM orion.Company WHERE Rfc=CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))),
+                  (SELECT OrionSiteId FROM dbo.ROOM WHERE ID=@RoomId),
                   @PurchaseOrderId,
                   @RoomId,
                   SYSUTCDATETIME()
@@ -1466,10 +1468,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             'Alta automática al capturar una orden de compra.'
         FROM logistica.Material m
         WHERE m.Id = @MaterialId
-          AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope scope
-                      WHERE scope.Rfc = m.Rfc
-                        AND scope.BusinessPartnerId = @BusinessPartnerId
-                        AND scope.IsActive = 1)
+          AND EXISTS (SELECT 1 FROM dbo.BusinessPartner partner
+                      WHERE partner.OwnerRfc = m.Rfc
+                        AND partner.Id = @BusinessPartnerId
+                        AND partner.IsActive = 1)
           AND NOT EXISTS (SELECT 1 FROM logistica.MaterialVendor mv
                           WHERE mv.Rfc = m.Rfc
                             AND mv.MaterialId = m.Id
@@ -1625,12 +1627,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             SELECT 1
             FROM dbo.BusinessPartner bp
             WHERE bp.Id = @BusinessPartnerId
-              AND EXISTS (SELECT 1 FROM dbo.BusinessPartnerRfcScope vendorScope
-                          WHERE vendorScope.BusinessPartnerId = bp.Id AND vendorScope.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc')))
+              AND bp.OwnerRfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
               AND bp.IsActive = 1
               AND (
-                  EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
-                  OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.BusinessPartnerId = bp.Id)
+                  EXISTS (SELECT 1 FROM dbo.BusinessPartnerRole r WHERE r.Rfc=bp.OwnerRfc AND r.BusinessPartnerId = bp.Id AND r.RoleCode = 'Vendor')
+                  OR EXISTS (SELECT 1 FROM logistica.VendorProfile vp WHERE vp.Rfc=bp.OwnerRfc AND vp.BusinessPartnerId = bp.Id)
               )
         ) THEN 1 ELSE 0 END AS bit);
         """,

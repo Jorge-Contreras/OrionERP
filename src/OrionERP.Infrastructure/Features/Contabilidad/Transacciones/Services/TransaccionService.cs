@@ -862,6 +862,7 @@ ORDER BY ch.NombreCorto ASC;";
     fp.Clave        AS Clave,
     fp.Descripcion  AS Descripcion
 FROM dbo.Formas_Pago fp
+WHERE fp.Rfc=CONVERT(varchar(50),SESSION_CONTEXT(N'OrionRfc'))
 ORDER BY fp.Clave ASC;";
 
     using var conn = await OpenAccountingConnectionAsync(ct);

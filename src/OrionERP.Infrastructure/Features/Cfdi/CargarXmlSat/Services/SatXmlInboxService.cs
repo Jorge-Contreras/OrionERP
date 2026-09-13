@@ -1,8 +1,8 @@
 using Dapper;
 using Microsoft.Data.SqlClient;           // ✅ correct provider
-using Microsoft.Extensions.Configuration; // ✅ IConfiguration
 using Microsoft.Extensions.Logging;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 using System;
 using System.Data;
 using System.IO;
@@ -80,14 +80,13 @@ namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services
       return null;
     }
 
-    private readonly string _cs;
+    private readonly AccountingConnectionFactory _connections;
     private readonly ILogger<SatXmlInboxService> _logger;
 
-    public SatXmlInboxService(IConfiguration cfg, ILogger<SatXmlInboxService> logger)
+    public SatXmlInboxService(AccountingConnectionFactory connections, ILogger<SatXmlInboxService> logger)
     {
       _logger = logger;
-      _cs = cfg.GetConnectionString("OrionDb")
-            ?? throw new InvalidOperationException("Missing ConnectionStrings:OrionDb");
+      _connections = connections ?? throw new ArgumentNullException(nameof(connections));
     }
 
     private static string SafeFileName(string fileName)
@@ -228,8 +227,7 @@ WHERE ID = @ID;";
         ? NormalizeUuid(uuidFromXml)
         : (IsUuidLike(UuidFromFileName(safeName)) ? NormalizeUuid(UuidFromFileName(safeName)) : string.Empty);
 
-      using var conn = new SqlConnection(_cs);
-      await conn.OpenAsync(ct);
+      await using var conn = await _connections.OpenAsync(ct);
       using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
 
       try

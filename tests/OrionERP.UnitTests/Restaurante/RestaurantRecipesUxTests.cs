@@ -85,7 +85,9 @@ public sealed class RestaurantRecipesUxTests
     Assert.Contains("Costo de subreceta activa", service, StringComparison.Ordinal);
     Assert.Contains("Precio de Materiales", service, StringComparison.Ordinal);
     // El costo de la receta gana sobre el precio de compra cuando el material realmente se produce.
-    Assert.Contains("COALESCE(subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0), material.BaseUnitPrice", service, StringComparison.Ordinal);
+    Assert.Contains("COALESCE(subBom.UnitCost, material.BaseUnitPrice", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("subBom.FrozenTheoreticalCost / NULLIF(subBom.YieldQuantity, 0)", service, StringComparison.Ordinal);
+    Assert.Contains("childVersion.FrozenTheoreticalCost AS UnitCost", service, StringComparison.Ordinal);
     Assert.DoesNotContain("COALESCE(material.BaseUnitPrice, subBom.FrozenTheoreticalCost", service, StringComparison.Ordinal);
     Assert.Contains("material.FulfillmentMode IN ('MakeToStock', 'MakeToOrder')", service, StringComparison.Ordinal);
     Assert.Contains("RecipeCostIgnored", service, StringComparison.Ordinal);

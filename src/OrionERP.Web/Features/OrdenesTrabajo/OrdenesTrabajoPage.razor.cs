@@ -95,7 +95,7 @@ public partial class OrdenesTrabajoPage : ComponentBase
     ErrorMessage = null;
     try
     {
-      Categories = (await OrdenTrabajoService.GetCategoriesAsync()).ToList();
+      Categories = (await OrdenTrabajoService.GetCategoriesAsync(CurrentRfc)).ToList();
       Employees = (await OrdenTrabajoService.GetActiveEmployeeOptionsAsync(CurrentRfc)).ToList();
       if (CreateRequest.OwnerEmployeeId > 0 && !Employees.Any(employee => employee.Id == CreateRequest.OwnerEmployeeId))
       {

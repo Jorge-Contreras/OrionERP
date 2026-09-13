@@ -3,20 +3,18 @@ using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 
 namespace OrionERP.Infrastructure.Features.Cfdi.CargarXmlSat.Services;
 
 public sealed class ComprobanteQueryService : IComprobanteQueryService
 {
-  private readonly string _cs;
+  private readonly AccountingConnectionFactory _connections;
 
-  public ComprobanteQueryService(IConfiguration cfg)
+  public ComprobanteQueryService(AccountingConnectionFactory connections)
   {
-    _cs = cfg.GetSection("ConnectionStrings")["OrionDb"]
-         ?? throw new System.InvalidOperationException("Missing ConnectionStrings:OrionDb");
+    _connections = connections ?? throw new System.ArgumentNullException(nameof(connections));
   }
 
   // Área de pendientes de ESTA empresa: alcanza el CFDI por emisor o por receptor,
@@ -44,7 +42,7 @@ WHERE {CfdiCompanyScope.AccessPredicateSql("c.Comprobante_Id")}
   AND NOT {CfdiCompanyScope.AssignedToCompanySql("c.Comprobante_Id")}
 ORDER BY c.Comprobante_Id DESC;";
 
-    using var conn = new SqlConnection(_cs);
+    await using var conn = await _connections.OpenAsync(ct);
     var rows = await conn.QueryAsync<ComprobanteListItem>(
         new CommandDefinition(
             sql,
@@ -79,7 +77,7 @@ WHERE tc.Transaccion_ID = @TransaccionId
   AND {CfdiCompanyScope.AccessPredicateSql("c.Comprobante_Id")}
 ORDER BY c.Comprobante_Id DESC;";
 
-    using var conn = new SqlConnection(_cs);
+    await using var conn = await _connections.OpenAsync(ct);
     var rows = await conn.QueryAsync<ComprobanteListItem>(
         new CommandDefinition(
             sql,

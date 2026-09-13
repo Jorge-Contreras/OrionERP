@@ -1,19 +1,17 @@
 using System.Threading.Tasks;
 using Dapper;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using OrionERP.Application.Features.Rfcs.Contracts;
+using OrionERP.Infrastructure.Features.Contabilidad.Transacciones;
 using AppRfcs = OrionERP.Application.Features.Rfcs.Contracts;
 namespace OrionERP.Infrastructure.Features.Rfcs.Dapper
 {
   public sealed class SatRfcProfileRepository : AppRfcs.ISatRfcProfileRepository
   {
-    private readonly string _connString;
+    private readonly AccountingConnectionFactory _connections;
 
-    public SatRfcProfileRepository(IConfiguration cfg)
+    public SatRfcProfileRepository(AccountingConnectionFactory connections)
     {
-      _connString = cfg.GetConnectionString("OrionDb")
-          ?? throw new System.InvalidOperationException("Missing connection string 'OrionDb'.");
+      _connections = connections ?? throw new System.ArgumentNullException(nameof(connections));
     }
 
     public async Task UpsertAsync(AppRfcs.SatRfcProfileUpsert dto)
@@ -55,7 +53,7 @@ VALUES (
     @SATFielCertificate, @SATFielKey, @SATFielPfx, @SATFielPasswordEnc, @Email
 );";
 
-      await using var con = new SqlConnection(_connString);
+      await using var con = await _connections.OpenAsync();
       var exists = await con.ExecuteScalarAsync<int?>(existsSql, new { dto.Rfc });
       if (exists.HasValue)
       {
@@ -78,7 +76,7 @@ SELECT
 FROM dbo.SatRfcProfile
 WHERE Rfc = @rfc;";
 
-      await using var con = new SqlConnection(_connString);
+      await using var con = await _connections.OpenAsync();
       return await con.QuerySingleOrDefaultAsync<SatRfcProfile>(sql, new { rfc });
     }
   }

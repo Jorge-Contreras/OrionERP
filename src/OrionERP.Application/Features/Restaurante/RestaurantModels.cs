@@ -850,6 +850,7 @@ public sealed class RestaurantAllergenDto
 
 public sealed class RestaurantAllergenSaveRequest
 {
+  [Required] public string Rfc { get; set; } = string.Empty;
   public int? Id { get; set; }
   [Required, StringLength(40)] public string Code { get; set; } = string.Empty;
   [Required, StringLength(100)] public string Name { get; set; } = string.Empty;

@@ -121,6 +121,7 @@ WHERE ps.PublicSiteKey IN ('bonhomia-main', 'synthetic-hospitality-main');
       var ordersB = new OrdenTrabajoService(new ConnectionFactory(connectionString), new FixedScope(scopeB), new FixedCompany(scopeB));
       var genericOrders = new OrdenTrabajoService(new ConnectionFactory(connectionString), companyContext: new FixedCompany(scopeA));
       var room = (await ordersA.GetRoomOptionsAsync()).First();
+      await HospitalityConnectionFactory.InitializeAsync(bootstrap, scopeA);
       var employeeId = await bootstrap.ExecuteScalarAsync<int>("SELECT TOP (1) ID FROM dbo.Capital_Humano WHERE RFC = @Rfc AND UPPER(LTRIM(RTRIM([Status]))) = 'ACTIVO' ORDER BY ID;", new { Rfc = scopeA.CompanyRfc });
       Assert.True(employeeId > 0);
       var order = await ordersA.CreateManualAsync(new() { Rfc = scopeA.CompanyRfc, Titulo = marker, OwnerEmployeeId = employeeId, RoomId = room.Id, ReservationId = reservationId, CreatedBy = "scope-integration" });

@@ -34,7 +34,7 @@ public class MaterialServiceMasterDataTests
   }
 
   [Fact]
-  public async Task CreateUnitAsync_ReactivatesOrCreatesSharedUnit()
+  public async Task CreateUnitAsync_ReactivatesOrCreatesTenantUnit()
   {
     var connection = new FakeQueryDbConnection
     {
@@ -44,6 +44,7 @@ public class MaterialServiceMasterDataTests
 
     var result = await service.CreateUnitAsync(new UnitOfMeasureCreateRequest
     {
+      Rfc = "OHM191112Q26",
       Name = "  Caja de 12  ",
       Abbreviation = " CJ12 ",
       Description = "Presentación de proveedor"
@@ -53,9 +54,11 @@ public class MaterialServiceMasterDataTests
     Assert.Equal(23, result.EntityId);
     Assert.NotNull(connection.LastCommandText);
     Assert.Contains("FROM logistica.UnitOfMeasure", connection.LastCommandText!, StringComparison.Ordinal);
+    Assert.Contains("WHERE Rfc = @Rfc", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("SET IsActive = 1", connection.LastCommandText!, StringComparison.Ordinal);
     Assert.Contains("INSERT INTO logistica.UnitOfMeasure", connection.LastCommandText!, StringComparison.Ordinal);
     AssertParameter(connection.LastParameters, "Name", "Caja de 12");
+    AssertParameter(connection.LastParameters, "Rfc", "OHM191112Q26");
     AssertParameter(connection.LastParameters, "Abbreviation", "CJ12");
   }
 
@@ -72,6 +75,7 @@ public class MaterialServiceMasterDataTests
     });
     var unitResult = await service.CreateUnitAsync(new UnitOfMeasureCreateRequest
     {
+      Rfc = "OHM191112Q26",
       Name = " "
     });
 

@@ -18,6 +18,10 @@ public partial class ComprasPage : ComponentBase
   private const int VendorMaterialSearchTake = 100;
 
   [Inject] private IPurchaseOrderService PurchaseOrderService { get; set; } = default!;
+  [Inject] private IPurchaseAccountingService PurchaseAccountingService { get; set; } = default!;
+
+  /// <summary>Abre directamente una compra, p. ej. desde la póliza que la cubre.</summary>
+  [SupplyParameterFromQuery(Name = "orden")] public int? OrdenId { get; set; }
   [Inject] private IMaterialService MaterialService { get; set; } = default!;
   [Inject] private IPurchaseMaterialThumbnailHydrator ThumbnailHydrator { get; set; } = default!;
   [Inject] private IPurchaseOrderPdfService PurchaseOrderPdfService { get; set; } = default!;
@@ -145,6 +149,15 @@ public partial class ComprasPage : ComponentBase
         || string.Equals(SelectedPurchaseOrder.Status, PurchaseOrderStatuses.Issued, StringComparison.OrdinalIgnoreCase))
     && !IsMutating;
   protected bool CanPrint => SelectedPurchaseOrder is not null && !IsMutating;
+  protected bool CanShowAccounting => SelectedPurchaseOrder is not null && SelectedPurchaseOrder.ReceivedQuantity > 0m;
+  protected Dictionary<int, PurchaseOrderPostingStatusDto> PostingStatuses { get; } = new();
+  private PurchaseAccountingSummaryDto? _accountingSummary;
+
+  /// <summary>Lo que reportó el panel de contabilidad, sólo si corresponde a la compra abierta.</summary>
+  protected PurchaseAccountingSummaryDto? CurrentAccountingSummary
+    => _accountingSummary is not null && _accountingSummary.PurchaseOrderId == SelectedPurchaseOrder?.Id
+      ? _accountingSummary
+      : null;
   protected bool IsMutating => IsSavingDraft || IsIssuing || IsReceiving || IsCompleting || IsCancelling || IsPrinting || IsCreatingAutoPo;
   /// <summary>Una compra sin guardar todavía no tiene folio: el encabezado la nombra, no la explica.</summary>
   protected bool IsNewOrder => SelectedPurchaseOrder is null;
@@ -188,7 +201,12 @@ public partial class ComprasPage : ComponentBase
       PurchaseOrderStatuses.Draft => "Elige proveedor y materiales, asigna sus ubicaciones y guarda la compra.",
       PurchaseOrderStatuses.Issued => "Compara la entrega con el ticket y captura cantidad, total e IVA de cada artículo.",
       PurchaseOrderStatuses.PartiallyReceived => "Continúa con lo que llegó hoy o cierra lo que ya no entregará el proveedor.",
-      PurchaseOrderStatuses.Completed => "Compra terminada. Los precios de Materiales ya reflejan los importes recibidos.",
+      PurchaseOrderStatuses.Completed => CurrentAccountingSummary switch
+      {
+        { PorContabilizar: > 0m } => "Compra terminada. Solo falta registrarla en contabilidad: usa el paso 5, más abajo.",
+        { Recibido: > 0m } => "Compra terminada y registrada en contabilidad.",
+        _ => "Compra terminada. Los precios de Materiales ya reflejan los importes recibidos."
+      },
       PurchaseOrderStatuses.Cancelled => "Esta compra está cancelada y ya no admite cambios.",
       _ => "Sigue el paso marcado para continuar."
     };
@@ -233,6 +251,11 @@ public partial class ComprasPage : ComponentBase
     LimpiarEditor();
     ShowOrderBrowser = true;
     IsEditorOpen = false;
+
+    if (OrdenId is > 0)
+    {
+      await SeleccionarOrdenAsync(OrdenId.Value);
+    }
   }
 
   protected async Task BuscarOrdenesAsync()
@@ -933,6 +956,40 @@ public partial class ComprasPage : ComponentBase
     return step == CurrentProcessStep ? "is-current" : string.Empty;
   }
 
+  protected string GetAccountingStepClass()
+  {
+    if (NormalizeStatus(SelectedPurchaseOrder?.Status) == PurchaseOrderStatuses.Cancelled)
+    {
+      return "is-disabled";
+    }
+
+    if (CurrentAccountingSummary is not { Recibido: > 0m } accounting)
+    {
+      return string.Empty;
+    }
+
+    if (accounting.PorContabilizar <= 0m)
+    {
+      return "is-complete";
+    }
+
+    return CurrentProcessStep == 4 ? "is-current" : string.Empty;
+  }
+
+  protected void OnAccountingSummaryChanged(PurchaseAccountingSummaryDto? summary)
+  {
+    _accountingSummary = summary;
+    if (summary is not null)
+    {
+      PostingStatuses[summary.PurchaseOrderId] = new PurchaseOrderPostingStatusDto
+      {
+        PurchaseOrderId = summary.PurchaseOrderId,
+        Recibido = summary.Recibido,
+        Contabilizado = summary.Contabilizado
+      };
+    }
+  }
+
   protected string FormatMoney(decimal? amount)
     => amount.HasValue ? amount.Value.ToString("C2", CultureInfo.CurrentCulture) : "—";
 
@@ -1248,6 +1305,7 @@ public partial class ComprasPage : ComponentBase
     try
     {
       Orders = (await PurchaseOrderService.GetPurchaseOrdersAsync(Filter)).ToList();
+      await LoadPostingStatusesAsync();
     }
     catch (Exception ex)
     {
@@ -1257,6 +1315,29 @@ public partial class ComprasPage : ComponentBase
     {
       IsLoadingOrders = false;
       StateHasChanged();
+    }
+  }
+
+  /// <summary>Las marcas "Falta póliza" son una ayuda: si no cargan, la lista sigue funcionando sin ellas.</summary>
+  private async Task LoadPostingStatusesAsync()
+  {
+    PostingStatuses.Clear();
+    var receivedIds = Orders
+      .Where(order => order.ReceivedQuantity > 0m)
+      .Select(order => order.Id)
+      .ToList();
+    if (receivedIds.Count == 0) return;
+
+    try
+    {
+      foreach (var status in await PurchaseAccountingService.GetPostingStatusesAsync(receivedIds))
+      {
+        PostingStatuses[status.PurchaseOrderId] = status;
+      }
+    }
+    catch (Exception ex)
+    {
+      Errors.ToUserMessage(ex, "consultar qué compras faltan de póliza", new { OrderCount = receivedIds.Count });
     }
   }
 

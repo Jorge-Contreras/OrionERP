@@ -21,6 +21,32 @@ internal static class AccountingCycleSql
       THEN 0 ELSE 1 END);
     """;
 
+  /// <summary>
+  /// Si una póliza nueva con fecha <c>@Fecha</c> de la empresa <c>@CompanyId</c> caería en un
+  /// periodo cerrado, con el mismo criterio que <see cref="Status"/>: el cierre sólo gobierna si
+  /// la empresa encendió el ciclo y la fecha no es historia compatible. Sin ciclo instalado, nada
+  /// está cerrado. Sirve para rechazar antes de crear la póliza, que después ya no se borra.
+  /// </summary>
+  public const string PeriodClosedForDateSql = """
+    IF OBJECT_ID(N'contabilidad.CompanyCycleActivation', N'U') IS NULL
+       OR OBJECT_ID(N'contabilidad.AccountingPeriod', N'U') IS NULL
+      SELECT CONVERT(bit, 0);
+    ELSE
+      SELECT CONVERT(bit, CASE WHEN EXISTS
+      (
+        SELECT 1
+        FROM contabilidad.CompanyCycleActivation AS activacion
+        JOIN contabilidad.AccountingPeriod AS periodo
+          ON periodo.CompanyId = activacion.CompanyId
+         AND periodo.PeriodYear = YEAR(@Fecha)
+         AND periodo.PeriodMonth = MONTH(@Fecha)
+         AND periodo.[State] = 'Closed'
+        WHERE activacion.CompanyId = @CompanyId
+          AND activacion.IsEnabled = 1
+          AND (activacion.LegacyCompatibleUntilUtc IS NULL OR @Fecha >= activacion.LegacyCompatibleUntilUtc)
+      ) THEN 1 ELSE 0 END);
+    """;
+
   /// <summary>Lectura sin candados, para mostrar estado.</summary>
   public static string Status() => Build(locking: false);
 

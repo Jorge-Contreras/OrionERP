@@ -3,7 +3,7 @@
 @using OrionERP.Web.Shared
 @attribute [Authorize(Roles = "Administrador,SatOperator")]
 
-<PageTitle>Transacción @Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture)</PageTitle>
+<PageTitle>Transacción @(Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture))</PageTitle>
 
 @if (IsLoading)
 {
@@ -297,6 +297,14 @@ else
                     @onclick="() => ActivateSection(SectionPanel.CuentasPorPagar)">
               AP
               <span class="badge text-bg-secondary ms-1">@ApLinks.Count</span>
+            </button>
+          </li>
+          <li class="nav-item">
+            <button type="button"
+                    class="@GetTabButtonClass(SectionPanel.Compras)"
+                    @onclick="ActivateComprasSectionAsync">
+              Compras
+              <span class="badge text-bg-secondary ms-1">@CompraLinks.Count</span>
             </button>
           </li>
           <li class="nav-item">
@@ -922,6 +930,188 @@ else
               </div>
             }
           </div>
+        }
+        else if (IsActiveSection(SectionPanel.Compras))
+        {
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <h5 class="mb-0">Compras que cubre esta póliza</h5>
+            @if (CompraLinksInfo is { } compraInfo)
+            {
+              <span class="badge text-bg-dark">Monto póliza: @FormatCurrency(compraInfo.Summary.Monto)</span>
+              <span class="badge text-bg-dark">Asignado a compras: @FormatCurrency(compraInfo.Summary.Asignado)</span>
+              <span class="badge @(compraInfo.Summary.Disponible > 0.005m ? "text-bg-warning" : "text-bg-success")">Disponible: @FormatCurrency(compraInfo.Summary.Disponible)</span>
+            }
+          </div>
+          <p class="text-muted small mb-3">
+            Liga las órdenes de compra recibidas que registra esta póliza. Una póliza puede cubrir varias compras
+            y una compra puede repartirse en varias pólizas.
+          </p>
+
+          @if (!string.IsNullOrEmpty(CompraLinksError))
+          {
+            <div class="alert alert-warning" role="alert">@CompraLinksError</div>
+          }
+
+          @if (CompraLinksInfo is { ComprasNoVisibles: > 0 } hiddenCompras)
+          {
+            <p class="small text-muted">
+              @hiddenCompras.ComprasNoVisibles compra(s) ligada(s) son de una sede que no tienes asignada; su monto sí cuenta en lo asignado.
+            </p>
+          }
+
+          @if (CompraLinks.Count == 0)
+          {
+            @if (CompraLinksError is null)
+            {
+              <p class="text-muted">Esta póliza todavía no está ligada a ninguna compra.</p>
+            }
+          }
+          else
+          {
+            <div class="table-responsive mb-4">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th>Compra</th>
+                    <th>Proveedor</th>
+                    <th>Fecha</th>
+                    <th>Origen</th>
+                    <th class="text-end">Monto ligado</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var link in CompraLinks)
+                  {
+                    <tr>
+                      <td class="text-nowrap">
+                        <a href="/logistica/compras?orden=@link.PurchaseOrderId" target="_blank" rel="noopener">@link.PurchaseOrderCode</a>
+                      </td>
+                      <td>@link.VendorName</td>
+                      <td>@link.OrderDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                      <td>
+                        <span class="badge @(link.FueGenerada ? "text-bg-primary" : "text-bg-light border")">
+                          @(link.FueGenerada ? "Creada desde Compras" : "Ligada a mano")
+                        </span>
+                      </td>
+                      <td class="text-end">@FormatCurrency(link.MontoAsignado)</td>
+                      <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-warning"
+                                disabled="@(UnlinkingCompraLinkId == link.LinkId)"
+                                @onclick="() => UnlinkCompraAsync(link)">
+                          @(UnlinkingCompraLinkId == link.LinkId ? "Quitando..." : "Quitar")
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          @if (CompraLinksError is null)
+          {
+            <div class="border rounded p-3">
+              <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-end">
+                <div class="flex-grow-1">
+                  <label class="form-label" for="compra-candidate-search">Buscar compras recibidas pendientes de póliza</label>
+                  <input id="compra-candidate-search"
+                         class="form-control"
+                         type="search"
+                         @bind="CompraOrderSearchTerm"
+                         @bind:event="oninput"
+                         @onkeydown="HandleCompraSearchKeyDownAsync"
+                         placeholder="Folio de la compra o proveedor" />
+                </div>
+                <button type="button" class="btn btn-outline-secondary" @onclick="SearchCompraCandidatesAsync" disabled="@IsSearchingCompraCandidates">
+                  @(IsSearchingCompraCandidates ? "Buscando..." : "Buscar compras")
+                </button>
+              </div>
+              <p class="small text-muted mt-2 mb-0">Sin búsqueda aparecen primero las compras con saldo parecido a lo disponible de la póliza.</p>
+
+              @if (SelectedCompraCandidate is { } selectedCompra)
+              {
+                <div class="alert alert-primary d-flex flex-column flex-md-row gap-2 align-items-md-end mt-3 mb-0">
+                  <div class="flex-grow-1">
+                    <div class="fw-semibold">Ligar @selectedCompra.PurchaseOrderCode · @selectedCompra.VendorName</div>
+                    @if (MaxCompraLinkMonto <= 0m)
+                    {
+                      <div class="small">La póliza ya no tiene monto disponible para más compras.</div>
+                    }
+                    else
+                    {
+                      <div class="small">Pendiente de la compra @FormatCurrency(selectedCompra.PorContabilizar) · máximo a ligar @FormatCurrency(MaxCompraLinkMonto)</div>
+                    }
+                  </div>
+                  <div>
+                    <label class="form-label small mb-1" for="compra-link-monto">Monto</label>
+                    <input id="compra-link-monto"
+                           class="form-control form-control-sm text-end"
+                           style="max-width: 10rem"
+                           type="number"
+                           min="0.01"
+                           step="0.01"
+                           max="@MaxCompraLinkMonto"
+                           @bind="CompraLinkMonto"
+                           disabled="@IsLinkingCompra" />
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-primary"
+                            disabled="@(IsLinkingCompra || CompraLinkMonto <= 0m || CompraLinkMonto > MaxCompraLinkMonto)"
+                            @onclick="LinkCompraAsync">
+                      @(IsLinkingCompra ? "Ligando..." : "Ligar")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@IsLinkingCompra" @onclick="CancelCompraSelection">Cancelar</button>
+                  </div>
+                </div>
+              }
+
+              @if (IsSearchingCompraCandidates && CompraCandidates.Count == 0)
+              {
+                <p class="text-muted mt-3 mb-0">Buscando compras...</p>
+              }
+              else if (_compraCandidatesLoaded && CompraCandidates.Count == 0)
+              {
+                <p class="text-muted mt-3 mb-0">No hay compras recibidas pendientes de póliza con ese filtro.</p>
+              }
+              else if (CompraCandidates.Count > 0)
+              {
+                <div class="table-responsive mt-3">
+                  <table class="table table-sm table-hover align-middle">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Compra</th>
+                        <th>Proveedor</th>
+                        <th>Última recepción</th>
+                        <th class="text-end">Recibido</th>
+                        <th class="text-end">Pendiente</th>
+                        <th class="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach (var candidate in CompraCandidates)
+                      {
+                        <tr class="@(SelectedCompraCandidate?.PurchaseOrderId == candidate.PurchaseOrderId ? "table-active" : null)">
+                          <td class="text-nowrap">@candidate.PurchaseOrderCode</td>
+                          <td>@candidate.VendorName</td>
+                          <td>@((candidate.UltimaRecepcion ?? candidate.OrderDate).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))</td>
+                          <td class="text-end">@FormatCurrency(candidate.Recibido)</td>
+                          <td class="text-end">@FormatCurrency(candidate.PorContabilizar)</td>
+                          <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-success" disabled="@IsLinkingCompra" @onclick="() => SelectCompraCandidate(candidate)">
+                              Seleccionar
+                            </button>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+          }
         }
         else if (IsActiveSection(SectionPanel.Reservaciones))
         {

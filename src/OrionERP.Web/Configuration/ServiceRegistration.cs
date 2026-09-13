@@ -178,6 +178,7 @@ public static class ServiceRegistration
     services.AddScoped<IMaterialService, MaterialService>();
     services.AddScoped<ILocationService, LocationService>();
     services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
+    services.AddScoped<IPurchaseAccountingService, PurchaseAccountingService>();
     services.AddScoped<IStockService, StockService>();
     services.AddScoped<IInventoryMovementService, InventoryMovementService>();
     services.AddScoped<IWasteService, WasteService>();

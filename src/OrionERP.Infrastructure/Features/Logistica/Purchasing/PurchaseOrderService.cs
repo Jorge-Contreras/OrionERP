@@ -28,7 +28,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
   // A purchase document is visible only when every original destination is visible.
   // Do not return partial totals or expose snapshots from a different hospitality site.
-  private const string OrderVisibilitySql = """
+  internal const string OrderVisibilitySql = """
       po.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
       AND NOT EXISTS (
           SELECT 1 FROM logistica.PurchaseOrderRoomScope scope

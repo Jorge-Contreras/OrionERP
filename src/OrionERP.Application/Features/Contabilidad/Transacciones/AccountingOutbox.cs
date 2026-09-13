@@ -4,6 +4,7 @@ public static class AccountingOutboxModules
 {
   public const string Restaurant = "RESTAURANT";
   public const string Hospitality = "HOSPITALITY";
+  public const string Purchasing = "PURCHASING";
 }
 
 public static class AccountingOutboxStates

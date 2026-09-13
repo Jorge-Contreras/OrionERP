@@ -40,9 +40,26 @@ Run `database/validation/validate-rfc-tenant-isolation.sql` after either deploym
 
 `RfcTenantIsolationSqlTests` exercises the database with identical vendor tax RFCs/names, units, allergens, payment codes, and work-order categories in OHM and Bruno's, then confirms independent IDs/edits and a blocked cross-company insert. `RfcTenantIsolationRemediationTests` also rejects new global company-facing catalog descriptors and any new raw SQL connection that has not been explicitly reviewed and scoped.
 
-## Production rollout
+## Production result (2026-09-12)
 
-Production has not been changed. Deploy the application and migrations together in a maintenance window because the primary migration removes the obsolete partner scope bridge and makes new ownership columns mandatory.
+All three migrations were previewed and applied to `grupocarpio` after the application deployment. The verified copy-only backup is:
+
+`C:\Program Files\Microsoft SQL Server\MSSQL16.SQLEXPRESS\MSSQL\Backup\grupocarpio_before_rfc_tenant_isolation_20260913_031820_332aa488.bak`
+
+Production contains one additional legitimate Bruno's vendor that was not present in the Sandbox baseline: partner 120, `MIGUEL MEDALLO SERRANO`. It was already scoped to Bruno's, has a vendor role, and has no material or purchase-order references. The migration preserved it as Bruno-owned.
+
+- Business partners: 117 OHM, 35 Bruno's, 152 total.
+- Migration audit rows for the primary repair: 319.
+- Bodega Aurrera material links: 56 Bruno's on partner 112; 60 OHM on partner 8. OHM retains its 14 purchase orders on partner 8.
+- Classified tables: 368. Tenant-owned tables: 306. Enabled RLS filters: 205.
+- An unscoped connection sees zero business partners and work orders.
+- Direct tenant probes show partner 8 only to OHM and partner 112/work order 431 only to Bruno's.
+- A Bruno-scoped attempt to insert an OHM-owned partner failed with SQL error 33504.
+- Final validation state: `RFC_TENANT_ISOLATION_OK`.
+
+## Future production rollout
+
+Deploy the application and migrations together in a maintenance window because the primary migration removes the obsolete partner scope bridge and makes new ownership columns mandatory.
 
 1. Back up `grupocarpio` and retain the backup reference.
 2. Run all three migrations in manifest order with `--mode preview --database grupocarpio`.

@@ -2,14 +2,17 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
 
 namespace OrionERP.Web.Features.Restaurante;
 
-public partial class RestaurantWastePage
+public partial class RestaurantWastePage : IAsyncDisposable
 {
   private const long MaxEvidenceBytes = 10 * 1024 * 1024;
+  private const int CameraImageMaxPixels = 1600;
+  private const int CameraThumbnailMaxPixels = 320;
   private const int BackdateDayLimit = 7;
   private static readonly CultureInfo MoneyCulture = CultureInfo.GetCultureInfo("es-MX");
 
@@ -32,6 +35,20 @@ public partial class RestaurantWastePage
   private byte[] evidence = [];
   private string evidenceFileName = string.Empty;
   private bool showConfirm;
+
+  [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
+  private IJSObjectReference? cameraModule;
+  private bool isCameraOpen;
+  private bool isCameraStarting;
+  private bool isCameraCapturing;
+  private bool cameraSupported = true;
+  private bool pendingCameraStart;
+  private string? cameraError;
+  private string? cameraPreviewUrl;
+  private CameraCaptureResult? pendingCameraCapture;
+  private List<CameraDeviceOption> cameraDevices = [];
+  private string? selectedCameraDeviceId;
+  private ElementReference cameraVideoElement;
 
   private WasteDocumentDto? reversalTarget;
   private string reversalReason = string.Empty;
@@ -133,6 +150,7 @@ public partial class RestaurantWastePage
 
   private async Task LoadAsync()
   {
+    await CloseCameraAsync(showState: false);
     isBusy = true;
     try
     {
@@ -240,6 +258,184 @@ public partial class RestaurantWastePage
       Show(Errors.ToUserMessage(ex, "adjuntar la evidencia", new { args.File.Name, args.File.Size }), true);
     }
   }
+
+  private async Task OpenCameraAsync()
+  {
+    cameraError = null;
+    isCameraOpen = true;
+    isCameraStarting = true;
+    cameraSupported = true;
+
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      cameraSupported = await module.InvokeAsync<bool>("isSupported");
+      if (!cameraSupported)
+      {
+        cameraError = "Este dispositivo no permite abrir la cámara aquí. Cierra esta pantalla y usa “Subir archivo”.";
+        isCameraStarting = false;
+        return;
+      }
+
+      pendingCameraStart = true;
+      await InvokeAsync(StateHasChanged);
+    }
+    catch (Exception)
+    {
+      cameraError = "No pudimos preparar la cámara. Revisa el permiso del navegador o cierra esta pantalla y usa “Subir archivo”.";
+      isCameraStarting = false;
+    }
+  }
+
+  private async Task ChangeCameraAsync(ChangeEventArgs args)
+  {
+    selectedCameraDeviceId = args.Value?.ToString();
+    if (isCameraOpen) await StartCameraStreamAsync();
+  }
+
+  private async Task CaptureCameraAsync()
+  {
+    if (!isCameraOpen) return;
+
+    isCameraCapturing = true;
+    cameraError = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      pendingCameraCapture = await module.InvokeAsync<CameraCaptureResult>(
+        "capture",
+        cameraVideoElement,
+        CameraImageMaxPixels,
+        CameraThumbnailMaxPixels);
+      cameraPreviewUrl = await module.InvokeAsync<string>("getPreviewUrl");
+    }
+    catch (Exception)
+    {
+      cameraError = "No se pudo capturar la foto. Mantén la cámara abierta y toca Capturar nuevamente.";
+    }
+    finally
+    {
+      isCameraCapturing = false;
+    }
+  }
+
+  private async Task RetakeCameraAsync()
+  {
+    cameraPreviewUrl = null;
+    pendingCameraCapture = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      await module.InvokeVoidAsync("clearLastCapture");
+    }
+    catch (Exception)
+    {
+      cameraError = "No se pudo preparar otra foto. Cierra la cámara e inténtalo de nuevo.";
+    }
+  }
+
+  private async Task UseCameraPhotoAsync()
+  {
+    if (!isCameraOpen || pendingCameraCapture is null) return;
+
+    isCameraCapturing = true;
+    cameraError = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      evidence = await ReadCameraBlobAsync(module, "getLastImage", MaxEvidenceBytes);
+      evidenceFileName = $"merma-{wasteCode}-{DateTime.Now:yyyyMMddHHmmss}.jpg";
+      await module.InvokeVoidAsync("clearLastCapture");
+      await CloseCameraAsync(showState: false);
+      Show("Foto lista como evidencia.", false);
+    }
+    catch (Exception)
+    {
+      cameraError = "No se pudo preparar la foto. Conservamos la vista previa; vuelve a tocar “Usar esta foto”.";
+    }
+    finally
+    {
+      isCameraCapturing = false;
+    }
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!pendingCameraStart) return;
+
+    pendingCameraStart = false;
+    await StartCameraStreamAsync();
+  }
+
+  private async Task<IJSObjectReference> EnsureCameraModuleAsync()
+  {
+    cameraModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/orden-trabajo-camera.js");
+    return cameraModule;
+  }
+
+  private static async Task<byte[]> ReadCameraBlobAsync(IJSObjectReference module, string functionName, long maxAllowedBytes)
+  {
+    await using var streamReference = await module.InvokeAsync<IJSStreamReference>(functionName);
+    await using var stream = await streamReference.OpenReadStreamAsync(maxAllowedBytes);
+    using var memory = new MemoryStream();
+    await stream.CopyToAsync(memory);
+    return memory.ToArray();
+  }
+
+  private async Task StartCameraStreamAsync()
+  {
+    isCameraStarting = true;
+    cameraError = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      var streamInfo = await module.InvokeAsync<CameraStreamInfo>("start", cameraVideoElement, NullIfWhiteSpace(selectedCameraDeviceId));
+      cameraDevices = (await module.InvokeAsync<CameraDeviceOption[]>("listCameras")).ToList();
+      if (!string.IsNullOrWhiteSpace(streamInfo.DeviceId))
+        selectedCameraDeviceId = streamInfo.DeviceId;
+      else if (string.IsNullOrWhiteSpace(selectedCameraDeviceId) && cameraDevices.Count > 0)
+        selectedCameraDeviceId = cameraDevices[0].DeviceId;
+    }
+    catch (Exception)
+    {
+      cameraError = "No pudimos abrir la cámara. Permite su uso en el navegador o cierra esta pantalla y usa “Subir archivo”.";
+    }
+    finally
+    {
+      isCameraStarting = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private async Task CloseCameraAsync()
+    => await CloseCameraAsync(showState: true);
+
+  private async Task CloseCameraAsync(bool showState)
+  {
+    pendingCameraStart = false;
+    isCameraOpen = false;
+    cameraError = null;
+    isCameraStarting = false;
+    isCameraCapturing = false;
+    cameraPreviewUrl = null;
+    pendingCameraCapture = null;
+
+    if (cameraModule is not null)
+    {
+      try
+      {
+        await cameraModule.InvokeVoidAsync("stop");
+        await cameraModule.InvokeVoidAsync("clearLastCapture");
+      }
+      catch (JSDisconnectedException) { }
+      catch (InvalidOperationException) { }
+    }
+
+    if (showState) await InvokeAsync(StateHasChanged);
+  }
+
+  private static string? NullIfWhiteSpace(string? value)
+    => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
   /// <summary>
   /// Folio de la captura en curso. Se fija al limpiar el formulario y no al enviar, para que un
@@ -355,5 +551,31 @@ public partial class RestaurantWastePage
   {
     message = value;
     isError = error;
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    await CloseCameraAsync(showState: false);
+    if (cameraModule is not null)
+    {
+      try { await cameraModule.DisposeAsync(); }
+      catch (JSDisconnectedException) { }
+    }
+  }
+
+  private sealed class CameraDeviceOption
+  {
+    public string DeviceId { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+  }
+
+  private sealed class CameraCaptureResult
+  {
+    public string ImageContentType { get; set; } = "image/jpeg";
+  }
+
+  private sealed class CameraStreamInfo
+  {
+    public string DeviceId { get; set; } = string.Empty;
   }
 }

@@ -78,14 +78,20 @@ public sealed class RestaurantWastePageTests
   }
 
   [Fact]
-  public void Evidence_IsRequestedInPageAndServedOutsideTheCircuit()
+  public void Evidence_CanBeTakenWithTheCameraOrUploadedAndIsServedOutsideTheCircuit()
   {
     var page = RepoFile.Read(PagePath);
+    var code = RepoFile.Read(CodePath);
     var api = RepoFile.Read("src/OrionERP.Web/Features/Logistica/Stock/WasteEvidenceApi.cs");
 
     Assert.Contains("<InputFile", page, StringComparison.Ordinal);
     Assert.Contains("accept=\"image/*,.pdf\"", page, StringComparison.Ordinal);
-    Assert.Contains("capture=\"environment\"", page, StringComparison.Ordinal);
+    Assert.Contains("Tomar foto", page, StringComparison.Ordinal);
+    Assert.Contains("Subir archivo", page, StringComparison.Ordinal);
+    Assert.Contains("waste-camera-overlay", page, StringComparison.Ordinal);
+    Assert.Contains("CaptureCameraAsync", code, StringComparison.Ordinal);
+    Assert.Contains("getLastImage", code, StringComparison.Ordinal);
+    Assert.Contains("./js/orden-trabajo-camera.js", code, StringComparison.Ordinal);
     Assert.Contains("/api/logistica/merma/@document.Id/evidencia", page, StringComparison.Ordinal);
     Assert.Contains("RequireAuthorization(\"RestaurantWaste\")", api, StringComparison.Ordinal);
     // El fetch corre fuera del circuito, donde IHospitalityScopeAccessor no puede leer el estado

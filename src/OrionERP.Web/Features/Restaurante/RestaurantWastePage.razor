@@ -132,9 +132,25 @@
                     placeholder="@(NoteRequired ? "El motivo elegido no se explica solo: di qué pasó." : "Sólo si hace falta algún detalle.")"></textarea>
         </div>
         <div class="waste-field waste-evidence">
-          <label for="waste-evidence">Evidencia (obligatoria)</label>
-          <InputFile id="waste-evidence" OnChange="CaptureEvidenceAsync" accept="image/*,.pdf" capture="environment" />
-          <span>@(string.IsNullOrWhiteSpace(evidenceFileName) ? "Toma la foto de lo que vas a tirar. Imagen o PDF, máximo 10 MB." : evidenceFileName)</span>
+          <span id="waste-evidence-label">Evidencia (obligatoria)</span>
+          <div class="waste-evidence__actions" aria-labelledby="waste-evidence-label">
+            <button class="btn btn-primary" type="button" @onclick="OpenCameraAsync" disabled="@(isBusy || isCameraStarting || isCameraCapturing)">
+              <span class="oi oi-camera-slr" aria-hidden="true"></span>
+              Tomar foto
+            </button>
+            <label class="btn btn-outline-secondary waste-file-upload" for="waste-evidence">
+              <span class="oi oi-cloud-upload" aria-hidden="true"></span>
+              Subir archivo
+              <InputFile id="waste-evidence" OnChange="CaptureEvidenceAsync" accept="image/*,.pdf" disabled="@isBusy" />
+            </label>
+          </div>
+          <small class="@(evidence.Length > 0 ? "is-ready" : null)">
+            @if (evidence.Length > 0)
+            {
+              <span class="oi oi-check" aria-hidden="true"></span>
+            }
+            @(string.IsNullOrWhiteSpace(evidenceFileName) ? "Toma una foto o sube una imagen o PDF, máximo 10 MB." : evidenceFileName)
+          </small>
         </div>
       </div>
 
@@ -254,6 +270,58 @@
     }
   </section>
 </main>
+
+@if (isCameraOpen)
+{
+  <div class="waste-camera-overlay" role="dialog" aria-modal="true" aria-labelledby="waste-camera-title">
+    <div class="waste-camera-dialog">
+      <header>
+        <div><span>Evidencia</span><h2 id="waste-camera-title">Foto de la merma</h2></div>
+        <button type="button" @onclick="CloseCameraAsync" disabled="@isCameraCapturing" aria-label="Cerrar cámara"><span class="oi oi-x"></span></button>
+      </header>
+      <div class="waste-camera-stage">
+        @if (cameraPreviewUrl is not null)
+        {
+          <img src="@cameraPreviewUrl" alt="Vista previa de la foto" />
+        }
+        else
+        {
+          <video class="waste-camera-preview" @ref="cameraVideoElement" autoplay muted playsinline></video>
+        }
+        @if (isCameraStarting)
+        {
+          <div class="waste-camera-status"><span class="spinner-border"></span><strong>Abriendo cámara…</strong></div>
+        }
+        @if (!string.IsNullOrWhiteSpace(cameraError))
+        {
+          <div class="waste-camera-error" role="alert">@cameraError</div>
+        }
+      </div>
+      @if (cameraDevices.Count > 1 && cameraPreviewUrl is null)
+      {
+        <select class="form-select" value="@selectedCameraDeviceId" @onchange="ChangeCameraAsync" disabled="@(isCameraStarting || isCameraCapturing)">
+          @foreach (var camera in cameraDevices)
+          {
+            <option value="@camera.DeviceId">@camera.Label</option>
+          }
+        </select>
+      }
+      <footer>
+        @if (cameraPreviewUrl is null)
+        {
+          <button class="btn btn-light" type="button" @onclick="CloseCameraAsync" disabled="@isCameraCapturing">Cancelar</button>
+          <button class="waste-camera-capture" type="button" @onclick="CaptureCameraAsync" disabled="@(isCameraStarting || isCameraCapturing || !cameraSupported)" aria-label="Capturar foto"><span></span></button>
+          <span></span>
+        }
+        else
+        {
+          <button class="btn btn-outline-light" type="button" @onclick="RetakeCameraAsync" disabled="@isCameraCapturing">Repetir</button>
+          <button class="btn btn-success" type="button" @onclick="UseCameraPhotoAsync" disabled="@isCameraCapturing">@(isCameraCapturing ? "Preparando…" : "Usar esta foto")</button>
+        }
+      </footer>
+    </div>
+  </div>
+}
 
 @if (showConfirm)
 {

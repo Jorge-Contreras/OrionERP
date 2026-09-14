@@ -35,10 +35,8 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
     byte[]? GetThumbnail(int materialId)
       => thumbnails.TryGetValue(materialId, out var bytes) ? bytes : null;
 
-    string GetFallback(PurchaseOrderLineDto line)
-      => string.IsNullOrWhiteSpace(line.MaterialCode)
-        ? Safe(line.MaterialDescription)
-        : Safe(line.MaterialCode);
+    // La descripción ya encabeza el renglón; el recuadro sin imagen no repite el código.
+    const string NoPhotoFallback = "Sin foto";
 
     return new PurchaseOrderPdfDocumentModel(
       detail.PurchaseOrderCode,
@@ -55,7 +53,7 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
       detail.Lines.Sum(line => line.Allocations.Count(allocation => allocation.RemainingQuantity > 0m)).ToString("N0", culture),
       detail.Lines.Select(line => new PurchaseOrderPdfLineRow(
           GetThumbnail(line.MaterialId),
-          GetFallback(line),
+          NoPhotoFallback,
           Safe(line.MaterialCode),
           Safe(line.MaterialDescription),
           Safe(line.VendorCode),
@@ -69,7 +67,7 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
       detail.Lines
         .SelectMany(line => line.Allocations.Select(allocation => new PurchaseOrderPdfAllocationRow(
           GetThumbnail(line.MaterialId),
-          GetFallback(line),
+          NoPhotoFallback,
           Safe(line.MaterialCode),
           Safe(line.MaterialDescription),
           string.IsNullOrWhiteSpace(allocation.LocationCode)
@@ -79,8 +77,8 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
           FormatPurchaseQuantity(allocation.ReceivedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(allocation.RemainingQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture))))
         .OrderBy(row => row.LocationName, StringComparer.OrdinalIgnoreCase)
-        .ThenBy(row => row.MaterialCode, StringComparer.OrdinalIgnoreCase)
         .ThenBy(row => row.MaterialDescription, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(row => row.MaterialCode, StringComparer.OrdinalIgnoreCase)
         .ToList());
   }
 

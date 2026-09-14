@@ -263,8 +263,8 @@ public sealed class PurchaseOrderPdfService : IPurchaseOrderPdfService
 
     var groupedRows = rows
       .OrderBy(row => row.LocationName, StringComparer.OrdinalIgnoreCase)
-      .ThenBy(row => row.MaterialCode, StringComparer.OrdinalIgnoreCase)
       .ThenBy(row => row.MaterialDescription, StringComparer.OrdinalIgnoreCase)
+      .ThenBy(row => row.MaterialCode, StringComparer.OrdinalIgnoreCase)
       .GroupBy(row => row.LocationName, StringComparer.OrdinalIgnoreCase)
       .ToList();
 

@@ -55,6 +55,15 @@ When building or changing UI in either web platform, treat common controls as in
 
 Prefer accessible native controls and semantic HTML first, then style their visible states thoughtfully: default, hover, focus, active, disabled, loading, validation, and overflow/scroll states. Keep controls compact and operational for OrionERP workflows, but make sure they feel current and easy to use on both desktop and mobile.
 
+## Material Display Hierarchy
+
+Wherever a person reads a `logistica.Material` — Compras, Ubicaciones, Conteos, Materiales, Restaurante pickers and alerts, purchase-order PDFs, toasts, and error messages — the material `Description` is the primary human-readable reference and `MaterialCode` is secondary.
+
+- Lead with the description; put the code after it, smaller or muted, or leave it out when it adds nothing.
+- Never show a code alone where someone has to recognize the material. That includes image placeholders (use "Sin foto", not the code) and composed labels (`Description · Code`, never `Code · Description`).
+- Fall back to the code only when the description is empty.
+- Codes remain the right key for lookups, joins, sorting tie-breaks, and logs.
+
 ## SQL Server Connection
 
 The application uses `ConnectionStrings:OrionDb` as the canonical database connection setting. For environment-based configuration, use `ASPNETCORE_ConnectionStrings__OrionDb`.

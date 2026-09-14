@@ -74,7 +74,7 @@ public sealed class RestaurantSaleAlertMaterial
 
   public string Label => string.IsNullOrWhiteSpace(MaterialCode)
     ? MaterialName
-    : $"{MaterialCode} · {MaterialName}";
+    : $"{MaterialName} · {MaterialCode}";
 }
 
 /// <summary>Un producto que no se puede vender por configuración; contar inventario no lo resuelve.</summary>

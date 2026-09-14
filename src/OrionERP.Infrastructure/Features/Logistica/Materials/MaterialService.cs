@@ -820,7 +820,7 @@ public sealed class MaterialService : IMaterialService
         rfc,
         deletedBy);
 
-      return LogisticsCommandResult.Ok($"Material {assessment.MaterialCode} eliminado permanentemente.", assessment.MaterialId);
+      return LogisticsCommandResult.Ok($"Material {assessment.DisplayName} eliminado permanentemente.", assessment.MaterialId);
     }
     catch (SqlException ex) when (ex.Number == 547)
     {
@@ -901,7 +901,7 @@ public sealed class MaterialService : IMaterialService
         rfc,
         deactivatedBy,
         assessment.HistoricalReferenceCount);
-      return LogisticsCommandResult.Ok($"Material {assessment.MaterialCode} desactivado. Su historial permanece disponible.", assessment.MaterialId);
+      return LogisticsCommandResult.Ok($"Material {assessment.DisplayName} desactivado. Su historial permanece disponible.", assessment.MaterialId);
     }
     catch
     {
@@ -973,7 +973,7 @@ public sealed class MaterialService : IMaterialService
         material.Id,
         rfc,
         reactivatedBy);
-      return LogisticsCommandResult.Ok($"Material {material.MaterialCode} reactivado.", material.Id);
+      return LogisticsCommandResult.Ok($"Material {(string.IsNullOrWhiteSpace(material.Description) ? material.MaterialCode : material.Description)} reactivado.", material.Id);
     }
     catch
     {

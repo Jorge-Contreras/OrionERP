@@ -358,6 +358,39 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     };
   }
 
+  public async Task<IReadOnlyList<PurchaseStockThresholdDto>> GetStockThresholdsAsync(IReadOnlyCollection<int> materialIds, CancellationToken ct = default)
+  {
+    var ids = (materialIds ?? Array.Empty<int>())
+      .Where(id => id > 0)
+      .Distinct()
+      .ToArray();
+    if (ids.Length == 0)
+    {
+      return Array.Empty<PurchaseStockThresholdDto>();
+    }
+
+    const string sql =
+      """
+      SELECT
+          sb.MaterialId,
+          sb.LocationId,
+          CAST(sb.Quantity AS decimal(18,4)) AS Quantity,
+          CAST(sb.MinQuantity AS decimal(18,4)) AS MinQuantity,
+          CAST(sb.MaxQuantity AS decimal(18,4)) AS MaxQuantity
+      FROM logistica.StockBalance sb
+      WHERE sb.Rfc = CONVERT(varchar(50), SESSION_CONTEXT(N'OrionRfc'))
+        AND sb.MaterialId IN @MaterialIds
+        AND ISNULL(sb.IsRemoved, 0) = 0
+        AND EXISTS (SELECT 1 FROM #OrionVisibleLocations visible WHERE visible.LocationId = sb.LocationId AND visible.Rfc = sb.Rfc);
+      """;
+
+    using var conn = await LogisticsLocationScope.OpenAsync(_connectionFactory, _hospitalityScope, ct);
+    var rows = await conn.QueryAsync<PurchaseStockThresholdDto>(
+      new CommandDefinition(sql, new { MaterialIds = ids }, cancellationToken: ct));
+
+    return rows.AsList();
+  }
+
   /// <summary>
   /// Acota el catalogo de proveedores a los que hay que comprarle hoy. El proyectado replica el
   /// de <see cref="LoadAutoReplenishmentRowsAsync"/> para que la lista no ofrezca proveedores

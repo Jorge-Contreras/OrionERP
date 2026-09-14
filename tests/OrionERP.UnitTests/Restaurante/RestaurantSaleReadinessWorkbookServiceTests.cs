@@ -38,7 +38,7 @@ public sealed class RestaurantSaleReadinessWorkbookServiceTests
           LeafIngredientCount = 1,
           ErrorCount = 1,
           EstimatedSellableUnits = 0,
-          BottleneckMaterial = "SIRLOIN · Carne de sirloin",
+          BottleneckMaterial = "Carne de sirloin · SIRLOIN",
           PredictedPosMessage = "Inventario insuficiente para el material 6977. Faltan 0.2500.",
           SuggestedAction = "Repón inventario."
         }
@@ -133,7 +133,7 @@ public sealed class RestaurantSaleReadinessWorkbookServiceTests
           ProductSku = "BRUN-SIR-01",
           ProductName = "Hamburguesa de sirloin",
           MaterialId = 6977,
-          Material = "SIRLOIN · Carne de sirloin",
+          Material = "Carne de sirloin · SIRLOIN",
           Issue = "Inventario insuficiente.",
           ShortageQuantity = 0.25m,
           RecommendedAction = "Repón inventario."

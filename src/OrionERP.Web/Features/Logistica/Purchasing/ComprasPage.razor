@@ -422,7 +422,7 @@
                                                             }
                                                             else
                                                             {
-                                                                <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.Description)</div>
+                                                                <div class="compras-thumb-placeholder">Sin foto</div>
                                                             }
                                                         </td>
                                                         <td>
@@ -535,13 +535,17 @@
                                                     }
                                                     else
                                                     {
-                                                        <div class="compras-thumb-placeholder">@GetMaterialFallbackText(line.MaterialCode, line.MaterialDescription)</div>
+                                                        <div class="compras-thumb-placeholder">Sin foto</div>
                                                     }
                                                 </td>
                                                 <td>
                                                     <div class="fw-semibold">@materialTitle</div>
                                                     <div class="small text-muted">@line.MaterialCode</div>
                                                     <div class="small text-muted">@(string.IsNullOrWhiteSpace(line.VendorCode) ? "Sin código proveedor" : line.VendorCode)</div>
+                                                    @if (DescribeLineStock(line) is { } lineStock)
+                                                    {
+                                                        <div class="compras-stock-hint @(lineStock.IsBelowMinimum ? "is-low" : null)" title="@lineStock.Title">@lineStock.Text</div>
+                                                    }
                                                 </td>
                                                 <td>
                                                     <div>@GetPurchaseUnitName(line)</div>
@@ -612,7 +616,7 @@
                                 }
                                 else
                                 {
-                                    <div class="compras-thumb-placeholder compras-selected-thumb-placeholder">@GetMaterialFallbackText(SelectedLine.MaterialCode, SelectedLine.MaterialDescription)</div>
+                                    <div class="compras-thumb-placeholder compras-selected-thumb-placeholder">Sin foto</div>
                                 }
 
                                 <div>
@@ -675,7 +679,6 @@
                                 <table class="table table-sm align-middle compras-allocations-table">
                                     <thead class="table-light">
                                         <tr>
-                                            <th class="compras-thumb-col">Foto</th>
                                             <th>Ubicación</th>
                                             <th class="text-end">Planeado</th>
                                             <th class="text-end">Recibido</th>
@@ -687,27 +690,22 @@
                                         @if (SelectedLine.Allocations.Count == 0)
                                         {
                                             <tr>
-                                                <td colspan="6" class="text-center text-muted py-3">Aún no hay ubicaciones planeadas para este material.</td>
+                                                <td colspan="5" class="text-center text-muted py-3">Aún no hay ubicaciones planeadas para este material.</td>
                                             </tr>
                                         }
                                         else
                                         {
                                             @foreach (var allocation in SelectedLine.Allocations)
                                             {
+                                                var allocationStock = DescribeAllocationStock(SelectedLine, allocation);
                                                 <tr>
-                                                    <td class="compras-thumb-col">
-                                                        @if (selectedThumbnail is not null)
-                                                        {
-                                                            <img src="@selectedThumbnail" alt="Imagen de @selectedMaterialTitle" class="compras-thumb" />
-                                                        }
-                                                        else
-                                                        {
-                                                            <div class="compras-thumb-placeholder">@GetMaterialFallbackText(SelectedLine.MaterialCode, SelectedLine.MaterialDescription)</div>
-                                                        }
-                                                    </td>
                                                     <td>
                                                         <div>@allocation.LocationName</div>
                                                         <small class="text-muted">@(string.IsNullOrWhiteSpace(allocation.LocationCode) ? "Sin código" : allocation.LocationCode)</small>
+                                                        @if (allocationStock is not null)
+                                                        {
+                                                            <div class="compras-stock-hint @(allocationStock.IsBelowMinimum ? "is-low" : null)" title="@allocationStock.Title">@allocationStock.Text</div>
+                                                        }
                                                     </td>
                                                     <td class="text-end">
                                                         @if (IsDraftMode)
@@ -793,11 +791,11 @@
                                                     }
                                                     else
                                                     {
-                                                        <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.MaterialDescription)</div>
+                                                        <div class="compras-thumb-placeholder">Sin foto</div>
                                                     }
                                                     <div class="compras-receive-card-title">
                                                         <strong>@materialTitle</strong>
-                                                        <small>@item.MaterialCode · @item.LocationName</small>
+                                                        <small>@item.LocationName · @item.MaterialCode</small>
                                                     </div>
                                                     <div class="compras-pending-pill">
                                                         <span>Pendiente</span>
@@ -954,7 +952,7 @@
                                                     }
                                                     else
                                                     {
-                                                        <div class="compras-thumb-placeholder">@GetMaterialFallbackText(item.MaterialCode, item.MaterialDescription)</div>
+                                                        <div class="compras-thumb-placeholder">Sin foto</div>
                                                     }
                                                     <span><strong>@materialTitle</strong><small>@FormatPurchaseQuantity(item, item.Quantity) · @item.LocationName</small></span>
                                                 </div>

@@ -83,7 +83,7 @@ public sealed class RestaurantSaleReadinessFeatureTests
     // El panel promete lo que va a pasar al cobrar. Si los dos textos se separan, el cajero ve un
     // aviso y luego un mensaje distinto en el modal de supervisor.
     const string sharedFormat =
-      "$\"Inventario insuficiente para {material.Code} · {material.Name}. Faltan {";
+      "$\"Inventario insuficiente para {material.Name} · {material.Code}. Faltan {";
 
     var diagnostic = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantSaleReadinessService.cs");
     var orderService = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOrderService.cs");

@@ -263,6 +263,10 @@ public sealed class MaterialLifecycleAssessmentDto
   public int MaterialId { get; set; }
   public string MaterialCode { get; set; } = string.Empty;
   public string Description { get; set; } = string.Empty;
+
+  /// <summary>Cómo se nombra el material ante el usuario: su descripción, o el código si no la tiene.</summary>
+  public string DisplayName => string.IsNullOrWhiteSpace(Description) ? MaterialCode : Description;
+
   public bool IsActive { get; set; }
   public IReadOnlyList<MaterialDependencyDto> Dependencies { get; set; } = Array.Empty<MaterialDependencyDto>();
   public IReadOnlyList<MaterialDependencyDto> OperationalBlockers

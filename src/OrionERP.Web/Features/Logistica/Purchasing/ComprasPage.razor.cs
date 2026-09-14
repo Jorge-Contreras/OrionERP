@@ -43,6 +43,12 @@ public partial class ComprasPage : ComponentBase
   protected List<MaterialListItemDto> MaterialSearchResults { get; set; } = [];
   protected List<ReceiveAllocationInput> ReceiveItems { get; set; } = [];
   protected Dictionary<int, string> MaterialThumbnailDataUrls { get; set; } = [];
+
+  /// <summary>Existencia y mínimo/máximo, por material y ubicación, de los materiales de la orden.</summary>
+  private readonly Dictionary<(int MaterialId, int LocationId), PurchaseStockThresholdDto> _stockThresholds = [];
+
+  /// <summary>Materiales que sí se consultaron; sin esto una consulta fallida se leería como "sin mínimo ni máximo".</summary>
+  private readonly HashSet<int> _stockThresholdMaterialIds = [];
   protected HashSet<int> AutoPoSelectedRoomIds { get; set; } = [];
   protected string MaterialSearchText { get; set; } = string.Empty;
   protected string? ReceiptNotes { get; set; }
@@ -308,6 +314,8 @@ public partial class ComprasPage : ComponentBase
     PendingAllocationLocationId = 0;
     PendingAllocationQuantity = 1m;
     MaterialThumbnailDataUrls = [];
+    _stockThresholds.Clear();
+    _stockThresholdMaterialIds.Clear();
     UnlinkedMaterialNames.Clear();
     LinkMaterialsToVendor = true;
     ShowAutoPoModal = false;
@@ -416,6 +424,7 @@ public partial class ComprasPage : ComponentBase
       PendingAllocationLocationId = 0;
       PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
       await RefreshThumbnailsAsync();
+      await LoadStockThresholdsAsync();
       ResetAutoPoRequest(Editor.BusinessPartnerId);
     }
     catch (Exception ex)
@@ -579,6 +588,7 @@ public partial class ComprasPage : ComponentBase
       PendingAllocationLocationId = 0;
       PendingAllocationQuantity = GetDefaultPendingAllocationBaseQuantity(SelectedLine);
       await RefreshThumbnailsAsync();
+      await LoadStockThresholdsAsync();
     }
     catch (Exception ex)
     {
@@ -1128,12 +1138,27 @@ public partial class ComprasPage : ComponentBase
   protected string? GetMaterialThumbnailDataUrl(int materialId)
     => MaterialThumbnailDataUrls.TryGetValue(materialId, out var dataUrl) ? dataUrl : null;
 
-  protected string GetMaterialFallbackText(string? materialCode, string? description)
-    => !string.IsNullOrWhiteSpace(materialCode)
-      ? materialCode.Trim()
-      : string.IsNullOrWhiteSpace(description)
-        ? "Sin foto"
-        : description.Trim();
+  protected PurchaseStockHint? DescribeAllocationStock(EditablePurchaseLine line, EditablePurchaseAllocation allocation)
+    => DescribeStock(line, [allocation.LocationId]);
+
+  /// <summary>La línea suma las ubicaciones de su reparto para dar el panorama sin abrir cada una.</summary>
+  protected PurchaseStockHint? DescribeLineStock(EditablePurchaseLine line)
+    => DescribeStock(line, line.Allocations.Select(allocation => allocation.LocationId).Distinct().ToArray());
+
+  private PurchaseStockHint? DescribeStock(EditablePurchaseLine line, IReadOnlyCollection<int> locationIds)
+  {
+    if (locationIds.Count == 0 || !_stockThresholdMaterialIds.Contains(line.MaterialId))
+    {
+      return null;
+    }
+
+    var balances = locationIds
+      .Select(locationId => _stockThresholds.GetValueOrDefault((line.MaterialId, locationId)))
+      .OfType<PurchaseStockThresholdDto>()
+      .ToList();
+
+    return PurchaseStockThresholdDisplay.Describe(balances, locationIds.Count, line.BaseUnitName, CultureInfo.CurrentCulture);
+  }
 
   protected string GetPurchaseUnitName(EditablePurchaseLine line)
     => PurchaseQuantityDisplay.GetPrimaryUnitName(line.BaseUnitName, line.PurchaseUnitName);
@@ -1338,6 +1363,32 @@ public partial class ComprasPage : ComponentBase
     catch (Exception ex)
     {
       Errors.ToUserMessage(ex, "consultar qué compras faltan de póliza", new { OrderCount = receivedIds.Count });
+    }
+  }
+
+  /// <summary>
+  /// El mínimo y el máximo son contexto para revisar la compra: si no cargan, la orden se sigue
+  /// capturando sin ellos.
+  /// </summary>
+  private async Task LoadStockThresholdsAsync()
+  {
+    _stockThresholds.Clear();
+    _stockThresholdMaterialIds.Clear();
+    var materialIds = Lines.Select(line => line.MaterialId).Distinct().ToArray();
+    if (materialIds.Length == 0) return;
+
+    try
+    {
+      foreach (var balance in await PurchaseOrderService.GetStockThresholdsAsync(materialIds))
+      {
+        _stockThresholds[(balance.MaterialId, balance.LocationId)] = balance;
+      }
+
+      _stockThresholdMaterialIds.UnionWith(materialIds);
+    }
+    catch (Exception ex)
+    {
+      Errors.ToUserMessage(ex, "consultar el mínimo y máximo de los materiales", new { MaterialCount = materialIds.Length });
     }
   }
 

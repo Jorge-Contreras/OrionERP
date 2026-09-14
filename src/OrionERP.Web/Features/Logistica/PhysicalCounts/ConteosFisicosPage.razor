@@ -775,7 +775,7 @@
                         <ul class="conteos-scope-conflicts">
                             @foreach (var conflict in ScopePreview.Conflicts)
                             {
-                                <li><strong>@conflict.SessionCode</strong> · @conflict.MaterialCode en @conflict.LocationName</li>
+                                <li><strong>@conflict.SessionCode</strong> · @(string.IsNullOrWhiteSpace(conflict.MaterialDescription) ? conflict.MaterialCode : conflict.MaterialDescription) en @conflict.LocationName</li>
                             }
                         </ul>
                     </div>

@@ -892,8 +892,13 @@
     align-items: flex-start;
   }
 
+  /* El reparto es de un solo material, ya nombrado arriba: cada fila es sólo su ubicación. */
+  .compras-allocations-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .compras-lines-table td:nth-child(n+3),
-  .compras-allocations-table td:nth-child(n+3) {
+  .compras-allocations-table td:nth-child(n+2) {
     display: flex;
     grid-column: 1 / -1;
     align-items: center;
@@ -907,9 +912,24 @@
   .compras-lines-table td:nth-child(5)::before { content: "Ordenado"; color: #6b7e83; }
   .compras-lines-table td:nth-child(6)::before { content: "Recibido"; color: #6b7e83; }
   .compras-lines-table td:nth-child(7)::before { content: "Pendiente"; color: #6b7e83; }
-  .compras-allocations-table td:nth-child(3)::before { content: "Planeado"; color: #6b7e83; }
-  .compras-allocations-table td:nth-child(4)::before { content: "Recibido"; color: #6b7e83; }
-  .compras-allocations-table td:nth-child(5)::before { content: "Pendiente"; color: #6b7e83; }
+  .compras-allocations-table td:nth-child(2)::before { content: "Planeado"; color: #6b7e83; }
+  .compras-allocations-table td:nth-child(3)::before { content: "Recibido"; color: #6b7e83; }
+  .compras-allocations-table td:nth-child(4)::before { content: "Pendiente"; color: #6b7e83; }
+}
+
+/* Existencia contra mínimo y máximo --------------------------------------- */
+
+/* Contexto para revisar la compra, no un dato a capturar: pequeño y apagado. */
+.compras-stock-hint {
+  margin-top: 0.2rem;
+  color: #5f7277;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  cursor: help;
+}
+
+.compras-stock-hint.is-low {
+  color: #8a5a12;
 }
 
 /* Proveedor del material dentro de la orden ------------------------------- */

@@ -2528,7 +2528,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         if (!allowDeficit)
         {
           throw new RestaurantInventoryOverrideRequiredException(
-            $"Inventario insuficiente para {material.Code} · {material.Name}. Faltan {remaining:N4}.");
+            $"Inventario insuficiente para {material.Name} · {material.Code}. Faltan {remaining:N4}.");
         }
         var fallbackLocation = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
           """

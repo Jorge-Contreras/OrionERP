@@ -353,8 +353,8 @@ public sealed partial class BusinessPartnerService
         CONVERT(nvarchar(100), link.Id) AS ReferenceKey,
         link.UpdatedAt AS SortDate,
         CAST(CONCAT(
-          COALESCE(NULLIF(material.MaterialCode, ''), CONCAT('Material #', link.MaterialId)),
-          CASE WHEN NULLIF(material.[Description], '') IS NULL THEN '' ELSE CONCAT(' · ', material.[Description]) END,
+          COALESCE(NULLIF(material.[Description], ''), NULLIF(material.MaterialCode, ''), CONCAT('Material #', link.MaterialId)),
+          CASE WHEN NULLIF(material.[Description], '') IS NULL OR NULLIF(material.MaterialCode, '') IS NULL THEN '' ELSE CONCAT(' · ', material.MaterialCode) END,
           CASE WHEN link.IsPrimary = 1 THEN ' · Proveedor principal' ELSE '' END,
           CASE WHEN link.IsActive = 1 THEN ' · Activo' ELSE ' · Inactivo' END
         ) AS nvarchar(1000)) AS Example

@@ -9,6 +9,12 @@ public interface IPurchaseOrderService
   Task<PurchaseOrderCatalogDto> GetCatalogAsync(CancellationToken ct = default);
 
   /// <summary>
+  /// Existencia y mínimo/máximo de los materiales en las ubicaciones visibles. Refleja la
+  /// configuración de hoy, no una foto del momento en que se armó la orden.
+  /// </summary>
+  Task<IReadOnlyList<PurchaseStockThresholdDto>> GetStockThresholdsAsync(IReadOnlyCollection<int> materialIds, CancellationToken ct = default);
+
+  /// <summary>
   /// Proveedores que surten al menos un material cuya existencia proyectada ya cayo a su
   /// minimo. Usa el mismo proyectado que Auto PO (existencia - reservado + pendiente por
   /// recibir), asi que un material ya cubierto por una orden abierta no reporta al proveedor.

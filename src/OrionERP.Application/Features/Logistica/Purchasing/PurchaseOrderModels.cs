@@ -116,6 +116,20 @@ public sealed class PurchaseOrderAllocationDto
   public decimal RemainingQuantity { get; set; }
 }
 
+/// <summary>
+/// Existencia, mínimo y máximo vigentes de un material en una ubicación, en unidad base. Son los
+/// números con los que Auto PO decide qué pedir; la compra los muestra para que quien la revisa
+/// entienda por qué entró cada material y pueda cuestionar la configuración.
+/// </summary>
+public sealed class PurchaseStockThresholdDto
+{
+  public int MaterialId { get; set; }
+  public int LocationId { get; set; }
+  public decimal Quantity { get; set; }
+  public decimal? MinQuantity { get; set; }
+  public decimal? MaxQuantity { get; set; }
+}
+
 public sealed class PurchaseReceiptLineHistoryDto
 {
   public int ReceiptId { get; set; }

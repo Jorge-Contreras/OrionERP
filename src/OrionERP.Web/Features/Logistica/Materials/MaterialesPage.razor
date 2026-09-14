@@ -1469,7 +1469,7 @@
                         <p>
                             @if (LifecycleAssessment is { Exists: true })
                             {
-                                <span><strong>@LifecycleAssessment.MaterialCode</strong> · @LifecycleAssessment.Description</span>
+                                <span><strong>@LifecycleAssessment.DisplayName</strong> · @LifecycleAssessment.MaterialCode</span>
                             }
                             else
                             {
@@ -1524,7 +1524,7 @@
                                 <span class="materiales-delete-summary-icon"><i class="bi bi-archive-fill" aria-hidden="true"></i></span>
                                 <div>
                                     <span>Material desactivado</span>
-                                    <strong>@assessment.MaterialCode está fuera de los flujos operativos</strong>
+                                    <strong>@assessment.DisplayName está fuera de los flujos operativos</strong>
                                     <p>Sus relaciones permanecen visibles para auditoría. Un administrador puede reactivarlo sin alterar el historial.</p>
                                 </div>
                             </div>
@@ -1546,7 +1546,7 @@
                                 <span class="materiales-delete-summary-icon"><i class="bi bi-archive" aria-hidden="true"></i></span>
                                 <div>
                                     <span>Desactivación recomendada</span>
-                                    <strong>@assessment.HistoricalReferenceCount.ToString("N0") referencia(s) históricas impiden eliminar @assessment.MaterialCode</strong>
+                                    <strong>@assessment.HistoricalReferenceCount.ToString("N0") referencia(s) históricas impiden eliminar @assessment.DisplayName</strong>
                                     <p>Los vínculos operativos ya están libres. Desactivar conserva conteos, movimientos y demás evidencia sin ofrecer el material en operaciones nuevas.</p>
                                 </div>
                             </div>
@@ -1568,7 +1568,7 @@
                                 <span class="materiales-delete-summary-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
                                 <div>
                                     <span>Todos los vínculos están libres</span>
-                                    <strong>@assessment.MaterialCode puede eliminarse</strong>
+                                    <strong>@assessment.DisplayName puede eliminarse</strong>
                                     <p>La revisión no encontró inventario, historial, compras, recetas, productos ni configuración relacionada.</p>
                                 </div>
                             </div>

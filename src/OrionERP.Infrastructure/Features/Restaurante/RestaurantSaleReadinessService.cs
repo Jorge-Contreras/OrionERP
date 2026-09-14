@@ -130,7 +130,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
             ProductSku = product.Sku,
             ProductName = ProductDisplayName(product),
             MaterialId = material.Id,
-            Material = $"{material.Code} · {material.Name}",
+            Material = $"{material.Name} · {material.Code}",
             Issue = ingredient.PredictedPosMessage ?? ingredient.Status,
             ShortageQuantity = ingredient.ShortageQuantity > 0 ? ingredient.ShortageQuantity : null,
             RecommendedAction = InventoryAction(ingredient)
@@ -149,7 +149,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
           ProductSku = product.Sku,
           ProductName = ProductDisplayName(product),
           MaterialId = issue.MaterialId,
-          Material = issueMaterial is null ? string.Empty : $"{issueMaterial.Code} · {issueMaterial.Name}",
+          Material = issueMaterial is null ? string.Empty : $"{issueMaterial.Name} · {issueMaterial.Code}",
           Issue = issue.Message,
           RecommendedAction = ConfigurationAction(issue.Code)
         });
@@ -189,7 +189,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
           ProductName = ProductDisplayName(product),
           MaterialId = product.MaterialId,
           Material = graph.Materials.TryGetValue(rootMaterialId, out var soldOutMaterial)
-            ? $"{soldOutMaterial.Code} · {soldOutMaterial.Name}"
+            ? $"{soldOutMaterial.Name} · {soldOutMaterial.Code}"
             : string.Empty,
           Issue = predictedMessage,
           RecommendedAction = "Confirma si el producto debe permanecer agotado; de lo contrario, retira la marca de agotado."
@@ -276,7 +276,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
         LeafIngredientCount = productIngredients.Count,
         ErrorCount = errors + (product.IsSoldOut ? 1 : 0),
         WarningCount = warnings,
-        BottleneckMaterial = bottleneck is null ? null : $"{bottleneck.MaterialCode} · {bottleneck.MaterialName}",
+        BottleneckMaterial = bottleneck is null ? null : $"{bottleneck.MaterialName} · {bottleneck.MaterialCode}",
         PredictedPosMessage = predictedMessage,
         SuggestedAction = SuggestedProductAction(status)
       });
@@ -474,7 +474,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
           ProductSku = product.Sku,
           ProductName = ProductDisplayName(product),
           MaterialId = material.Id,
-          Material = $"{material.Code} · {material.Name}",
+          Material = $"{material.Name} · {material.Code}",
           Issue = ingredient.PredictedPosMessage ?? ingredient.Status,
           ShortageQuantity = ingredient.ShortageQuantity > 0 ? ingredient.ShortageQuantity : null,
           RecommendedAction = InventoryAction(ingredient)
@@ -564,7 +564,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
         + evaluations.Sum(evaluation => evaluation.Modifier?.ErrorCount ?? 0)
         + (product.IsSoldOut || unavailableSlot is not null ? 1 : 0),
       WarningCount = warningCount,
-      BottleneckMaterial = bottleneck is null ? null : $"{bottleneck.MaterialCode} · {bottleneck.MaterialName}",
+      BottleneckMaterial = bottleneck is null ? null : $"{bottleneck.MaterialName} · {bottleneck.MaterialCode}",
       PredictedPosMessage = message,
       SuggestedAction = SuggestedProductAction(status)
     });
@@ -772,7 +772,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
               ProductSku = product.Sku,
               ProductName = ProductDisplayName(product),
               MaterialId = row.MaterialId,
-              Material = string.IsNullOrWhiteSpace(row.MaterialCode) ? row.MaterialName : $"{row.MaterialCode} · {row.MaterialName}",
+              Material = string.IsNullOrWhiteSpace(row.MaterialCode) ? row.MaterialName : $"{row.MaterialName} · {row.MaterialCode}",
               Issue = $"Modificador {group.Name} / {option.Name}: {row.Message}",
               RecommendedAction = row.Status == RestaurantSaleReadinessStatuses.ConfigurationBlocked
                 ? "Corrige el material o la conversión del modificador."
@@ -874,7 +874,7 @@ public sealed class RestaurantSaleReadinessService : IRestaurantSaleReadinessSer
     {
       // El mismo texto que lanza RestaurantOrderService al cobrar, para que la caja reconozca en
       // el modal el mensaje que ya vio en el panel de faltantes.
-      var message = $"Inventario insuficiente para {material.Code} · {material.Name}. Faltan {shortage:N4}.";
+      var message = $"Inventario insuficiente para {material.Name} · {material.Code}. Faltan {shortage:N4}.";
       return new InventoryEvaluation(
         stockQuantity, reserved, usable, excluded, projected, minimumQuantity, shortage,
         estimatedUnits, locationSummary,

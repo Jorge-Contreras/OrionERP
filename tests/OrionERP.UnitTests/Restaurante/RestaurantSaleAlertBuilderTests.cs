@@ -126,7 +126,7 @@ public sealed class RestaurantSaleAlertBuilderTests
       1, "Taco", 500, "MAT-500", "Salsa verde",
       RestaurantSaleReadinessStatuses.InventoryBlocked, shortage: 2m);
     ingredient.FulfillmentMode = "MakeToStock";
-    ingredient.PredictedPosMessage = "Inventario insuficiente para MAT-500 · Salsa verde. Faltan 2.0000.";
+    ingredient.PredictedPosMessage = "Inventario insuficiente para Salsa verde · MAT-500. Faltan 2.0000.";
 
     var report = Report(
       ingredients: [ingredient],

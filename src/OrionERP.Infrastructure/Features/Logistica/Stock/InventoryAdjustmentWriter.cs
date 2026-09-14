@@ -42,7 +42,7 @@ internal static class InventoryAdjustmentWriter
     var material = await LoadMaterialAsync(conn, tx, rfc, materialId, ct)
       ?? throw new InvalidOperationException("Un material no pertenece al RFC o está inactivo.");
     if (material.TrackLots && !materialLotId.HasValue)
-      throw new InvalidOperationException($"El material {material.MaterialCode} requiere seleccionar lote.");
+      throw new InvalidOperationException($"El material {material.DisplayName} requiere seleccionar lote.");
     if (!await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
       "SELECT CAST(CASE WHEN EXISTS(SELECT 1 FROM logistica.Location WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@LocationId AND IsActive=1 AND IsInventoryEnabled=1) THEN 1 ELSE 0 END AS bit);",
       new { Rfc = rfc, LocationId = locationId }, tx, cancellationToken: ct)))
@@ -50,16 +50,16 @@ internal static class InventoryAdjustmentWriter
 
     var balance = await LoadBalanceAsync(conn, tx, rfc, locationId, materialId, ct);
     if (balance is null && quantityDelta < 0)
-      throw new InvalidOperationException($"No existe saldo de {material.MaterialCode} para descontar.");
+      throw new InvalidOperationException($"No existe saldo de {material.DisplayName} para descontar.");
     if (balance is not null && quantityDelta < 0 && balance.Quantity - balance.ReservedQuantity < -quantityDelta)
-      throw new InvalidOperationException($"{documentSubject} excede el disponible de {material.MaterialCode}.");
+      throw new InvalidOperationException($"{documentSubject} excede el disponible de {material.DisplayName}.");
     var balanceId = balance?.Id ?? await EnsureBalanceAsync(conn, tx, rfc, locationId, materialId, ct);
     var quantityAfter = (balance?.Quantity ?? 0) + quantityDelta;
 
     if (materialLotId.HasValue)
     {
       var lot = await LoadMaterialLotAsync(conn, tx, rfc, materialId, materialLotId.Value, ct)
-        ?? throw new InvalidOperationException($"El lote de {material.MaterialCode} no pertenece al RFC/material.");
+        ?? throw new InvalidOperationException($"El lote de {material.DisplayName} no pertenece al RFC/material.");
       var lotBalance = await LoadLotAsync(conn, tx, rfc, locationId, materialId, materialLotId.Value, ct);
       if (lotBalance is null && quantityDelta < 0)
         throw new InvalidOperationException($"El lote {lot.LotCode} no tiene saldo en la ubicación.");
@@ -148,7 +148,7 @@ internal static class InventoryAdjustmentWriter
   internal static Task<MovementMaterialRow?> LoadMaterialAsync(
     DbConnection conn, DbTransaction tx, string rfc, int materialId, CancellationToken ct)
     => conn.QuerySingleOrDefaultAsync<MovementMaterialRow>(new CommandDefinition(
-      "SELECT Id,MaterialCode,TrackLots FROM logistica.Material WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@MaterialId AND IsActive=1;",
+      "SELECT Id,MaterialCode,[Description],TrackLots FROM logistica.Material WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@MaterialId AND IsActive=1;",
       new { Rfc = rfc, MaterialId = materialId }, tx, cancellationToken: ct));
 
   internal static Task<MovementBalanceRow?> LoadBalanceAsync(
@@ -176,6 +176,6 @@ internal static class InventoryAdjustmentWriter
       new { Rfc = rfc, MaterialId = materialId, LotId = lotId }, tx, cancellationToken: ct));
 }
 
-internal sealed class MovementMaterialRow { public int Id { get; set; } public string MaterialCode { get; set; } = string.Empty; public bool TrackLots { get; set; } }
+internal sealed class MovementMaterialRow { public int Id { get; set; } public string MaterialCode { get; set; } = string.Empty; public string? Description { get; set; } public bool TrackLots { get; set; } public string DisplayName => string.IsNullOrWhiteSpace(Description) ? MaterialCode : Description; }
 internal sealed class MovementBalanceRow { public int Id { get; set; } public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } public decimal AverageUnitCost { get; set; } }
 internal sealed class MovementLotRow { public long Id { get; set; } public string LotCode { get; set; } = string.Empty; public decimal Quantity { get; set; } public decimal ReservedQuantity { get; set; } }

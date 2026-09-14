@@ -69,7 +69,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       (
           SELECT
               COUNT(*) AS MaterialCount,
-              MIN(CONCAT(material.MaterialCode, ' · ', material.[Description])) AS PrimaryMaterialLabel
+              MIN(CONCAT(material.[Description], ' · ', material.MaterialCode)) AS PrimaryMaterialLabel
           FROM logistica.PhysicalCountSessionMaterial sessionMaterial
           JOIN logistica.Material material
             ON material.Rfc = sessionMaterial.Rfc
@@ -162,7 +162,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       (
           SELECT
               COUNT(*) AS MaterialCount,
-              MIN(CONCAT(material.MaterialCode, ' · ', material.[Description])) AS PrimaryMaterialLabel
+              MIN(CONCAT(material.[Description], ' · ', material.MaterialCode)) AS PrimaryMaterialLabel
           FROM logistica.PhysicalCountSessionMaterial sessionMaterial
           JOIN logistica.Material material
             ON material.Rfc = sessionMaterial.Rfc
@@ -1856,7 +1856,7 @@ public sealed class PhysicalCountService : IPhysicalCountService
       (
           SELECT
               COUNT(*) AS MaterialCount,
-              MIN(CONCAT(material.MaterialCode, ' · ', material.[Description])) AS PrimaryMaterialLabel
+              MIN(CONCAT(material.[Description], ' · ', material.MaterialCode)) AS PrimaryMaterialLabel
           FROM logistica.PhysicalCountSessionMaterial sessionMaterial
           JOIN logistica.Material material
             ON material.Rfc = sessionMaterial.Rfc

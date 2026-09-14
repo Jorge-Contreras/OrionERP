@@ -1771,6 +1771,63 @@ public class PurchaseOrderServiceTests
     Assert.Contains("#OrionVisibleLocations", query.CommandText, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public async Task GetStockThresholdsAsync_ReadsTodaysLimitsOnlyFromVisibleLocations()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (commandText, _) =>
+      {
+        if (!commandText.Contains("FROM logistica.StockBalance sb", StringComparison.Ordinal))
+        {
+          return new DataTable();
+        }
+
+        var table = new DataTable();
+        table.Columns.Add("MaterialId", typeof(int));
+        table.Columns.Add("LocationId", typeof(int));
+        table.Columns.Add("Quantity", typeof(decimal));
+        table.Columns.Add("MinQuantity", typeof(decimal));
+        table.Columns.Add("MaxQuantity", typeof(decimal));
+        table.Rows.Add(7, 3, 1m, 2m, 6m);
+        table.Rows.Add(7, 4, 5m, DBNull.Value, DBNull.Value);
+        return table;
+      },
+      ScalarResultFactory = (_, _) => null,
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    var balances = await service.GetStockThresholdsAsync([7, 7, 0]);
+
+    Assert.Equal(2, balances.Count);
+    Assert.Equal(6m, balances.Single(balance => balance.LocationId == 3).MaxQuantity);
+    Assert.Null(balances.Single(balance => balance.LocationId == 4).MinQuantity);
+
+    var query = Assert.Single(
+      connection.ExecutedCommands,
+      command => command.CommandText.Contains("FROM logistica.StockBalance sb", StringComparison.Ordinal));
+    Assert.Contains("ISNULL(sb.IsRemoved, 0) = 0", query.CommandText, StringComparison.Ordinal);
+    Assert.Contains("#OrionVisibleLocations", query.CommandText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public async Task GetStockThresholdsAsync_WithoutMaterialsDoesNotQueryTheDatabase()
+  {
+    var connection = new FakeQueryDbConnection
+    {
+      ReaderResultFactory = (_, _) => new DataTable(),
+      ScalarResultFactory = (_, _) => null,
+      NonQueryResultFactory = (_, _) => 1
+    };
+
+    var service = new PurchaseOrderService(new FakeQueryConnectionFactory(connection));
+
+    Assert.Empty(await service.GetStockThresholdsAsync([0, -1]));
+    Assert.Empty(connection.ExecutedCommands);
+  }
+
   private static DataTable CreateLookupTable(params (int Id, string Name, string Code)[] rows)
   {
     var table = new DataTable();

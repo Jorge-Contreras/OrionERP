@@ -15,7 +15,7 @@ public sealed record RestaurantMaterialOption(
 
   public string DisplayText => string.IsNullOrWhiteSpace(Code)
     ? Description
-    : $"{Code} · {Description}";
+    : $"{Description} · {Code}";
 
   public bool Matches(string searchText)
   {

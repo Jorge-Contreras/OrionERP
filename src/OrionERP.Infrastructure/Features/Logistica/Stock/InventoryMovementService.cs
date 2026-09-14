@@ -111,18 +111,18 @@ public sealed class InventoryMovementService : IInventoryMovementService
         var material = await InventoryAdjustmentWriter.LoadMaterialAsync(conn, tx, rfc, line.MaterialId, ct);
         if (material is null) throw new InvalidOperationException("Un material no pertenece al RFC o está inactivo.");
         if (material.TrackLots && !line.MaterialLotId.HasValue)
-          throw new InvalidOperationException($"El material {material.MaterialCode} requiere seleccionar lote.");
+          throw new InvalidOperationException($"El material {material.DisplayName} requiere seleccionar lote.");
 
         var source = await InventoryAdjustmentWriter.LoadBalanceAsync(conn, tx, rfc, request.FromLocationId, line.MaterialId, ct)
-          ?? throw new InvalidOperationException($"No existe saldo de {material.MaterialCode} en el origen.");
+          ?? throw new InvalidOperationException($"No existe saldo de {material.DisplayName} en el origen.");
         if (source.Quantity - source.ReservedQuantity < line.Quantity)
-          throw new InvalidOperationException($"El disponible de {material.MaterialCode} no alcanza para el traspaso.");
+          throw new InvalidOperationException($"El disponible de {material.DisplayName} no alcanza para el traspaso.");
 
         MovementLotRow? sourceLot = null;
         if (line.MaterialLotId.HasValue)
         {
           sourceLot = await InventoryAdjustmentWriter.LoadLotAsync(conn, tx, rfc, request.FromLocationId, line.MaterialId, line.MaterialLotId.Value, ct)
-            ?? throw new InvalidOperationException($"El lote de {material.MaterialCode} no existe en el origen.");
+            ?? throw new InvalidOperationException($"El lote de {material.DisplayName} no existe en el origen.");
           if (sourceLot.Quantity - sourceLot.ReservedQuantity < line.Quantity)
             throw new InvalidOperationException($"El disponible del lote {sourceLot.LotCode} no alcanza.");
         }

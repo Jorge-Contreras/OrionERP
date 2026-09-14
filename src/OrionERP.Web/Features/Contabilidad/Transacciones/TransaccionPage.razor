@@ -1471,22 +1471,31 @@ else
         {
           <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
             <h5 class="mb-0">Archivos adjuntos</h5>
-            <label class="btn btn-sm btn-outline-primary ms-auto mb-0 @(IsUploadingAttachment ? "disabled" : string.Empty)">
-              @if (IsUploadingAttachment)
-              {
-                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                <span>Cargando…</span>
-              }
-              else
-              {
-                <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>
-                <span>Cargar archivo</span>
-              }
-              <InputFile @key="_attachmentInputKey"
-                         class="d-none"
-                         OnChange="OnAttachmentSelectedAsync"
-                         disabled="@IsUploadingAttachment" />
-            </label>
+            <div class="d-flex flex-wrap gap-2 ms-auto">
+              <button type="button"
+                      class="btn btn-sm btn-outline-primary"
+                      disabled="@(IsUploadingAttachment || IsCameraOpen)"
+                      @onclick="OpenAttachmentCameraAsync">
+                <span class="oi oi-camera-slr me-1" aria-hidden="true"></span>
+                <span>Tomar foto</span>
+              </button>
+              <label class="btn btn-sm btn-outline-primary mb-0 @(IsUploadingAttachment ? "disabled" : string.Empty)">
+                @if (IsUploadingAttachment)
+                {
+                  <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                  <span>Cargando…</span>
+                }
+                else
+                {
+                  <span class="oi oi-cloud-upload me-1" aria-hidden="true"></span>
+                  <span>Cargar archivo</span>
+                }
+                <InputFile @key="_attachmentInputKey"
+                           class="d-none"
+                           OnChange="OnAttachmentSelectedAsync"
+                           disabled="@IsUploadingAttachment" />
+              </label>
+            </div>
           </div>
 
           @if (Attachments.Count == 0)
@@ -1685,3 +1694,62 @@ else
     </div>
   </div>
 } 
+
+
+@if (IsCameraOpen)
+{
+  <div class="transaccion-camera-overlay" role="dialog" aria-modal="true" aria-labelledby="transaccion-camera-title">
+    <div class="transaccion-camera-dialog">
+      <header>
+        <div>
+          <span>Archivo adjunto</span>
+          <h2 id="transaccion-camera-title">Transacción @(Header?.DisplayFolio ?? Id.ToString(CultureInfo.InvariantCulture))</h2>
+        </div>
+        <button type="button" @onclick="CloseCameraAsync" disabled="@IsCameraCapturing" aria-label="Cerrar cámara">
+          <span class="oi oi-x" aria-hidden="true"></span>
+        </button>
+      </header>
+      <div class="transaccion-camera-stage">
+        @* El video se oculta, no se quita: un <video> nuevo no conserva el stream y «Repetir» quedaría en negro. *@
+        <video class="transaccion-camera-preview" @ref="_cameraVideoElement" hidden="@(CameraPreviewUrl is not null)" autoplay muted playsinline></video>
+        @if (CameraPreviewUrl is not null)
+        {
+          <img src="@CameraPreviewUrl" alt="Vista previa de la foto" />
+        }
+        @if (IsCameraStarting)
+        {
+          <div class="transaccion-camera-status">
+            <span class="spinner-border" aria-hidden="true"></span>
+            <strong>Abriendo cámara…</strong>
+          </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(CameraError))
+        {
+          <div class="transaccion-camera-error" role="alert">@CameraError</div>
+        }
+      </div>
+      @if (CameraDevices.Count > 1 && CameraPreviewUrl is null)
+      {
+        <select class="form-select" aria-label="Cámara" value="@SelectedCameraDeviceId" @onchange="ChangeCameraAsync" disabled="@(IsCameraStarting || IsCameraCapturing)">
+          @foreach (var camera in CameraDevices)
+          {
+            <option value="@camera.DeviceId">@camera.Label</option>
+          }
+        </select>
+      }
+      <footer>
+        @if (CameraPreviewUrl is null)
+        {
+          <button class="btn btn-light" type="button" @onclick="CloseCameraAsync" disabled="@IsCameraCapturing">Cancelar</button>
+          <button class="transaccion-camera-capture" type="button" @onclick="CaptureCameraAsync" disabled="@(IsCameraStarting || IsCameraCapturing || !CameraSupported)" aria-label="Capturar foto"><span></span></button>
+          <span></span>
+        }
+        else
+        {
+          <button class="btn btn-outline-light" type="button" @onclick="RetakeCameraAsync" disabled="@IsCameraCapturing">Repetir</button>
+          <button class="btn btn-success" type="button" @onclick="SaveCameraPhotoAsync" disabled="@IsCameraCapturing">@(IsCameraCapturing ? "Guardando…" : "Usar esta foto")</button>
+        }
+      </footer>
+    </div>
+  </div>
+}

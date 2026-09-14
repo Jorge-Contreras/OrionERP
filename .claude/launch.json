@@ -20,6 +20,20 @@
         "src/OrionERP.Web/OrionERP.Web.csproj"
       ],
       "port": 5221
+    },
+    {
+      "name": "orionerp-web-artifacts",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/OrionERP.Web/OrionERP.Web.csproj",
+        "--artifacts-path",
+        "artifacts/preview-web",
+        "-lp",
+        "OrionERP.Web"
+      ],
+      "port": 5221
     }
   ]
 }

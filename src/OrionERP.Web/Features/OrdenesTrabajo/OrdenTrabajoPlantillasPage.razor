@@ -9,7 +9,7 @@
         <div>
             <a class="small" href="/ordenes-trabajo">Volver a ordenes</a>
             <h1 class="h3 mb-1">Plantillas de ordenes de trabajo</h1>
-            <p class="text-muted mb-0">Versiones publicadas, pasos y mapeo de suites para limpieza.</p>
+            <p class="text-muted mb-0">@(HasHospitality ? "Versiones publicadas, pasos y mapeo de suites para limpieza." : "Versiones publicadas y pasos.")</p>
         </div>
         <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary" type="button" @onclick="SeedLegacyAsync" disabled="@IsMutating">Seed limpieza legacy</button>
@@ -326,7 +326,7 @@
                 </div>
             </section>
 
-            @if (SelectedTemplate is not null)
+            @if (HasHospitality && SelectedTemplate is not null)
             {
                 <section class="card shadow-sm">
                     <div class="card-body">

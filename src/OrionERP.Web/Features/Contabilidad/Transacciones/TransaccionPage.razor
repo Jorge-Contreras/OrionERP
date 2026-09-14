@@ -283,14 +283,17 @@ else
               <span class="badge text-bg-secondary ms-1">@ComprobantesVinculadosCount</span>
             </button>
           </li>
-          <li class="nav-item">
-            <button type="button"
-                    class="@GetTabButtonClass(SectionPanel.Reservaciones)"
-                    @onclick="() => ActivateSection(SectionPanel.Reservaciones)">
-              Reservaciones
-              <span class="badge text-bg-secondary ms-1">@ReservacionLinks.Count</span>
-            </button>
-          </li>
+          @if (HasHospitality)
+          {
+            <li class="nav-item">
+              <button type="button"
+                      class="@GetTabButtonClass(SectionPanel.Reservaciones)"
+                      @onclick="() => ActivateSection(SectionPanel.Reservaciones)">
+                Reservaciones
+                <span class="badge text-bg-secondary ms-1">@ReservacionLinks.Count</span>
+              </button>
+            </li>
+          }
           <li class="nav-item">
             <button type="button"
                     class="@GetTabButtonClass(SectionPanel.CuentasPorPagar)"
@@ -1113,7 +1116,7 @@ else
             </div>
           }
         }
-        else if (IsActiveSection(SectionPanel.Reservaciones))
+        else if (HasHospitality && IsActiveSection(SectionPanel.Reservaciones))
         {
           <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
             <h5 class="mb-0">Reservaciones vinculadas</h5>

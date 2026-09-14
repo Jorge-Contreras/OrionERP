@@ -90,6 +90,12 @@ public sealed class OperationErrorPresenter : IOperationErrorPresenter
         case DbUpdateConcurrencyException:
           return ($"No se pudo {operation} porque otra persona modificó esta información mientras la editabas. Actualiza la página y vuelve a intentarlo.", true);
 
+        // Los accesores de alcance niegan así un módulo no habilitado, una sede ajena o un
+        // rol revocado. Es una negación prevista, no una falla. Su texto no se muestra: la
+        // misma excepción también la lanza el sistema de archivos, con rutas del servidor.
+        case UnauthorizedAccessException:
+          return ($"No se pudo {operation} porque tu empresa o tu usuario no tienen acceso a esta función. Si lo necesitas, solicítalo a quien administre tu entorno.", true);
+
         case SqlException sql:
           return (TranslateSql(sql, operation, reference), IsExpectedSql(sql));
       }
@@ -105,7 +111,7 @@ public sealed class OperationErrorPresenter : IOperationErrorPresenter
 
   private static bool IsExpectedSql(SqlException sql) => sql.Number switch
   {
-    547 or 2601 or 2627 or 515 or 8152 or 2628 or 1205 or -2 => true,
+    547 or 2601 or 2627 or 515 or 8152 or 2628 or 1205 or -2 or 51900 or 51940 or 52241 => true,
     _ => false
   };
 
@@ -125,6 +131,10 @@ public sealed class OperationErrorPresenter : IOperationErrorPresenter
       => $"No se pudo {operation} porque otra operación estaba usando los mismos datos al mismo tiempo. Inténtalo de nuevo.",
     -2
       => $"No se pudo {operation} porque la base de datos tardó demasiado en responder. Inténtalo de nuevo en un momento.",
+    // 51900: alcance de Hospedaje inválido; 51940: Restaurante suspendido;
+    // 52241: la sesión SQL abrió con un módulo no habilitado para la empresa.
+    51900 or 51940 or 52241
+      => $"No se pudo {operation} porque el módulo que usa esta función no está habilitado para la empresa de tu sesión.",
     _
       => $"No se pudo {operation} por un problema de la base de datos. El equipo técnico quedó notificado (referencia {reference})."
   };

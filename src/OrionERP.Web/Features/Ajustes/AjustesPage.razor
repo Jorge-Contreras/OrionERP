@@ -5,11 +5,14 @@
 @using OrionERP.Application.Features.Reservaciones.Extras
 @using OrionERP.Web.Shared
 @using OrionERP.Web.State
+@using OrionERP.Application.Features.Platform
 @attribute [Authorize(Roles = "Administrador")]
 @inject IAjustesService AjustesService
 @inject IUiMessageService UiMessages
 @inject IJSRuntime JsRuntime
 @inject ICurrentCompanyContext RfcState
+@inject ICompanyModuleAccess ModuleAccess
+@inject IOperationErrorPresenter Errors
 
 <PageTitle>Ajustes</PageTitle>
 
@@ -55,147 +58,150 @@
     </div>
   </section>
 
-  <section class="ajustes-section mb-3">
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
-          <div>
-            <h2 class="h5 mb-1">Catálogo de extras</h2>
-            <p class="text-muted mb-0">Servicios y productos disponibles para agregar a reservaciones.</p>
+  @if (hasHospitality)
+  {
+    <section class="ajustes-section mb-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+            <div>
+              <h2 class="h5 mb-1">Catálogo de extras</h2>
+              <p class="text-muted mb-0">Servicios y productos disponibles para agregar a reservaciones.</p>
+            </div>
+            <button type="button" class="btn btn-outline-primary" @onclick="NewExtra">
+              Nuevo extra
+            </button>
           </div>
-          <button type="button" class="btn btn-outline-primary" @onclick="NewExtra">
-            Nuevo extra
-          </button>
-        </div>
 
-        <div class="row g-3">
-          <div class="col-12 col-xl-5">
-            <div class="d-flex flex-column gap-3">
-              <div>
-                <label class="form-label">Buscar</label>
-                <input class="form-control"
-                       type="search"
-                       placeholder="Nombre o descripcion"
-                       @bind="extraSearchText"
-                       @bind:event="oninput"
-                       @onkeydown="OnExtraSearchKeyDown" />
-              </div>
+          <div class="row g-3">
+            <div class="col-12 col-xl-5">
+              <div class="d-flex flex-column gap-3">
+                <div>
+                  <label class="form-label">Buscar</label>
+                  <input class="form-control"
+                         type="search"
+                         placeholder="Nombre o descripcion"
+                         @bind="extraSearchText"
+                         @bind:event="oninput"
+                         @onkeydown="OnExtraSearchKeyDown" />
+                </div>
 
-              <div class="d-flex flex-wrap gap-2 align-items-center">
-                <button type="button" class="btn btn-primary" @onclick="LoadExtraCatalogAsync" disabled="@isLoadingExtras">
-                  @(isLoadingExtras ? "Buscando..." : "Buscar")
-                </button>
-                <label class="form-check d-flex align-items-center gap-2 mb-0">
-                  <input class="form-check-input" type="checkbox" @bind="includeInactiveExtras" @bind:after="LoadExtraCatalogAsync" />
-                  <span class="form-check-label">Incluir inactivos</span>
-                </label>
-              </div>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                  <button type="button" class="btn btn-primary" @onclick="LoadExtraCatalogAsync" disabled="@isLoadingExtras">
+                    @(isLoadingExtras ? "Buscando..." : "Buscar")
+                  </button>
+                  <label class="form-check d-flex align-items-center gap-2 mb-0">
+                    <input class="form-check-input" type="checkbox" @bind="includeInactiveExtras" @bind:after="LoadExtraCatalogAsync" />
+                    <span class="form-check-label">Incluir inactivos</span>
+                  </label>
+                </div>
 
-              <div class="table-responsive ajustes-extra-list">
-                <table class="table table-sm table-hover align-middle mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Extra</th>
-                      <th class="text-end">Precio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @if (isLoadingExtras && ExtraCatalogItems.Count == 0)
-                    {
+                <div class="table-responsive ajustes-extra-list">
+                  <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
                       <tr>
-                        <td colspan="2" class="text-center text-muted py-4">Cargando extras...</td>
+                        <th>Extra</th>
+                        <th class="text-end">Precio</th>
                       </tr>
-                    }
-                    else if (ExtraCatalogItems.Count == 0)
-                    {
-                      <tr>
-                        <td colspan="2" class="text-center text-muted py-4">No hay extras para los filtros actuales.</td>
-                      </tr>
-                    }
-                    else
-                    {
-                      @foreach (var extra in ExtraCatalogItems)
+                    </thead>
+                    <tbody>
+                      @if (isLoadingExtras && ExtraCatalogItems.Count == 0)
                       {
-                        <tr class="@(extra.ExtraId == SelectedExtraId ? "table-primary" : null)"
-                            role="button"
-                            @onclick="() => SelectExtra(extra)">
-                          <td>
-                            <div class="fw-semibold">@extra.Name</div>
-                            <div class="d-flex flex-wrap gap-1 mt-1">
-                              @if (!extra.IsActive)
-                              {
-                                <span class="badge text-bg-secondary">Inactivo</span>
-                              }
-                              @if (extra.LegacyRoomId.HasValue)
-                              {
-                                <span class="badge text-bg-light">Migrado</span>
-                              }
-                            </div>
-                          </td>
-                          <td class="text-end">@FormatCurrency(extra.Price)</td>
+                        <tr>
+                          <td colspan="2" class="text-center text-muted py-4">Cargando extras...</td>
                         </tr>
                       }
-                    }
-                  </tbody>
-                </table>
+                      else if (ExtraCatalogItems.Count == 0)
+                      {
+                        <tr>
+                          <td colspan="2" class="text-center text-muted py-4">No hay extras para los filtros actuales.</td>
+                        </tr>
+                      }
+                      else
+                      {
+                        @foreach (var extra in ExtraCatalogItems)
+                        {
+                          <tr class="@(extra.ExtraId == SelectedExtraId ? "table-primary" : null)"
+                              role="button"
+                              @onclick="() => SelectExtra(extra)">
+                            <td>
+                              <div class="fw-semibold">@extra.Name</div>
+                              <div class="d-flex flex-wrap gap-1 mt-1">
+                                @if (!extra.IsActive)
+                                {
+                                  <span class="badge text-bg-secondary">Inactivo</span>
+                                }
+                                @if (extra.LegacyRoomId.HasValue)
+                                {
+                                  <span class="badge text-bg-light">Migrado</span>
+                                }
+                              </div>
+                            </td>
+                            <td class="text-end">@FormatCurrency(extra.Price)</td>
+                          </tr>
+                        }
+                      }
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="col-12 col-xl-7">
-            <section class="border rounded p-3 h-100">
-              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-                <div>
-                  <h3 class="h5 mb-1">@(ExtraEditor.ExtraId.HasValue ? "Editar extra" : "Nuevo extra")</h3>
-                  @if (ExtraEditor.LegacyRoomId.HasValue)
-                  {
-                    <div class="text-muted small">Migrado desde Room ID @ExtraEditor.LegacyRoomId.Value.ToString(CultureInfo.InvariantCulture)</div>
-                  }
-                </div>
-                <div class="d-flex flex-wrap gap-2">
-                  @if (ExtraEditor.ExtraId.HasValue)
-                  {
-                    <button type="button" class="btn btn-outline-danger" @onclick="DeleteExtraAsync" disabled="@isSavingExtra">
-                      Desactivar
+            <div class="col-12 col-xl-7">
+              <section class="border rounded p-3 h-100">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                  <div>
+                    <h3 class="h5 mb-1">@(ExtraEditor.ExtraId.HasValue ? "Editar extra" : "Nuevo extra")</h3>
+                    @if (ExtraEditor.LegacyRoomId.HasValue)
+                    {
+                      <div class="text-muted small">Migrado desde Room ID @ExtraEditor.LegacyRoomId.Value.ToString(CultureInfo.InvariantCulture)</div>
+                    }
+                  </div>
+                  <div class="d-flex flex-wrap gap-2">
+                    @if (ExtraEditor.ExtraId.HasValue)
+                    {
+                      <button type="button" class="btn btn-outline-danger" @onclick="DeleteExtraAsync" disabled="@isSavingExtra">
+                        Desactivar
+                      </button>
+                    }
+                    <button type="button" class="btn btn-primary" @onclick="SaveExtraAsync" disabled="@isSavingExtra">
+                      @(isSavingExtra ? "Guardando..." : "Guardar extra")
                     </button>
-                  }
-                  <button type="button" class="btn btn-primary" @onclick="SaveExtraAsync" disabled="@isSavingExtra">
-                    @(isSavingExtra ? "Guardando..." : "Guardar extra")
-                  </button>
-                </div>
-              </div>
-
-              <EditForm Model="ExtraEditor">
-                <DataAnnotationsValidator />
-                <ValidationSummary />
-
-                <div class="row g-3">
-                  <div class="col-md-8">
-                    <label class="form-label">Nombre</label>
-                    <InputText class="form-control" @bind-Value="ExtraEditor.Name" />
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label">Precio</label>
-                    <InputNumber class="form-control" @bind-Value="ExtraEditor.Price" />
-                  </div>
-                  <div class="col-12">
-                    <label class="form-label">Descripcion</label>
-                    <InputTextArea class="form-control" rows="3" @bind-Value="ExtraEditor.Description" />
-                  </div>
-                  <div class="col-12">
-                    <label class="form-check form-switch mb-0">
-                      <InputCheckbox class="form-check-input" @bind-Value="ExtraEditor.IsActive" />
-                      <span class="form-check-label">Activo</span>
-                    </label>
                   </div>
                 </div>
-              </EditForm>
-            </section>
+
+                <EditForm Model="ExtraEditor">
+                  <DataAnnotationsValidator />
+                  <ValidationSummary />
+
+                  <div class="row g-3">
+                    <div class="col-md-8">
+                      <label class="form-label">Nombre</label>
+                      <InputText class="form-control" @bind-Value="ExtraEditor.Name" />
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label">Precio</label>
+                      <InputNumber class="form-control" @bind-Value="ExtraEditor.Price" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Descripcion</label>
+                      <InputTextArea class="form-control" rows="3" @bind-Value="ExtraEditor.Description" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-check form-switch mb-0">
+                        <InputCheckbox class="form-check-input" @bind-Value="ExtraEditor.IsActive" />
+                        <span class="form-check-label">Activo</span>
+                      </label>
+                    </div>
+                  </div>
+                </EditForm>
+              </section>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  }
 
   <section class="ajustes-section mb-3">
     <div class="card shadow-sm">
@@ -607,6 +613,7 @@
   private bool isSavingGeneralSettings;
   private bool isLoadingExtras;
   private bool isSavingExtra;
+  private bool hasHospitality;
   private bool isLoadingCfdiDefaults;
   private bool isSavingCfdiDefaults;
   private bool isLoadingList;
@@ -625,7 +632,13 @@
   protected override async Task OnInitializedAsync()
   {
     await LoadGeneralSettingsAsync();
-    await LoadExtraCatalogAsync();
+    // Los extras son catálogo de Hospedaje: sin ese módulo la sección no existe y no se
+    // consulta, porque su alcance niega la conexión.
+    hasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
+    if (hasHospitality)
+    {
+      await LoadExtraCatalogAsync();
+    }
     await LoadCfdiPolizaCuentaDefaultsAsync();
     NewPlantilla();
     await LoadPlantillasAsync();
@@ -650,7 +663,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las plantillas. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las plantillas contables", new { searchText, includeInactive }));
     }
     finally
     {
@@ -668,7 +681,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar los ajustes generales. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar los ajustes generales"));
     }
     finally
     {
@@ -698,7 +711,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron guardar los ajustes generales. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar los ajustes generales"));
     }
     finally
     {
@@ -725,7 +738,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cargar el catálogo de extras. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar el catálogo de extras", new { extraSearchText, includeInactiveExtras }));
     }
     finally
     {
@@ -784,7 +797,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo guardar el extra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar el extra", new { ExtraEditor.ExtraId }));
     }
     finally
     {
@@ -820,7 +833,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo desactivar el extra. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "desactivar el extra", new { ExtraEditor.ExtraId }));
     }
   }
 
@@ -834,7 +847,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron cargar las cuentas CFDI. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar las cuentas CFDI"));
       CfdiDefaultsEditor = CfdiPolizaCuentaDefaultsEditorModel.CreateEmpty(CurrentRfc);
     }
     finally
@@ -872,7 +885,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudieron guardar las cuentas CFDI. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar las cuentas CFDI"));
     }
     finally
     {
@@ -918,7 +931,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo cargar la plantilla. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "cargar la plantilla contable", new { plantillaId }));
     }
   }
 
@@ -957,7 +970,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo guardar la plantilla. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "guardar la plantilla contable", new { Editor.PlantillaContableId }));
     }
     finally
     {
@@ -993,7 +1006,7 @@
     }
     catch (Exception ex)
     {
-      UiMessages.ShowError($"No se pudo eliminar la plantilla. {ex.Message}");
+      UiMessages.ShowError(Errors.ToUserMessage(ex, "eliminar la plantilla contable", new { Editor.PlantillaContableId }));
     }
   }
 

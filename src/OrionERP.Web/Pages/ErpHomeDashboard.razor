@@ -4,6 +4,7 @@
 @using OrionERP.Application.Features.CuentasPorPagar.Recurrentes
 @using OrionERP.Application.Features.Logistica.PhysicalCounts
 @using OrionERP.Application.Features.Reservaciones.ListaReservaciones
+@using OrionERP.Application.Features.Platform
 @using OrionERP.Infrastructure.Auth
 @inject IAjustesService AjustesService
 @inject IRecurrentApService RecurrentApService
@@ -12,6 +13,7 @@
 @inject IListaReservacionesService ReservacionesService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ICurrentCompanyContext RfcState
+@inject ICompanyModuleAccess ModuleAccess
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -113,7 +115,7 @@
                 </div>
             </section>
 
-            @if (HasCalendarioRole)
+            @if (HasCalendarioRole && HasHospitality)
             {
                 <section class="home-panel home-reservations" aria-labelledby="home-reservations-title">
                     <div class="home-panel__header">
@@ -393,7 +395,7 @@
                             <span>Conteos</span>
                         </button>
                     }
-                    @if (HasCalendarioRole)
+                    @if (HasCalendarioRole && HasHospitality)
                     {
                         <button type="button" @onclick="OpenCalendario" title="Abrir calendario de reservaciones">
                             <span class="oi oi-calendar" aria-hidden="true"></span>
@@ -428,6 +430,7 @@
     private bool IsAuthenticated { get; set; }
     private bool HasConteoRole { get; set; }
     private bool HasCalendarioRole { get; set; }
+    private bool HasHospitality { get; set; }
     private bool IsLoading { get; set; }
     private string? ErrorMessage { get; set; }
     private string? ReservationScopeMessage { get; set; }
@@ -606,6 +609,15 @@
     {
         ReservationScopeMessage = null;
         if (!IsAuthenticated || !HasCalendarioRole)
+        {
+            UpcomingPaidReservations.Clear();
+            return;
+        }
+
+        // Sin Hospedaje no hay reservaciones que mostrar: el panel desaparece en vez de
+        // pedir una sede que la empresa no tiene.
+        HasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
+        if (!HasHospitality)
         {
             UpcomingPaidReservations.Clear();
             return;

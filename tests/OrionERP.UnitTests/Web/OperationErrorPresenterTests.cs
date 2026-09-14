@@ -47,6 +47,31 @@ public sealed class OperationErrorPresenterTests
   }
 
   [Fact]
+  public void ToUserMessage_ForDeniedScope_IsControlledAndDoesNotLeakDetails()
+  {
+    var message = Presenter.ToUserMessage(
+      new UnauthorizedAccessException("Selecciona una sede de Hospedaje habilitada para la empresa de tu sesión."),
+      "buscar reservaciones para ligar a la póliza");
+
+    Assert.Contains("buscar reservaciones para ligar a la póliza", message);
+    Assert.Contains("no tienen acceso", message);
+    Assert.DoesNotContain("problema inesperado", message);
+    Assert.DoesNotContain("referencia", message, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("sede de Hospedaje", message);
+  }
+
+  [Fact]
+  public void ToUserMessage_ForWrappedDeniedScope_IsControlled()
+  {
+    var wrapped = new InvalidOperationException("outer", new UnauthorizedAccessException(@"Access to the path 'C:\srv\x' is denied."));
+
+    var message = Presenter.ToUserMessage(wrapped, "cargar el catálogo de extras");
+
+    Assert.Contains("no tienen acceso", message);
+    Assert.DoesNotContain(@"C:\srv", message);
+  }
+
+  [Fact]
   public void ToUserMessage_WithBlankOperation_FallsBackToGenericPhrasing()
   {
     var message = Presenter.ToUserMessage(new Exception("x"), "   ");

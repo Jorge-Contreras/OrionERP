@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Ajustes.Catalogos;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 
@@ -28,6 +29,7 @@ public partial class CatalogosPage : ComponentBase
   [Inject] private IJSRuntime JsRuntime { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private NavigationManager Navigation { get; set; } = default!;
+  [Inject] private ICompanyModuleAccess ModuleAccess { get; set; } = default!;
 
   private IReadOnlyList<CatalogoDescriptorDto> Descriptors { get; set; } = Array.Empty<CatalogoDescriptorDto>();
   private List<CatalogoItemDto> Items { get; } = [];
@@ -62,7 +64,12 @@ public partial class CatalogosPage : ComponentBase
 
   protected override async Task OnInitializedAsync()
   {
-    Descriptors = CatalogoService.GetDescriptors();
+    // Arrendadores es configuración de Hospedaje: sin ese módulo su pestaña sólo mostraría
+    // la negación del alcance. Un enlace con ?tab=arrendadores cae en la primera pestaña.
+    var hasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
+    Descriptors = CatalogoService.GetDescriptors()
+      .Where(descriptor => hasHospitality || descriptor.Key != CatalogoKey.Arrendadores)
+      .ToList();
     // A deep link should land on the tab it names, so a colleague can be sent
     // straight to the catalog under discussion.
     var uri = Navigation.ToAbsoluteUri(Navigation.Uri);

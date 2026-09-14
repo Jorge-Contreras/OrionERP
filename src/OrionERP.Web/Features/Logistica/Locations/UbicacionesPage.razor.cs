@@ -11,6 +11,7 @@ using OrionERP.Application.Features.Logistica.Locations;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 
@@ -38,6 +39,10 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
+  [Inject] private ICompanyModuleAccess ModuleAccess { get; set; } = default!;
+
+  /// <summary>La suite es un filtro de Hospedaje; sin ese módulo no se ofrece.</summary>
+  protected bool HasHospitality { get; private set; }
 
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
   protected MaterialFilter MaterialPickerFilter { get; set; } = new() { Status = "ACTIVO" };
@@ -975,7 +980,10 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
 
   private async Task LoadLookupsAsync()
   {
-    RoomOptions = (await LocationService.GetRoomLookupAsync(roomType: SuiteRoomType)).ToList();
+    HasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
+    RoomOptions = HasHospitality
+      ? (await LocationService.GetRoomLookupAsync(roomType: SuiteRoomType)).ToList()
+      : [];
     MaterialCatalog = await MaterialService.GetCatalogAsync(CurrentRfc);
   }
 

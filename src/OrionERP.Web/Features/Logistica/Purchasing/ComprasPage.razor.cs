@@ -7,6 +7,7 @@ using System.Globalization;
 using OrionERP.Application.Features.Logistica.Materials;
 using OrionERP.Application.Features.Logistica.Purchasing;
 using OrionERP.Application.Features.Logistica.Shared;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 
@@ -31,6 +32,10 @@ public partial class ComprasPage : ComponentBase
   [Inject] private IJSRuntime Js { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
+  [Inject] private ICompanyModuleAccess ModuleAccess { get; set; } = default!;
+
+  /// <summary>El alcance por suites de Auto PO es de Hospedaje; sin ese módulo no hay suites que elegir.</summary>
+  protected bool HasHospitality { get; private set; }
 
   protected PurchaseOrderFilter Filter { get; set; } = new() { OpenOnly = true };
   protected PurchaseOrderCatalogDto Catalog { get; set; } = new();
@@ -251,6 +256,7 @@ public partial class ComprasPage : ComponentBase
   protected override async Task OnInitializedAsync()
   {
     CurrentUserName = await ResolveCurrentUserAsync();
+    HasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
     Catalog = await PurchaseOrderService.GetCatalogAsync();
     ResetAutoPoRequest();
     await LoadOrdersAsync();

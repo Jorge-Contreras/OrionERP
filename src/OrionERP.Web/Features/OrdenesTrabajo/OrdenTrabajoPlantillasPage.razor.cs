@@ -2,6 +2,7 @@ using OrionERP.Application.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using OrionERP.Application.Features.OrdenesTrabajo;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Services;
 using OrionERP.Web.State;
 
@@ -14,6 +15,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
   [Inject] private NavigationManager Navigation { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
+  [Inject] private ICompanyModuleAccess ModuleAccess { get; set; } = default!;
 
   protected List<OrdenTrabajoCategoriaDto> Categories { get; set; } = [];
   protected List<OrdenTrabajoLookupDto> Employees { get; set; } = [];
@@ -28,6 +30,12 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
   protected bool IsLoading { get; set; }
   protected bool IsMutating { get; set; }
   protected bool IsCreating { get; set; }
+
+  /// <summary>
+  /// Las órdenes de trabajo son universales, pero el mapeo de suites es de Hospedaje:
+  /// sin ese módulo no hay suites y la acción niega el alcance.
+  /// </summary>
+  protected bool HasHospitality { get; private set; }
   protected string? ErrorMessage { get; set; }
   protected bool CanCreateFromSelectedTemplate => SelectedTemplate is { Activa: true, PublishedVersionId: not null };
 
@@ -36,6 +44,7 @@ public partial class OrdenTrabajoPlantillasPage : ComponentBase
   protected override async Task OnInitializedAsync()
   {
     await ResolveCurrentUserAsync();
+    HasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
     await LoadAsync();
     CreateRequest = BuildDefaultCreateRequest();
     NewTemplate();

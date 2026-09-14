@@ -1,6 +1,7 @@
 using OrionERP.Infrastructure.Features.Reservaciones;
 using Dapper;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
 using System;
@@ -19,14 +20,17 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
         private readonly HospitalityConnectionFactory? _hospitalityConnections;
         private readonly HospitalityAdministrationScopeAccessor? _hospitalityScope;
         private readonly ICurrentCompanyContext? _companyContext;
+        private readonly ICompanyModuleAccess? _moduleAccess;
 
         public ReportesFinancierosService(IDbConnectionFactory connectionFactory, HospitalityConnectionFactory? hospitalityConnections = null,
-            HospitalityAdministrationScopeAccessor? hospitalityScope = null, ICurrentCompanyContext? companyContext = null)
+            HospitalityAdministrationScopeAccessor? hospitalityScope = null, ICurrentCompanyContext? companyContext = null,
+            ICompanyModuleAccess? moduleAccess = null)
         {
             _connectionFactory = connectionFactory;
             _hospitalityConnections = hospitalityConnections;
             _hospitalityScope = hospitalityScope;
             _companyContext = companyContext;
+            _moduleAccess = moduleAccess;
         }
 
         private void EnsureCompanyRfc(string? rfc)
@@ -39,9 +43,15 @@ namespace OrionERP.Infrastructure.Features.ReportesFinancieros.Dapper
         private async Task<IDbConnection> OpenSaludConnectionAsync(string rfc, CancellationToken ct)
         {
             EnsureCompanyRfc(rfc);
-            var sites = await (_hospitalityScope ?? throw new UnauthorizedAccessException("Falta el contexto de Hospedaje.")).GetSitesAsync(ct);
-            if (sites.Count > 0)
-                return await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance de Hospedaje.")).OpenAsync(ct);
+            // Sin el módulo Hospedaje no hay sede que resolver, y el accesor niega a quien no
+            // tiene roles de Hospedaje: el reporte se quedaba en blanco. Se lee entonces con la
+            // conexión de la empresa, donde la RLS deja fuera toda tabla de hospedaje.
+            if (_moduleAccess is null || await _moduleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality, ct))
+            {
+                var sites = await (_hospitalityScope ?? throw new UnauthorizedAccessException("Falta el contexto de Hospedaje.")).GetSitesAsync(ct);
+                if (sites.Count > 0)
+                    return await (_hospitalityConnections ?? throw new UnauthorizedAccessException("Falta el alcance de Hospedaje.")).OpenAsync(ct);
+            }
             var connection = _connectionFactory.Create();
             try { await OpenConnectionAsync(connection, ct); return connection; }
             catch { connection.Dispose(); throw; }

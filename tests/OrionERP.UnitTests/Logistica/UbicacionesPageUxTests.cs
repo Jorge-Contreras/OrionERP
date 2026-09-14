@@ -11,7 +11,8 @@ public class UbicacionesPageUxTests
     Assert.Contains("ActiveMode { get; set; } = InventoryMode", codeBehind, StringComparison.Ordinal);
     Assert.Contains("¿Dónde vas a trabajar?", page, StringComparison.Ordinal);
     Assert.Contains("ubicaciones-step-number\">1", page, StringComparison.Ordinal);
-    Assert.Contains("ubicaciones-step-number\">2", page, StringComparison.Ordinal);
+    // Sin Hospedaje no hay paso de suite: la ubicación pasa a ser el primero.
+    Assert.Contains("ubicaciones-step-number\">@(HasHospitality ? 2 : 1)", page, StringComparison.Ordinal);
     Assert.Contains("Revisa el inventario", page, StringComparison.Ordinal);
     Assert.Contains("Administrar ubicaciones", page, StringComparison.Ordinal);
     Assert.Contains("IsInventoryMode", page, StringComparison.Ordinal);

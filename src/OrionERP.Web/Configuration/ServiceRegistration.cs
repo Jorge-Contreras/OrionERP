@@ -59,6 +59,7 @@ using OrionERP.Infrastructure.Features.Logistica.Purchasing;
 using OrionERP.Infrastructure.Features.Logistica.PhysicalCounts;
 using OrionERP.Infrastructure.Features.Logistica.Stock;
 using OrionERP.Infrastructure.Features.Restaurante;
+using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.Infrastructure.Features.OrdenesTrabajo;
 using OrionERP.Infrastructure.Features.Mail;
 using OrionERP.Infrastructure.Features.Reservaciones.Cfdi;
@@ -198,6 +199,7 @@ public static class ServiceRegistration
     services.AddScoped<IRestaurantBackofficeService, RestaurantBackofficeService>();
     services.AddScoped<RestaurantScopeAccessor>();
     services.AddScoped<IRestaurantScopeAccessor>(sp => sp.GetRequiredService<RestaurantScopeAccessor>());
+    services.AddScoped<ICompanyModuleAccess, CompanyModuleAccess>();
     services.AddScoped<IRestaurantAccountingService, RestaurantAccountingService>();
     services.AddScoped<IRestaurantAnalyticsService, RestaurantAnalyticsService>();
     services.AddScoped<IRestaurantDiagnosticsService, RestaurantDiagnosticsService>();

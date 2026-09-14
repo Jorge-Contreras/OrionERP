@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.ReportesFinancieros;
 using OrionERP.Application.Features.ReportesFinancieros.Models;
 using OrionERP.Web.Services;
@@ -23,6 +24,7 @@ public partial class SaludEmpresaPage : ComponentBase
   [Inject] private IUiMessageService Messages { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
   [Inject] private IAuthorizationService Authorization { get; set; } = default!;
+  [Inject] private ICompanyModuleAccess ModuleAccess { get; set; } = default!;
 
   protected int StartYear { get; set; } = DateTime.Today.Year;
   protected int StartMonth { get; set; } = DateTime.Today.Month;
@@ -34,6 +36,7 @@ public partial class SaludEmpresaPage : ComponentBase
   protected bool IsLoading { get; private set; }
   protected bool IsExporting { get; private set; }
   protected bool CanManage { get; private set; }
+  protected bool HasHospitality { get; private set; }
   protected string? ErrorMessage { get; private set; }
   protected SaludEmpresaReport? Report { get; private set; }
   protected SaludEmpresaReconciliationPage Reconciliation { get; private set; } = new();
@@ -62,6 +65,7 @@ public partial class SaludEmpresaPage : ComponentBase
   {
     var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
     CanManage = (await Authorization.AuthorizeAsync(user, "FinanzasManager")).Succeeded;
+    HasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
     await LoadAsync();
   }
 
@@ -102,7 +106,11 @@ public partial class SaludEmpresaPage : ComponentBase
       if (CanManage)
       {
         Configuration = await Reports.GetSaludEmpresaConfigurationAsync(CurrentRfc);
-        Rooms = (await Reports.GetSaludEmpresaRoomsAsync()).Where(room => room.RoomType.Equals("SUITE", StringComparison.OrdinalIgnoreCase) || room.IsRentable).ToList();
+        // Las habitaciones viven en Hospedaje; sin ese módulo su consulta niega el alcance
+        // y el catch dejaba todo el reporte en blanco.
+        Rooms = HasHospitality
+          ? (await Reports.GetSaludEmpresaRoomsAsync()).Where(room => room.RoomType.Equals("SUITE", StringComparison.OrdinalIgnoreCase) || room.IsRentable).ToList()
+          : [];
       }
     }
     catch (Exception ex) { Report = null; ErrorMessage = ex.Message; }

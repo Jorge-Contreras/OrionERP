@@ -9,6 +9,7 @@ using OrionERP.Application.Features.Contabilidad.Bancos;
 using OrionERP.Application.Features.Contabilidad.Transacciones;
 using OrionERP.Application.Features.CuentasPorPagar.Recurrentes;
 using OrionERP.Application.Features.Logistica.Purchasing;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Services;
 using OrionERP.Web.Shared;
 using OrionERP.Web.State;
@@ -95,6 +96,13 @@ public partial class TransaccionPage : ComponentBase, IAsyncDisposable
   [Inject] public ICurrentUserAccessor CurrentUserAccessor { get; set; } = default!;
   [Inject] public IOperationErrorPresenter Errors { get; set; } = default!;
   [Inject] public IAccountingCycleService AccountingCycle { get; set; } = default!;
+  [Inject] public ICompanyModuleAccess ModuleAccess { get; set; } = default!;
+
+  /// <summary>
+  /// Sin Hospedaje la póliza no ofrece ligar reservaciones y no consulta ese módulo:
+  /// su alcance niega la conexión y cada carga terminaba en un error para el usuario.
+  /// </summary>
+  protected bool HasHospitality { get; private set; }
 
   protected TransaccionHeaderModel? Header { get; private set; }
   protected EditContext? HeaderEditContext { get; private set; }
@@ -780,6 +788,7 @@ public partial class TransaccionPage : ComponentBase, IAsyncDisposable
       await ReloadComprobantesAsync(ct);
       await LoadPlantillasAsync(ct);
       await ReloadBancoMovimientosAsync(ct);
+      HasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality, ct);
       await ReloadReservacionLinksAsync(ct);
       await ReloadApLinksAsync(ct);
       await ReloadCompraLinksAsync(ct);
@@ -2035,6 +2044,9 @@ public partial class TransaccionPage : ComponentBase, IAsyncDisposable
   private async Task ReloadReservacionLinksAsync(CancellationToken ct = default)
   {
     ReservacionLinks.Clear();
+    if (!HasHospitality)
+      return;
+
     IsLoadingReservacionLinks = true;
     await InvokeAsync(StateHasChanged);
 
@@ -2142,6 +2154,9 @@ public partial class TransaccionPage : ComponentBase, IAsyncDisposable
 
   protected async Task SearchReservacionesAsync(CancellationToken ct = default)
   {
+    if (!HasHospitality)
+      return;
+
     IsSearchingReservaciones = true;
     await InvokeAsync(StateHasChanged);
 

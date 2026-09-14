@@ -222,7 +222,10 @@
         {
           <article class="sf-panel sf-settings">
             <header><h2>Configuracion por RFC</h2><p>Solo Finanzas Manager y Administrador</p></header>
-            <label><input type="checkbox" @bind="Configuration.LodgingEnabled" /> Hospedaje habilitado</label>
+            @if (HasHospitality)
+            {
+              <label><input type="checkbox" @bind="Configuration.LodgingEnabled" /> Hospedaje habilitado</label>
+            }
             <label>Retencion de arrendador %<input type="number" min="0" max="100" step="0.01" @bind="Configuration.OwnerWithholdingPct" /></label>
             <button class="btn btn-primary" @onclick="SaveConfigurationAsync">Guardar configuracion</button>
           </article>

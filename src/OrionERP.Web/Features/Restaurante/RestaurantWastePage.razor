@@ -141,16 +141,39 @@
             <label class="btn btn-outline-secondary waste-file-upload" for="waste-evidence">
               <span class="oi oi-cloud-upload" aria-hidden="true"></span>
               Subir archivo
-              <InputFile id="waste-evidence" OnChange="CaptureEvidenceAsync" accept="image/*,.pdf" disabled="@isBusy" />
+              <InputFile @key="evidenceInputKey" id="waste-evidence" OnChange="CaptureEvidenceAsync" accept="image/*,.pdf" disabled="@isBusy" />
             </label>
           </div>
-          <small class="@(evidence.Length > 0 ? "is-ready" : null)">
-            @if (evidence.Length > 0)
-            {
-              <span class="oi oi-check" aria-hidden="true"></span>
-            }
-            @(string.IsNullOrWhiteSpace(evidenceFileName) ? "Toma una foto o sube una imagen o PDF, máximo 10 MB." : evidenceFileName)
-          </small>
+          @if (evidence.Length == 0)
+          {
+            <small>Toma una foto o sube una imagen o PDF, máximo 10 MB.</small>
+          }
+          else
+          {
+            <div class="waste-evidence__file">
+              @if (evidenceImageUrl is not null)
+              {
+                <button type="button" class="waste-evidence__thumb" title="Ver imagen completa" @onclick="OpenCapturedEvidence">
+                  <img src="@evidenceThumbnailUrl" alt="Evidencia de la merma" />
+                </button>
+              }
+              else
+              {
+                <span class="waste-evidence__thumb waste-evidence__placeholder">
+                  <span class="oi @(IsImageFile(evidenceFileName) ? "oi-image" : "oi-document")" aria-hidden="true"></span>
+                  <span>@EvidenceTypeLabel</span>
+                </span>
+              }
+              <div class="waste-evidence__copy">
+                <strong title="@evidenceFileName">@evidenceFileName</strong>
+                <span>@FormatFileSize(evidence.Length) · @evidenceSource</span>
+              </div>
+              <button type="button" class="waste-evidence__remove" title="Quitar evidencia" aria-label="Quitar evidencia"
+                      disabled="@isBusy" @onclick="ClearEvidence">
+                <span class="oi oi-trash" aria-hidden="true"></span>
+              </button>
+            </div>
+          }
         </div>
       </div>
 
@@ -237,9 +260,13 @@
               }
             </ul>
             <footer>
-              @if (document.HasEvidence)
+              @if (document.HasEvidence && IsImageFile(document.EvidenceFileName))
               {
-                <a href="/api/logistica/merma/@document.Id/evidencia" target="_blank" rel="noopener">Ver evidencia</a>
+                <button type="button" class="waste-card__evidence" @onclick="() => OpenDocumentEvidence(document)">Ver evidencia</button>
+              }
+              else if (document.HasEvidence)
+              {
+                <a href="@EvidenceUrl(document)" target="_blank" rel="noopener">Ver evidencia</a>
               }
               @if (document.ReversedByAdjustmentId.HasValue)
               {
@@ -319,6 +346,35 @@
           <button class="btn btn-success" type="button" @onclick="UseCameraPhotoAsync" disabled="@isCameraCapturing">@(isCameraCapturing ? "Preparando…" : "Usar esta foto")</button>
         }
       </footer>
+    </div>
+  </div>
+}
+
+@if (viewerImageUrl is not null)
+{
+  <div class="waste-image-viewer" role="dialog" aria-modal="true" aria-label="@viewerTitle" tabindex="-1"
+       @ref="viewerElement" @onclick="CloseViewer" @onkeydown="CloseViewerOnEscape">
+    <div class="waste-image-viewer__dialog" @onclick:stopPropagation="true">
+      <header>
+        <div>
+          <strong>@viewerTitle</strong>
+          @if (!string.IsNullOrWhiteSpace(viewerSubtitle))
+          {
+            <span>@viewerSubtitle</span>
+          }
+        </div>
+        <button type="button" aria-label="Cerrar evidencia" @onclick="CloseViewer"><span class="oi oi-x" aria-hidden="true"></span></button>
+      </header>
+      <div class="waste-image-viewer__body">
+        @if (viewerError is not null)
+        {
+          <div class="alert alert-warning mb-0" role="alert">@viewerError</div>
+        }
+        else
+        {
+          <img src="@viewerImageUrl" alt="@viewerTitle" @onerror="ShowViewerError" />
+        }
+      </div>
     </div>
   </div>
 }

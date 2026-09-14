@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using OrionERP.Application.Features.Logistica.Shared;
 using OrionERP.Application.Features.Logistica.Stock;
@@ -11,8 +12,8 @@ namespace OrionERP.Web.Features.Restaurante;
 public partial class RestaurantWastePage : IAsyncDisposable
 {
   private const long MaxEvidenceBytes = 10 * 1024 * 1024;
-  private const int CameraImageMaxPixels = 1600;
-  private const int CameraThumbnailMaxPixels = 320;
+  private const int ImageMaxPixels = 1600;
+  private const int ThumbnailMaxPixels = 320;
   private const int BackdateDayLimit = 7;
   private static readonly CultureInfo MoneyCulture = CultureInfo.GetCultureInfo("es-MX");
 
@@ -34,6 +35,22 @@ public partial class RestaurantWastePage : IAsyncDisposable
   private DateOnly occurredOn = DateOnly.FromDateTime(DateTime.Now);
   private byte[] evidence = [];
   private string evidenceFileName = string.Empty;
+  private string evidenceSource = string.Empty;
+
+  /// <summary>
+  /// Vistas previas de la evidencia en captura, como data URL. Se arman una vez al adjuntar:
+  /// recalcular el base64 en cada render costaría tanto como la foto.
+  /// </summary>
+  private string? evidenceThumbnailUrl;
+  private string? evidenceImageUrl;
+  private int evidenceInputKey;
+
+  private string? viewerImageUrl;
+  private string viewerTitle = string.Empty;
+  private string? viewerSubtitle;
+  private string? viewerError;
+  private bool focusViewer;
+  private ElementReference viewerElement;
   private bool showConfirm;
 
   [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
@@ -218,8 +235,7 @@ public partial class RestaurantWastePage : IAsyncDisposable
     reasonCode = WasteReasonCatalog.Expired;
     reasonNote = string.Empty;
     occurredOn = Today;
-    evidence = [];
-    evidenceFileName = string.Empty;
+    ClearEvidence();
     showConfirm = false;
   }
 
@@ -248,16 +264,119 @@ public partial class RestaurantWastePage : IAsyncDisposable
       await using var stream = args.File.OpenReadStream(MaxEvidenceBytes);
       using var memory = new MemoryStream();
       await stream.CopyToAsync(memory);
-      evidence = memory.ToArray();
-      evidenceFileName = args.File.Name;
+      var bytes = memory.ToArray();
+
+      // Se registra el archivo tal cual. Sólo la vista previa se reduce, y en el navegador, para
+      // que una foto de 10 MB no cruce el circuito entera nada más para verse.
+      string? imageUrl = null;
+      string? thumbnailUrl = null;
+      if (IsImageFile(args.File.Name, args.File.ContentType))
+      {
+        imageUrl = await ResizeToDataUrlAsync(args.File, ImageMaxPixels);
+        if (imageUrl is not null) thumbnailUrl = await ResizeToDataUrlAsync(args.File, ThumbnailMaxPixels) ?? imageUrl;
+      }
+
+      SetEvidence(bytes, args.File.Name, "Archivo", thumbnailUrl, imageUrl);
     }
     catch (Exception ex)
     {
-      evidence = [];
-      evidenceFileName = string.Empty;
+      SetEvidence([], string.Empty, string.Empty, null, null);
       Show(Errors.ToUserMessage(ex, "adjuntar la evidencia", new { args.File.Name, args.File.Size }), true);
     }
   }
+
+  /// <summary>Nulo cuando el navegador no sabe dibujar la imagen (un HEIC en Windows, por ejemplo).</summary>
+  private static async Task<string?> ResizeToDataUrlAsync(IBrowserFile file, int maxPixels)
+  {
+    try
+    {
+      var resized = await file.RequestImageFileAsync("image/jpeg", maxPixels, maxPixels);
+      await using var stream = resized.OpenReadStream(MaxEvidenceBytes);
+      using var memory = new MemoryStream();
+      await stream.CopyToAsync(memory);
+      return ToDataUrl(resized.ContentType, memory.ToArray());
+    }
+    catch (Exception)
+    {
+      return null;
+    }
+  }
+
+  private void SetEvidence(byte[] bytes, string fileName, string source, string? thumbnailUrl, string? imageUrl)
+  {
+    evidence = bytes;
+    evidenceFileName = fileName;
+    evidenceSource = source;
+    evidenceThumbnailUrl = thumbnailUrl;
+    evidenceImageUrl = imageUrl;
+  }
+
+  /// <summary>
+  /// Además de vaciar la evidencia rehace el InputFile: si el input conserva el archivo, volver a
+  /// elegir ese mismo archivo no dispara el cambio.
+  /// </summary>
+  private void ClearEvidence()
+  {
+    SetEvidence([], string.Empty, string.Empty, null, null);
+    evidenceInputKey++;
+  }
+
+  private string EvidenceTypeLabel
+  {
+    get
+    {
+      var extension = Path.GetExtension(evidenceFileName).TrimStart('.');
+      return extension.Length == 0 ? "Archivo" : extension.ToUpperInvariant();
+    }
+  }
+
+  private void OpenCapturedEvidence()
+  {
+    if (evidenceImageUrl is null) return;
+    OpenViewer(evidenceImageUrl, evidenceFileName, $"{FormatFileSize(evidence.Length)} · {evidenceSource} · todavía sin registrar");
+  }
+
+  private void OpenDocumentEvidence(WasteDocumentDto document)
+    => OpenViewer(EvidenceUrl(document), $"Evidencia de {document.WasteCode}", $"{document.EvidenceFileName} · registró {document.CreatedBy}");
+
+  private void OpenViewer(string imageUrl, string title, string subtitle)
+  {
+    viewerImageUrl = imageUrl;
+    viewerTitle = title;
+    viewerSubtitle = subtitle;
+    viewerError = null;
+    focusViewer = true;
+  }
+
+  private void CloseViewer()
+  {
+    viewerImageUrl = null;
+    viewerError = null;
+  }
+
+  private void CloseViewerOnEscape(KeyboardEventArgs args)
+  {
+    if (args.Key == "Escape") CloseViewer();
+  }
+
+  private void ShowViewerError()
+    => viewerError = "No se pudo cargar la imagen. Actualiza la pantalla e inténtalo de nuevo.";
+
+  /// <summary>La foto registrada viaja por HTTP y no por el circuito; ver <c>WasteEvidenceApi</c>.</summary>
+  private static string EvidenceUrl(WasteDocumentDto document)
+    => $"/api/logistica/merma/{document.Id}/evidencia";
+
+  private static bool IsImageFile(string? fileName, string? contentType = null)
+    => contentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true
+      || Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp";
+
+  private static string ToDataUrl(string? contentType, byte[] bytes)
+    => $"data:{(string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType)};base64,{Convert.ToBase64String(bytes)}";
+
+  private static string FormatFileSize(long bytes)
+    => bytes >= 1024 * 1024
+      ? $"{(bytes / 1048576d).ToString("0.#", MoneyCulture)} MB"
+      : $"{Math.Max(1, (int)Math.Ceiling(bytes / 1024d))} KB";
 
   private async Task OpenCameraAsync()
   {
@@ -305,8 +424,8 @@ public partial class RestaurantWastePage : IAsyncDisposable
       pendingCameraCapture = await module.InvokeAsync<CameraCaptureResult>(
         "capture",
         cameraVideoElement,
-        CameraImageMaxPixels,
-        CameraThumbnailMaxPixels);
+        ImageMaxPixels,
+        ThumbnailMaxPixels);
       cameraPreviewUrl = await module.InvokeAsync<string>("getPreviewUrl");
     }
     catch (Exception)
@@ -343,8 +462,18 @@ public partial class RestaurantWastePage : IAsyncDisposable
     try
     {
       var module = await EnsureCameraModuleAsync();
-      evidence = await ReadCameraBlobAsync(module, "getLastImage", MaxEvidenceBytes);
-      evidenceFileName = $"merma-{wasteCode}-{DateTime.Now:yyyyMMddHHmmss}.jpg";
+      var image = await ReadCameraBlobAsync(module, "getLastImage", MaxEvidenceBytes);
+      var thumbnail = await ReadCameraBlobAsync(module, "getLastThumbnail", MaxEvidenceBytes);
+      // Foto y miniatura salen del mismo canvas, así que comparten el tipo.
+      var contentType = pendingCameraCapture.ImageContentType;
+      SetEvidence(
+        image,
+        $"merma-{wasteCode}-{DateTime.Now:yyyyMMddHHmmss}.jpg",
+        "Cámara",
+        ToDataUrl(contentType, thumbnail),
+        ToDataUrl(contentType, image));
+      // Un archivo subido antes sigue en el input; sin rehacerlo, volver a elegirlo no avisa.
+      evidenceInputKey++;
       await module.InvokeVoidAsync("clearLastCapture");
       await CloseCameraAsync(showState: false);
       Show("Foto lista como evidencia.", false);
@@ -361,6 +490,17 @@ public partial class RestaurantWastePage : IAsyncDisposable
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
+    if (focusViewer)
+    {
+      focusViewer = false;
+      // Sin foco, el visor no recibe el Escape.
+      if (viewerImageUrl is not null)
+      {
+        try { await viewerElement.FocusAsync(); }
+        catch (JSException) { }
+      }
+    }
+
     if (!pendingCameraStart) return;
 
     pendingCameraStart = false;

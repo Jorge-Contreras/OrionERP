@@ -92,12 +92,29 @@ public sealed class RestaurantWastePageTests
     Assert.Contains("CaptureCameraAsync", code, StringComparison.Ordinal);
     Assert.Contains("getLastImage", code, StringComparison.Ordinal);
     Assert.Contains("./js/orden-trabajo-camera.js", code, StringComparison.Ordinal);
-    Assert.Contains("/api/logistica/merma/@document.Id/evidencia", page, StringComparison.Ordinal);
+    Assert.Contains("\"/api/logistica/merma/{document.Id}/evidencia\"", code, StringComparison.Ordinal);
     Assert.Contains("RequireAuthorization(\"RestaurantWaste\")", api, StringComparison.Ordinal);
     // El fetch corre fuera del circuito, donde IHospitalityScopeAccessor no puede leer el estado
     // de autenticación: el endpoint arma el servicio sin ese alcance a propósito.
     Assert.Contains("new WasteService(connectionFactory)", api, StringComparison.Ordinal);
     Assert.DoesNotContain("IWasteService", api, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Evidence_ShowsTheImageAndOpensItFullSizeInsteadOfOnlyNamingTheFile()
+  {
+    var page = RepoFile.Read(PagePath);
+    var code = RepoFile.Read(CodePath);
+
+    // Quien sube la foto la ve antes de confirmar la baja, igual que en órdenes de trabajo.
+    Assert.Contains("<img src=\"@evidenceThumbnailUrl\"", page, StringComparison.Ordinal);
+    Assert.Contains("@onclick=\"OpenCapturedEvidence\"", page, StringComparison.Ordinal);
+    Assert.Contains("class=\"waste-image-viewer\"", page, StringComparison.Ordinal);
+    Assert.Contains("OpenDocumentEvidence(document)", page, StringComparison.Ordinal);
+    // Sólo la vista previa se reduce, y en el navegador; lo que se registra es el archivo original.
+    Assert.Contains("RequestImageFileAsync(\"image/jpeg\"", code, StringComparison.Ordinal);
+    Assert.Contains("getLastThumbnail", code, StringComparison.Ordinal);
+    Assert.Contains("Evidence = evidence,", code, StringComparison.Ordinal);
   }
 
   [Fact]

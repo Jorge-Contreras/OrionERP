@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Shared;
 
 namespace OrionERP.UnitTests.Shared;
@@ -83,6 +84,23 @@ public class NavigationCatalogTests
 
         Assert.NotNull(result);
         Assert.Equal("/ordenes-trabajo/plantillas", result.Entry.Href);
+    }
+
+    [Fact]
+    public void GetDestinations_HidesModulePagesTheCompanyDoesNotHave()
+    {
+        var restaurantOnly = new HashSet<string> { PlatformModuleCodes.AccountingCore, PlatformModuleCodes.Restaurant };
+
+        var paths = NavigationCatalog
+            .GetDestinations(includeAdmin: true, arrendadoresOnly: false, restaurantOnly)
+            .Select(item => item.Entry.Href)
+            .ToArray();
+
+        Assert.Contains("/restaurante/pos", paths);
+        Assert.Contains("/ajustes", paths);
+        Assert.DoesNotContain("/reservaciones/lista", paths);
+        Assert.DoesNotContain("/arrendadores", paths);
+        Assert.Empty(NavigationCatalog.GetDestinations(includeAdmin: false, arrendadoresOnly: true, restaurantOnly));
     }
 
     private static ClaimsPrincipal BuildUser(params string[] roles)

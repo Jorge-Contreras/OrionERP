@@ -1,7 +1,9 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Platform
 @implements IAsyncDisposable
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
+@inject ICompanyModuleAccess ModuleAccess
 
 <button type="button"
         class="command-center-trigger"
@@ -188,9 +190,12 @@
         var isAdmin = user?.Identity?.IsAuthenticated == true && user.IsInRole("Administrador");
         var isArrendadoresOnly = user is not null && NavigationCatalog.IsArrendadoresOnly(user);
 
+        // Lo mismo que el menú: la paleta no ofrece páginas de módulos que la empresa no tiene.
+        var enabledModules = await ModuleAccess.GetEnabledModulesAsync();
+
         _availableDestinations.Clear();
         _availableDestinations.AddRange(
-            NavigationCatalog.GetDestinations(isAdmin, isArrendadoresOnly));
+            NavigationCatalog.GetDestinations(isAdmin, isArrendadoresOnly, enabledModules));
 
         var identityKey = user?.Identity?.Name?.Trim().ToLowerInvariant();
         _storageKey = string.IsNullOrWhiteSpace(identityKey)

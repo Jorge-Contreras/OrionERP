@@ -1,5 +1,5 @@
 @page "/reservaciones/calendario"
-@attribute [Authorize(Roles = "Administrador,SatOperator,OrdenTrabajoOperador,Arrendadores")]
+@attribute [Authorize(Policy = "HospitalityCalendar")]
 
 <PageTitle>Calendario de Reservaciones</PageTitle>
 

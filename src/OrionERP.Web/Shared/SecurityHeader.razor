@@ -1,8 +1,10 @@
 @using System.Globalization
 @using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Platform
 @using OrionERP.Infrastructure.Auth
 @inject ICurrentCompanyContext CompanyContext
 @inject NavigationManager Navigation
+@inject ICompanyModuleAccess ModuleAccess
 
 <AuthorizeView>
     <Authorized Context="context">
@@ -24,7 +26,7 @@
             </div>
 
             <div class="security-header__actions">
-                @if (context.User.IsInRole("Administrador") || context.User.IsInRole("SatOperator"))
+                @if (hasHospitality && (context.User.IsInRole("Administrador") || context.User.IsInRole("SatOperator")))
                 {
                     <a class="btn btn-link btn-sm" href="@SiteSelectionUrl">Sede de Hospedaje</a>
                 }
@@ -46,6 +48,12 @@
     private static readonly CultureInfo SpanishMexico = CultureInfo.GetCultureInfo("es-MX");
 
     [Parameter] public bool CompactMobile { get; set; }
+
+    private bool hasHospitality;
+
+    // Elegir sede de Hospedaje sólo tiene sentido si la empresa tiene ese módulo.
+    protected override async Task OnInitializedAsync()
+        => hasHospitality = await ModuleAccess.IsEnabledAsync(PlatformModuleCodes.Hospitality);
 
     private string SiteSelectionUrl => "/reservaciones/sede?returnUrl=" +
         Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri));

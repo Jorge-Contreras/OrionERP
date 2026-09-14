@@ -23,6 +23,7 @@ using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Application.Features.CapitalHumano.Workforce;
 using OrionERP.Application.Features.Cfdi.CargarXmlSat.Contracts;
 using OrionERP.Application.Features.Auth.Companies;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Auth;
 using OrionERP.Infrastructure.Features.CapitalHumano.Workforce;
@@ -460,25 +461,33 @@ builder.Services.AddAuthorization(options =>
   });
   options.AddPolicy("FinanzasLectura", policy => policy.RequireCompanyRoles("FinanzasLectura", "FinanzasManager"));
   options.AddPolicy("FinanzasManager", policy => policy.RequireCompanyRoles("FinanzasManager"));
-  options.AddPolicy("RestaurantAdmin", policy => policy.RequireCompanyRoles("RestauranteAdmin", "RestauranteSupervisor"));
-  options.AddPolicy("RestaurantAdminOnly", policy => policy.RequireCompanyRoles("RestauranteAdmin"));
-  options.AddPolicy("RestaurantPos", policy => policy.RequireRevocableCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
-  options.AddPolicy("RestaurantKitchen", policy => policy.RequireCompanyRoles("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin"));
-  options.AddPolicy("RestaurantDisplay", policy => policy.RequireCompanyRoles("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin"));
-  options.AddPolicy("RestaurantCash", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+  // Restaurante y Hospedaje exigen, además del rol, que la empresa de la sesión tenga el
+  // módulo habilitado con una sede utilizable. Sin él la página explica que el módulo no
+  // está habilitado, en vez de abrir pantallas que sólo mostrarían errores de alcance.
+  options.AddPolicy("RestaurantAdmin", policy => policy.RequireCompanyRoles("RestauranteAdmin", "RestauranteSupervisor").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("RestaurantAdminOnly", policy => policy.RequireCompanyRoles("RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("RestaurantPos", policy => policy.RequireRevocableCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("RestaurantKitchen", policy => policy.RequireCompanyRoles("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("RestaurantDisplay", policy => policy.RequireCompanyRoles("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("RestaurantCash", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   // La merma la ve quien la produce. Cocina y caja capturan; el rango de supervisor sólo se
   // exige para cerrar la revisión y para reversar, dentro de la página.
   options.AddPolicy("RestaurantWaste", policy => policy.RequireCompanyRoles(
-      "RestauranteCocina", "RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+      "RestauranteCocina", "RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   // QZ calls these endpoints through a regular browser fetch, outside the
   // Blazor circuit that owns the selected-RFC state. Keep the bridge limited
-  // to restaurant cash roles without relying on circuit-scoped state.
+  // to restaurant cash roles without relying on circuit-scoped state; the
+  // module requirement reads the company from the claims.
   options.AddPolicy(
       "RestaurantQzBridge",
-      policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin"));
+      policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("HospitalityAdministration", policy => policy.RequireCompanyRoles("SatOperator").RequireCompanyModule(PlatformModuleCodes.Hospitality));
+  options.AddPolicy("HospitalityCalendar", policy => policy.RequireCompanyRoles("SatOperator", "OrdenTrabajoOperador", "Arrendadores").RequireCompanyModule(PlatformModuleCodes.Hospitality));
+  options.AddPolicy("HospitalityArrendadores", policy => policy.RequireCompanyRoles("Arrendadores").RequireCompanyModule(PlatformModuleCodes.Hospitality));
   options.AddRevocableCompanyOperationPolicies();
 });
 builder.Services.AddScoped<IAuthorizationHandler, RevocableCompanyRoleAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, CompanyModuleAuthorizationHandler>();
 
 builder.Services.AddRazorPages();      // Identity UI depends on Razor Pages
 builder.Services.AddServerSideBlazor(options =>

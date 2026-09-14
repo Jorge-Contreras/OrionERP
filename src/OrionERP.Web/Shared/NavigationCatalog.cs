@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Components.Routing;
+using OrionERP.Application.Features.Platform;
 
 namespace OrionERP.Web.Shared;
 
@@ -159,10 +160,22 @@ public static class NavigationCatalog
             && !ArrendadoresPrivilegedRoles.Any(user.IsInRole);
     }
 
-    public static IReadOnlyList<NavigationDestination> GetDestinations(bool includeAdmin, bool arrendadoresOnly)
+    /// <param name="enabledModules">
+    /// Módulos habilitados para la empresa de la sesión. Con <c>null</c> no se filtra por
+    /// módulo; la interfaz siempre los pasa para no ofrecer páginas que la empresa no tiene.
+    /// </param>
+    public static IReadOnlyList<NavigationDestination> GetDestinations(
+        bool includeAdmin,
+        bool arrendadoresOnly,
+        IReadOnlySet<string>? enabledModules = null)
     {
         var destinations = Sections
             .SelectMany(section => section.Items.Select(item => new NavigationDestination(section, item)));
+
+        if (enabledModules is not null)
+        {
+            destinations = destinations.Where(destination => ModuleRoutes.IsAvailable(destination.Entry.Href, enabledModules));
+        }
 
         if (arrendadoresOnly)
         {

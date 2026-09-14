@@ -1,8 +1,10 @@
 @using System.Linq
 @using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Platform
 @implements IDisposable
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
+@inject ICompanyModuleAccess ModuleAccess
 
 @{
     var visibleSections = VisibleSections;
@@ -230,6 +232,7 @@
     private bool isWorkforcePayroll;
     private bool isFinanceReader;
     private bool attendanceEnabled;
+    private IReadOnlySet<string> enabledModules = new HashSet<string>();
 
     [Parameter] public EventCallback OnMenuItemSelected { get; set; }
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
@@ -237,7 +240,7 @@
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool HasSearch => !string.IsNullOrWhiteSpace(searchText);
 
-    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly, attendanceEnabled, hasEmployee, isWorkforceSupervisor, isWorkforceAdmin, isWorkforcePayroll, isFinanceReader, isAdmin);
+    private IReadOnlyList<VisibleNavSection> VisibleSections => BuildVisibleSections(Sections, searchText, isArrendadoresOnly, attendanceEnabled, hasEmployee, isWorkforceSupervisor, isWorkforceAdmin, isWorkforcePayroll, isFinanceReader, isAdmin, enabledModules);
     private IReadOnlyList<NavEntryDefinition> VisibleAdminItems => BuildVisibleAdminItems(searchText, isAdmin);
 
     private NavEntryDefinition? CurrentEntry
@@ -284,6 +287,9 @@
         isFinanceReader = isAdmin || user.IsInRole("FinanzasLectura") || user.IsInRole("FinanzasManager");
         attendanceEnabled = Configuration.GetValue<bool>("CapitalHumano:AttendanceEnabled");
         isArrendadoresOnly = NavigationCatalog.IsArrendadoresOnly(user);
+        // Una empresa sin Hospedaje o sin Restaurante no ve esas secciones: sus páginas sólo
+        // le mostrarían que el módulo no está habilitado.
+        enabledModules = await ModuleAccess.GetEnabledModulesAsync();
     }
 
     public void Dispose()
@@ -291,19 +297,20 @@
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 
-    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly, bool featureEnabled, bool employee, bool supervisor, bool admin, bool payroll, bool financeReader, bool globalAdmin)
+    private static IReadOnlyList<VisibleNavSection> BuildVisibleSections(IReadOnlyList<NavSectionDefinition> source, string filter, bool arrendadoresOnly, bool featureEnabled, bool employee, bool supervisor, bool admin, bool payroll, bool financeReader, bool globalAdmin, IReadOnlySet<string> enabledModules)
     {
         var query = filter.Trim();
         var sections = new List<VisibleNavSection>();
 
         foreach (var section in source)
         {
-            var availableItems = arrendadoresOnly
-                ? section.Items.Where(IsArrendadoresNavItem).ToList()
+            var availableItems = (arrendadoresOnly
+                ? section.Items.Where(IsArrendadoresNavItem)
                 : section.Items
                     .Where(item => CanSeeWorkforceItem(item, featureEnabled, employee, supervisor, admin, payroll))
-                    .Where(item => CanSeeFinanceItem(item, financeReader, globalAdmin))
-                    .ToList();
+                    .Where(item => CanSeeFinanceItem(item, financeReader, globalAdmin)))
+                .Where(item => ModuleRoutes.IsAvailable(item.Href, enabledModules))
+                .ToList();
 
             IReadOnlyList<NavEntryDefinition> items = string.IsNullOrWhiteSpace(query)
                 ? availableItems

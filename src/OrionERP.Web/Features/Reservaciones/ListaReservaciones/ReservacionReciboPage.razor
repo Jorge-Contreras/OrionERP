@@ -1,5 +1,5 @@
 @page "/reservaciones/recibo/{ReservationId:int}"
-@attribute [Authorize(Roles = "Administrador,SatOperator")]
+@attribute [Authorize(Policy = "HospitalityAdministration")]
 
 <PageTitle>Recibo de Reservación</PageTitle>
 

@@ -17,7 +17,6 @@ namespace OrionERP.IntegrationTests.Web;
 public class OrionErpRouteProtectionTests
 {
   [Theory]
-  [InlineData(typeof(ListaReservacionesPage), "/reservaciones/lista", "Administrador,SatOperator")]
   [InlineData(typeof(IdentityAdminPage), "/admin/seguridad", "Administrador")]
   [InlineData(typeof(PlatformAdministrationPage), "/admin/plataforma", "Administrador")]
   public void ProtectedErpRoutes_RetainAuthorizeMetadata(Type componentType, string route, string roles)
@@ -54,6 +53,25 @@ public class OrionErpRouteProtectionTests
   [InlineData("/logistica/conteos", CompanyOperationPolicies.PhysicalCounts)]
   [InlineData("/restaurante/pos", "RestaurantPos")]
   public void TargetOperations_RequireRevocableCompanyPolicy(string route, string policy)
+  {
+    var componentType = typeof(ListaReservacionesPage).Assembly
+      .GetTypes()
+      .Single(type => type.GetCustomAttributes<RouteAttribute>()
+        .Any(attribute => attribute.Template == route));
+
+    Assert.Contains(componentType.GetCustomAttributes<AuthorizeAttribute>(),
+      attribute => attribute.Policy == policy && attribute.Roles is null);
+  }
+
+  // Mismos roles que antes, más el módulo: sin Hospedaje la empresa ve que el módulo no
+  // está habilitado en vez de abrir pantallas que niegan el alcance.
+  [Theory]
+  [InlineData("/reservaciones/lista", "HospitalityAdministration")]
+  [InlineData("/reservaciones/{ReservationId:int}", "HospitalityAdministration")]
+  [InlineData("/reservaciones/recibo/{ReservationId:int}", "HospitalityAdministration")]
+  [InlineData("/reservaciones/calendario", "HospitalityCalendar")]
+  [InlineData("/arrendadores", "HospitalityArrendadores")]
+  public void HospitalityRoutes_RequireTheModuleAwarePolicy(string route, string policy)
   {
     var componentType = typeof(ListaReservacionesPage).Assembly
       .GetTypes()

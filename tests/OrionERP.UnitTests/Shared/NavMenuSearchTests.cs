@@ -1,11 +1,19 @@
 using System.Collections;
 using System.Reflection;
+using OrionERP.Application.Features.Platform;
 using OrionERP.Web.Shared;
 
 namespace OrionERP.UnitTests.Shared;
 
 public class NavMenuSearchTests
 {
+  private static readonly IReadOnlySet<string> AllModules = new HashSet<string>
+  {
+    PlatformModuleCodes.AccountingCore,
+    PlatformModuleCodes.Hospitality,
+    PlatformModuleCodes.Restaurant
+  };
+
   /// <summary>
   /// El expediente de empleados vive en la seccion de Personas, no en la de
   /// administracion: esta ultima se dibuja completa dentro de un AuthorizeView de
@@ -25,6 +33,40 @@ public class NavMenuSearchTests
     var sections = InvokeBuildVisibleSections("capital humano", admin: false);
 
     Assert.DoesNotContain("/capital-humano", HrefsOf(sections));
+  }
+
+  [Fact]
+  public void BuildVisibleSections_WithoutModules_KeepsUniversalSectionsOnly()
+  {
+    var hrefs = HrefsOf(InvokeBuildVisibleSections(string.Empty, admin: true,
+      modules: new HashSet<string> { PlatformModuleCodes.AccountingCore }));
+
+    Assert.DoesNotContain(hrefs, href => href.StartsWith("/reservaciones", StringComparison.Ordinal));
+    Assert.DoesNotContain(hrefs, href => href.StartsWith("/restaurante", StringComparison.Ordinal));
+    Assert.DoesNotContain("/arrendadores", hrefs);
+    Assert.Contains("/contabilidad/transacciones/list", hrefs);
+    Assert.Contains("/logistica/materiales", hrefs);
+    Assert.Contains("/ordenes-trabajo", hrefs);
+  }
+
+  [Fact]
+  public void BuildVisibleSections_RestaurantCompany_SeesRestauranteButNotReservaciones()
+  {
+    var hrefs = HrefsOf(InvokeBuildVisibleSections(string.Empty, admin: true,
+      modules: new HashSet<string> { PlatformModuleCodes.AccountingCore, PlatformModuleCodes.Restaurant }));
+
+    Assert.Contains("/restaurante/pos", hrefs);
+    Assert.DoesNotContain("/reservaciones/lista", hrefs);
+    Assert.DoesNotContain("/reservaciones/calendario", hrefs);
+  }
+
+  [Fact]
+  public void BuildVisibleSections_ArrendadorWithoutHospitality_SeesNothing()
+  {
+    var sections = InvokeBuildVisibleSections(string.Empty, admin: false, arrendadoresOnly: true,
+      modules: new HashSet<string> { PlatformModuleCodes.AccountingCore });
+
+    Assert.Empty(sections);
   }
 
   [Fact]
@@ -59,7 +101,11 @@ public class NavMenuSearchTests
     return hrefs;
   }
 
-  private static IReadOnlyList<object> InvokeBuildVisibleSections(string filter, bool admin)
+  private static IReadOnlyList<object> InvokeBuildVisibleSections(
+    string filter,
+    bool admin,
+    bool arrendadoresOnly = false,
+    IReadOnlySet<string>? modules = null)
   {
     var method = typeof(NavMenu).GetMethod(
       "BuildVisibleSections",
@@ -69,14 +115,15 @@ public class NavMenuSearchTests
     var result = method.Invoke(null, [
       NavigationCatalog.Sections,
       filter,
-      /* arrendadoresOnly */ false,
+      /* arrendadoresOnly */ arrendadoresOnly,
       /* featureEnabled  */ true,
       /* employee        */ false,
       /* supervisor      */ admin,
       /* admin           */ admin,
       /* payroll         */ false,
       /* financeReader   */ false,
-      /* globalAdmin     */ admin])
+      /* globalAdmin     */ admin,
+      /* enabledModules  */ modules ?? AllModules])
       ?? throw new InvalidOperationException("NavMenu.BuildVisibleSections returned null.");
 
     return ((IEnumerable)result).Cast<object>().ToArray();

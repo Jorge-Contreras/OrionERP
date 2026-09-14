@@ -1,6 +1,6 @@
 @page "/arrendadores"
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Roles = "Administrador,Arrendadores")]
+@attribute [Authorize(Policy = "HospitalityArrendadores")]
 
 <PageTitle>Arrendadores</PageTitle>
 

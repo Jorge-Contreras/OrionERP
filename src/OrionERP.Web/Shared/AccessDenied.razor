@@ -1,4 +1,7 @@
+@using OrionERP.Application.Features.Platform
 @inject NavigationManager Navigation
+@inject ICompanyModuleAccess ModuleAccess
+@inject ICurrentCompanyContext CompanyContext
 
 @* Shown when the visitor IS signed in but lacks the role a page requires.
    Sending this case to the login page instead produces an infinite redirect
@@ -6,23 +9,52 @@
    back to the page that rejected them. *@
 
 <div class="access-denied" role="alert">
-    <h1 class="access-denied__title">
-        <i class="bi bi-shield-lock" aria-hidden="true"></i>
-        No tienes permiso para ver esta página
-    </h1>
-    <p class="access-denied__body">
-        Tu sesión está iniciada correctamente, pero tu cuenta no tiene el rol
-        necesario para abrir <code>@CurrentPath</code>.
-    </p>
-    <p class="access-denied__body">
-        Si necesitas este acceso, solicítalo a quien administre tu entorno.
-    </p>
+    @if (MissingModuleName is not null)
+    {
+        @* The page belongs to a module the company does not have. Saying so keeps
+           people from asking for a role that would not open it either. *@
+        <h1 class="access-denied__title">
+            <i class="bi bi-shield-lock" aria-hidden="true"></i>
+            El módulo @MissingModuleName no está habilitado para tu empresa
+        </h1>
+        <p class="access-denied__body">
+            <code>@CurrentPath</code> pertenece al módulo @MissingModuleName, que no está
+            habilitado para @(CompanyContext.DisplayName ?? "la empresa de tu sesión").
+        </p>
+        <p class="access-denied__body">
+            Si tu empresa necesita este módulo, solicítalo a quien administre la plataforma.
+        </p>
+    }
+    else
+    {
+        <h1 class="access-denied__title">
+            <i class="bi bi-shield-lock" aria-hidden="true"></i>
+            No tienes permiso para ver esta página
+        </h1>
+        <p class="access-denied__body">
+            Tu sesión está iniciada correctamente, pero tu cuenta no tiene el rol
+            necesario para abrir <code>@CurrentPath</code>.
+        </p>
+        <p class="access-denied__body">
+            Si necesitas este acceso, solicítalo a quien administre tu entorno.
+        </p>
+    }
     <div class="access-denied__actions">
         <a class="btn btn-primary btn-sm" href="/">Ir al inicio</a>
     </div>
 </div>
 
 @code {
+    private string? MissingModuleName { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var module = ModuleRoutes.RequiredModuleFor(CurrentPath);
+        MissingModuleName = module is not null && !await ModuleAccess.IsEnabledAsync(module)
+            ? ModuleRoutes.DisplayName(module)
+            : null;
+    }
+
     private string CurrentPath
     {
         get

@@ -79,14 +79,16 @@ public sealed class RestaurantComboUxTests
   }
 
   [Fact]
-  public void PublicMenu_ExplainsCombosWithoutOrderingControls()
+  public void PublicMenu_ExplainsAndPersonalizesCombosForOnlineOrdering()
   {
     var page = ReadRepoFile("src/OrionERP.Bruno.Web/Features/BrunoMenuPage.razor");
 
     Assert.Contains("menu-card__combo-badge", page, StringComparison.Ordinal);
     Assert.Contains("ComboSlotSummary", page, StringComparison.Ordinal);
-    Assert.Contains("Personalízalo al ordenar en caja", page, StringComparison.Ordinal);
-    Assert.DoesNotContain("Agregar a la orden", page, StringComparison.Ordinal);
+    Assert.Contains("ToggleComboOption", page, StringComparison.Ordinal);
+    Assert.Contains("ComponentModifierGroups", page, StringComparison.Ordinal);
+    Assert.Contains("Personalizar y agregar", page, StringComparison.Ordinal);
+    Assert.Contains("CanOrderOnline", page, StringComparison.Ordinal);
   }
 
   private static string ReadRepoFile(string relativePath)

@@ -1,16 +1,27 @@
 @page "/menu"
+@page "/ordenar"
 @inject IRestaurantPublicCatalogService CatalogService
+@inject IOnlineRestaurantCheckoutService CheckoutService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
+@inject IJSRuntime Js
 
-<PageTitle>Menú · @Presentation.PublicName</PageTitle>
-<HeadContent><meta name="description" content="Consulta el menú, precios y disponibilidad de @Presentation.PublicName en @Presentation.LocationName." /></HeadContent>
+<PageTitle>Menú y pedidos · @Presentation.PublicName</PageTitle>
+<HeadContent><meta name="description" content="Consulta el menú y, cuando el servicio esté disponible, pide en línea para recoger en @Presentation.PublicName." /></HeadContent>
 
-<section class="page-hero page-hero--menu"><span>Hecho para el antojo</span><h1>Nuestro menú</h1><p>Precios y disponibilidad se actualizan desde la operación del restaurante.</p></section>
+<section class="page-hero page-hero--menu">
+  <span>Hecho para el antojo</span>
+  <h1>Nuestro menú</h1>
+  <p>Precios y disponibilidad se actualizan desde la operación del restaurante.</p>
+  @if (ordering?.CanAcceptOrders == true)
+  {
+    <div class="page-hero__actions"><button class="button button--accent" type="button" @onclick="OpenCart">Ver mi pedido (@CartCount)</button></div>
+  }
+</section>
 
 @if (isLoading)
 {
-  <section class="state-card"><h2>Cargando el menú…</h2></section>
+  <section class="state-card" aria-live="polite"><h2>Cargando el menú…</h2></section>
 }
 else if (catalog is null || !catalog.Menu.Sections.Any(section => section.Products.Count > 0))
 {
@@ -18,75 +29,508 @@ else if (catalog is null || !catalog.Menu.Sections.Any(section => section.Produc
 }
 else
 {
+  @if (ordering?.IsEnabled == true && !ordering.CanAcceptOrders)
+  {
+    <aside class="ordering-notice" role="status">
+      <strong>Pedidos en línea no disponibles ahora</strong>
+      <span>@(string.IsNullOrWhiteSpace(ordering.UnavailableReason) ? "Puedes consultar el menú y volver a intentarlo durante el horario de pedidos." : ordering.UnavailableReason)</span>
+    </aside>
+  }
+
   <nav class="section-jump" aria-label="Secciones del menú">
-    @* Absolute path, not a bare fragment: <base href="/"> would resolve "#x" against the site root. *@
-    @foreach (var section in catalog.Menu.Sections) { <a href="/menu#@Slug(section.Name)" target="_top">@section.Name</a> }
+    @foreach (var section in catalog.Menu.Sections.Where(section => section.Products.Count > 0))
+    {
+      <a href="/menu#@Slug(section.Name)" target="_top">@section.Name</a>
+    }
   </nav>
-  <div class="menu-page">
-    @foreach (var section in catalog.Menu.Sections)
+
+  <div class="menu-page @(ordering?.IsEnabled == true ? "has-ordering" : null)">
+    @foreach (var section in catalog.Menu.Sections.Where(section => section.Products.Count > 0))
     {
       <section id="@Slug(section.Name)" class="menu-section">
         <header><span>@Presentation.ShortName</span><h2>@section.Name</h2></header>
         <div class="menu-grid">
           @foreach (var product in section.Products)
           {
-            <article class="menu-card @(product.ProductKind == RestaurantProductKinds.Combo ? "is-combo" : null) @(product.IsSoldOut ? "is-sold-out" : null)">
+            var onlineUnavailable = ordering?.IsEnabled == true && (!product.CanOrderOnline || product.IsSoldOut);
+            <article class="menu-card @(product.ProductKind == RestaurantProductKinds.Combo ? "is-combo" : null) @(product.IsSoldOut ? "is-sold-out" : null) @(onlineUnavailable ? "is-online-unavailable" : null)">
               <div class="menu-card__image">
                 @if (product.HasImage)
                 {
                   <img class="menu-card__image-backdrop" src="/media/productos/@product.Id?thumbnail=false" alt="" aria-hidden="true" loading="lazy" decoding="async" />
                   <img class="menu-card__image-main" src="/media/productos/@product.Id?thumbnail=false" alt="@product.Name" loading="lazy" decoding="async" />
                 }
-                else { <span>@Presentation.ShortName</span> }
+                else
+                {
+                  <span>@Presentation.ShortName</span>
+                }
                 @if (product.IsSoldOut) { <b>Agotado por hoy</b> }
               </div>
               <div class="menu-card__copy">
                 @if (product.ProductKind == RestaurantProductKinds.Combo) { <span class="menu-card__combo-badge">Combo</span> }
-                <h3>@product.Name</h3><strong>@(product.ProductKind == RestaurantProductKinds.Combo ? $"Desde {product.Price:C0}" : product.Price.ToString("C0"))</strong><p>@product.Description</p>
+                <h3>@product.Name</h3>
+                <strong>@(product.ProductKind == RestaurantProductKinds.Combo ? $"Desde {product.Price:C0}" : product.Price.ToString("C0"))</strong>
+                <p>@product.Description</p>
                 @if (product.ProductKind == RestaurantProductKinds.Combo && product.ComboSlots.Count > 0)
                 {
                   <div class="menu-card__combo-summary" aria-label="Contenido del combo">
                     <b>Arma tu combo</b>
-                    <ul>@foreach(var slot in product.ComboSlots.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder)){<li><strong>@slot.Name</strong> @ComboSlotSummary(slot)</li>}</ul>
-                    <small>Cada línea es a elegir, no se sirven todas las opciones. Personalízalo al ordenar en caja y los suplementos se indican antes de cobrar.</small>
+                    <ul>@foreach (var slot in product.ComboSlots.Where(item => item.IsActive).OrderBy(item => item.SortOrder)) { <li><strong>@slot.Name</strong> @ComboSlotSummary(slot)</li> }</ul>
+                    <small>Cada línea es a elegir; los suplementos se muestran antes de pagar.</small>
                   </div>
                 }
                 @if (product.Allergens.Count > 0) { <small>Alérgenos declarados: @string.Join(", ", product.Allergens).</small> }
                 @if (product.DietaryTags.Count > 0) { <small>Etiquetas: @string.Join(", ", product.DietaryTags). Consulta al personal para confirmar preparación y contacto cruzado.</small> }
+
+                @if (ordering?.IsEnabled == true)
+                {
+                  <div class="menu-card__order-action">
+                    @if (product.IsSoldOut)
+                    {
+                      <span>Agotado</span>
+                    }
+                    else if (!product.CanOrderOnline)
+                    {
+                      <span>Disponible solamente en restaurante</span>
+                    }
+                    else
+                    {
+                      <button class="button button--accent" type="button" disabled="@(ordering.CanAcceptOrders != true)" @onclick="() => Customize(section, product)">
+                        @(HasChoices(product) ? "Personalizar y agregar" : "Agregar a mi pedido")
+                      </button>
+                    }
+                  </div>
+                }
               </div>
             </article>
           }
         </div>
       </section>
     }
-    <aside class="allergen-note"><strong>Información de alérgenos</strong><p>@(string.IsNullOrWhiteSpace(catalog.Menu.Site.CrossContaminationWarning) ? "Consulta a nuestro personal antes de ordenar; los ingredientes y procesos pueden cambiar." : catalog.Menu.Site.CrossContaminationWarning)</p></aside>
+    <aside class="allergen-note"><strong>Información de alérgenos</strong><p>@AllergenWarning</p></aside>
   </div>
 }
 
+@if (ordering?.IsEnabled == true)
+{
+  <button class="cart-fab" type="button" aria-label="Abrir mi pedido con @CartCount artículos" @onclick="OpenCart">
+    <span aria-hidden="true">🛒</span><strong>Mi pedido</strong><b>@CartCount</b>
+  </button>
+}
+
+@if (cartOpen)
+{
+  <button class="drawer-backdrop" type="button" aria-label="Cerrar mi pedido" @onclick="CloseCart"></button>
+  <aside class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title">
+    <header><div><span>Para recoger</span><h2 id="cart-title">Mi pedido</h2></div><button type="button" aria-label="Cerrar mi pedido" @onclick="CloseCart">×</button></header>
+    <div class="cart-drawer__content">
+      @if (cart.Count == 0)
+      {
+        <div class="cart-empty"><strong>Tu pedido está vacío</strong><p>Agrega algo del menú para continuar.</p></div>
+      }
+      else
+      {
+        @foreach (var line in cart)
+        {
+          <article class="cart-line">
+            <div><h3>@line.ProductName</h3><strong>@line.DisplayTotal.ToString("C")</strong></div>
+            @if (line.ComboSelections.Count > 0) { <p>@string.Join(" · ", line.ComboSelections.Select(item => $"{item.SlotName}: {item.OptionName}"))</p> }
+            @if (line.ModifierNames.Count > 0) { <p>@string.Join(" · ", line.ModifierNames)</p> }
+            @if (!string.IsNullOrWhiteSpace(line.Notes)) { <p class="cart-line__note">“@line.Notes”</p> }
+            <footer>
+              <div class="quantity-stepper" aria-label="Cantidad de @line.ProductName">
+                <button type="button" aria-label="Quitar uno" @onclick="() => ChangeQuantity(line, -1)">−</button>
+                <b>@line.Quantity.ToString("0")</b>
+                <button type="button" aria-label="Agregar uno" disabled="@(line.Quantity >= 20)" @onclick="() => ChangeQuantity(line, 1)">+</button>
+              </div>
+              <button class="cart-line__remove" type="button" @onclick="() => RemoveLine(line)">Quitar</button>
+            </footer>
+          </article>
+        }
+      }
+    </div>
+    <footer class="cart-drawer__footer">
+      <div><span>Subtotal estimado</span><strong>@CartTotal.ToString("C")</strong></div>
+      <small>Promociones, impuestos y disponibilidad se confirman antes del pago. Máximo vigente: @ordering!.MaximumOrderAmount.ToString("C0") MXN.</small>
+      <button class="button button--accent" type="button" disabled="@(cart.Count == 0 || ordering!.CanAcceptOrders != true)" @onclick="GoToCheckout">Revisar y pagar</button>
+    </footer>
+  </aside>
+}
+
+@if (selectedProduct is not null && selectedSection is not null)
+{
+  <button class="drawer-backdrop personalization-backdrop" type="button" aria-label="Cerrar personalización" @onclick="CloseCustomizer"></button>
+  <section class="product-customizer" role="dialog" aria-modal="true" aria-labelledby="customizer-title">
+    <header>
+      <div><span>@(selectedProduct.ProductKind == RestaurantProductKinds.Combo ? "Arma tu combo" : "Personaliza")</span><h2 id="customizer-title">@selectedProduct.Name</h2></div>
+      <button type="button" aria-label="Cerrar personalización" @onclick="CloseCustomizer">×</button>
+    </header>
+    <div class="product-customizer__content">
+      @if (selectedProduct.ProductKind == RestaurantProductKinds.Combo)
+      {
+        @foreach (var slot in selectedProduct.ComboSlots.Where(item => item.IsActive).OrderBy(item => item.SortOrder))
+        {
+          <fieldset class="choice-group">
+            <legend>@slot.Name <small>@SelectionInstruction(slot.MinSelections, slot.MaxSelections)</small></legend>
+            @foreach (var option in slot.Options.Where(item => item.IsActive).OrderBy(item => item.SortOrder))
+            {
+              var chosen = IsComboOptionSelected(slot.Id, option.Id);
+              var optionUnavailable = option.IsSoldOut || option.ComponentProduct?.CanOrderOnline != true;
+              <label class="choice-option @(optionUnavailable ? "is-disabled" : null)">
+                <input type="checkbox" checked="@chosen" disabled="@optionUnavailable" @onchange="args => ToggleComboOption(slot, option, args.Value as bool? == true)" />
+                <span><b>@option.ComponentProductName</b>@if (option.PriceDelta > 0) { <small>+@option.PriceDelta.ToString("C")</small> }@if (option.IsSoldOut) { <small>Agotado</small> } else if (option.ComponentProduct?.CanOrderOnline != true) { <small>No disponible en línea</small> }</span>
+              </label>
+              @if (chosen && option.ComponentModifierGroups.Count > 0)
+              {
+                <div class="component-options">
+                  @foreach (var group in option.ComponentModifierGroups)
+                  {
+                    <fieldset class="choice-group choice-group--nested">
+                      <legend>@group.Name <small>@SelectionInstruction(group.MinSelections, group.MaxSelections)</small></legend>
+                      @foreach (var modifier in group.Options)
+                      {
+                        <label class="choice-option">
+                          <input type="checkbox" checked="@IsComponentModifierSelected(slot.Id, option.Id, modifier.Id)" @onchange="args => ToggleComponentModifier(slot, option, group, modifier, args.Value as bool? == true)" />
+                          <span><b>@modifier.Name</b>@if (modifier.PriceDelta != 0) { <small>@SignedPrice(modifier.PriceDelta)</small> }</span>
+                        </label>
+                      }
+                    </fieldset>
+                  }
+                </div>
+              }
+            }
+          </fieldset>
+        }
+      }
+      else
+      {
+        @foreach (var group in selectedProduct.ModifierGroups)
+        {
+          <fieldset class="choice-group">
+            <legend>@group.Name <small>@SelectionInstruction(group.MinSelections, group.MaxSelections)</small></legend>
+            @foreach (var option in group.Options)
+            {
+              <label class="choice-option">
+                <input type="checkbox" checked="@selectedModifierIds.Contains(option.Id)" @onchange="args => ToggleModifier(group, option, args.Value as bool? == true)" />
+                <span><b>@option.Name</b>@if (option.PriceDelta != 0) { <small>@SignedPrice(option.PriceDelta)</small> }</span>
+              </label>
+            }
+          </fieldset>
+        }
+      }
+
+      <label class="item-note"><span>Nota para este artículo <small>opcional</small></span><textarea maxlength="500" rows="3" @bind="itemNotes" placeholder="Ej. salsa aparte"></textarea><small>@itemNotes.Length/500</small></label>
+      <aside class="allergen-note"><strong>Importante</strong><p>@AllergenWarning</p></aside>
+      @if (!string.IsNullOrWhiteSpace(customizerError)) { <p class="form-error" role="alert">@customizerError</p> }
+    </div>
+    <footer>
+      <div><span>Total del artículo</span><strong>@SelectedUnitPrice.ToString("C")</strong></div>
+      <button class="button button--accent" type="button" @onclick="AddSelectedProduct">Agregar a mi pedido</button>
+    </footer>
+  </section>
+}
+
+<div class="sr-only" aria-live="polite">@cartAnnouncement</div>
+
 @code {
   private RestaurantPublicCatalogDto? catalog;
+  private RestaurantOnlineOrderingConfigurationDto? ordering;
+  private readonly List<BrunoCartLine> cart = [];
+  private readonly HashSet<long> selectedModifierIds = [];
+  private readonly Dictionary<string, HashSet<long>> componentModifierIds = new(StringComparer.Ordinal);
+  private readonly HashSet<string> selectedComboOptions = new(StringComparer.Ordinal);
+  private RestaurantMenuSectionDto? selectedSection;
+  private RestaurantProductDto? selectedProduct;
   private bool isLoading = true;
+  private bool cartLoaded;
+  private bool cartOpen;
+  private string itemNotes = string.Empty;
+  private string? customizerError;
+  private string? cartAnnouncement;
+
+  private int CartCount => (int)cart.Sum(item => item.Quantity);
+  private decimal CartTotal => cart.Sum(item => item.DisplayTotal);
+  private string AllergenWarning => string.IsNullOrWhiteSpace(ordering?.AllergenDisclaimer)
+    ? string.IsNullOrWhiteSpace(catalog?.Menu.Site.CrossContaminationWarning)
+      ? "Consulta al personal antes de ordenar; los ingredientes y procesos pueden cambiar y existe riesgo de contacto cruzado."
+      : catalog.Menu.Site.CrossContaminationWarning
+    : ordering.AllergenDisclaimer;
+
+  private decimal SelectedUnitPrice
+  {
+    get
+    {
+      if (selectedProduct is null) return 0;
+      if (!string.Equals(selectedProduct.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase))
+      {
+        var modifiers = selectedProduct.ModifierGroups.SelectMany(group => group.Options).Where(option => selectedModifierIds.Contains(option.Id));
+        return decimal.Round(selectedProduct.Price + modifiers.Sum(option => option.PriceDelta), 2, MidpointRounding.AwayFromZero);
+      }
+
+      var selections = selectedProduct.ComboSlots
+        .SelectMany(slot => slot.Options.Where(option => IsComboOptionSelected(slot.Id, option.Id)).Select(option =>
+          new RestaurantComboPriceSelection(
+            option.PriceDelta,
+            option.Quantity,
+            option.ComponentModifierGroups.SelectMany(group => group.Options)
+              .Where(modifier => ComponentModifiers(slot.Id, option.Id).Contains(modifier.Id))
+              .Select(modifier => modifier.PriceDelta)
+              .ToArray())))
+        .ToArray();
+      return RestaurantComboPricingRules.CalculateUnitPrice(selectedProduct.Price, selections);
+    }
+  }
+
   protected override async Task OnInitializedAsync()
   {
     try
     {
       var binding = await Website.ResolveRequiredAsync();
       var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
-      catalog = await CatalogService.GetCatalogAsync(binding, localNow);
+      var catalogTask = CatalogService.GetCatalogAsync(binding, localNow);
+      var orderingTask = CheckoutService.GetConfigurationAsync(binding);
+      await Task.WhenAll(catalogTask, orderingTask);
+      catalog = await catalogTask;
+      ordering = await orderingTask;
+    }
+    catch
+    {
+      try
+      {
+        var binding = await Website.ResolveRequiredAsync();
+        var localNow = RestaurantOpeningHours.LocalNow(binding.TimeZoneId, DateTimeOffset.UtcNow);
+        catalog = await CatalogService.GetCatalogAsync(binding, localNow);
+      }
+      catch { catalog = null; }
+      ordering = new RestaurantOnlineOrderingConfigurationDto
+      {
+        PublicSiteKey = Website.Instance.PublicSiteKey,
+        IsEnabled = false,
+        CanAcceptOrders = false
+      };
     }
     finally { isLoading = false; }
   }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender || cartLoaded) return;
+    cartLoaded = true;
+    try
+    {
+      var stored = await Js.InvokeAsync<List<BrunoCartLine>>("brunoOrdering.loadCart", Website.Instance.PublicSiteKey);
+      cart.AddRange(stored ?? []);
+      StateHasChanged();
+    }
+    catch { }
+  }
+
+  private void Customize(RestaurantMenuSectionDto section, RestaurantProductDto product)
+  {
+    if (ordering?.CanAcceptOrders != true || !product.CanOrderOnline || product.IsSoldOut) return;
+    selectedSection = section;
+    selectedProduct = product;
+    selectedModifierIds.Clear();
+    selectedComboOptions.Clear();
+    componentModifierIds.Clear();
+    itemNotes = string.Empty;
+    customizerError = null;
+
+    foreach (var slot in product.ComboSlots.Where(item => item.IsActive))
+    {
+      foreach (var option in slot.Options.Where(item => item.IsActive && !item.IsSoldOut && item.IsDefault).Take(slot.MaxSelections))
+        selectedComboOptions.Add(ComboKey(slot.Id, option.Id));
+    }
+
+  }
+
+  private async Task AddSelectedProduct()
+  {
+    if (selectedProduct is null || selectedSection is null) return;
+    customizerError = ValidateSelections(selectedProduct);
+    if (customizerError is not null) return;
+
+    var line = new BrunoCartLine
+    {
+      ProductId = selectedProduct.Id,
+      MenuSectionId = selectedSection.Id,
+      ProductName = selectedProduct.Name,
+      DisplayUnitPrice = SelectedUnitPrice,
+      Notes = string.IsNullOrWhiteSpace(itemNotes) ? null : itemNotes.Trim(),
+      ModifierOptionIds = [.. selectedModifierIds],
+      ModifierNames = selectedProduct.ModifierGroups.SelectMany(group => group.Options)
+        .Where(option => selectedModifierIds.Contains(option.Id)).Select(option => SupplementName(option.Name, option.PriceDelta)).ToList(),
+      ComboSelections = selectedProduct.ComboSlots.SelectMany(slot => slot.Options)
+        .Where(option => IsComboOptionSelected(selectedProduct.ComboSlots.First(slot => slot.Options.Contains(option)).Id, option.Id))
+        .Select(option =>
+        {
+          var slot = selectedProduct.ComboSlots.First(item => item.Options.Contains(option));
+          var selectedComponents = ComponentModifiers(slot.Id, option.Id);
+          return new BrunoCartComboSelection
+          {
+            ComboSlotId = slot.Id,
+            ComboSlotOptionId = option.Id,
+            SlotName = slot.Name,
+            OptionName = option.ComponentProductName,
+            PriceDelta = option.PriceDelta,
+            ModifierOptionIds = [.. selectedComponents],
+            ModifierNames = option.ComponentModifierGroups.SelectMany(group => group.Options)
+              .Where(modifier => selectedComponents.Contains(modifier.Id)).Select(modifier => SupplementName(modifier.Name, modifier.PriceDelta)).ToList()
+          };
+        }).ToList()
+    };
+    cart.Add(line);
+    cartAnnouncement = $"{selectedProduct.Name} se agregó a tu pedido.";
+    CloseCustomizer();
+    cartOpen = true;
+    await PersistCartAsync();
+  }
+
+  private string? ValidateSelections(RestaurantProductDto product)
+  {
+    if (itemNotes.Length > 500) return "La nota admite hasta 500 caracteres.";
+    if (string.Equals(product.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase))
+    {
+      foreach (var slot in product.ComboSlots.Where(item => item.IsActive))
+      {
+        var chosen = slot.Options.Count(option => IsComboOptionSelected(slot.Id, option.Id));
+        if (chosen < slot.MinSelections || chosen > slot.MaxSelections)
+          return $"{slot.Name} requiere {SelectionInstruction(slot.MinSelections, slot.MaxSelections).ToLowerInvariant()}.";
+        foreach (var option in slot.Options.Where(option => IsComboOptionSelected(slot.Id, option.Id)))
+        {
+          foreach (var group in option.ComponentModifierGroups)
+          {
+            var count = group.Options.Count(modifier => ComponentModifiers(slot.Id, option.Id).Contains(modifier.Id));
+            if (count < group.MinSelections || count > group.MaxSelections)
+              return $"{option.ComponentProductName}: {group.Name} requiere {SelectionInstruction(group.MinSelections, group.MaxSelections).ToLowerInvariant()}.";
+          }
+        }
+      }
+    }
+    else
+    {
+      foreach (var group in product.ModifierGroups)
+      {
+        var count = group.Options.Count(option => selectedModifierIds.Contains(option.Id));
+        if (count < group.MinSelections || count > group.MaxSelections)
+          return $"{group.Name} requiere {SelectionInstruction(group.MinSelections, group.MaxSelections).ToLowerInvariant()}.";
+      }
+    }
+    return null;
+  }
+
+  private void ToggleModifier(RestaurantModifierGroupDto group, RestaurantModifierOptionDto option, bool selected)
+  {
+    customizerError = null;
+    if (!selected) { selectedModifierIds.Remove(option.Id); return; }
+    var groupIds = group.Options.Select(item => item.Id).ToHashSet();
+    if (group.MaxSelections == 1) selectedModifierIds.RemoveWhere(groupIds.Contains);
+    else if (selectedModifierIds.Count(groupIds.Contains) >= group.MaxSelections)
+    {
+      customizerError = $"Puedes elegir hasta {group.MaxSelections} en {group.Name}.";
+      return;
+    }
+    selectedModifierIds.Add(option.Id);
+  }
+
+  private void ToggleComboOption(RestaurantComboSlotDto slot, RestaurantComboSlotOptionDto option, bool selected)
+  {
+    customizerError = null;
+    var key = ComboKey(slot.Id, option.Id);
+    if (!selected)
+    {
+      selectedComboOptions.Remove(key);
+      componentModifierIds.Remove(key);
+      return;
+    }
+    var selectedInSlot = slot.Options.Where(item => IsComboOptionSelected(slot.Id, item.Id)).ToList();
+    if (slot.MaxSelections == 1)
+    {
+      foreach (var previous in selectedInSlot)
+      {
+        selectedComboOptions.Remove(ComboKey(slot.Id, previous.Id));
+        componentModifierIds.Remove(ComboKey(slot.Id, previous.Id));
+      }
+    }
+    else if (selectedInSlot.Count >= slot.MaxSelections)
+    {
+      customizerError = $"Puedes elegir hasta {slot.MaxSelections} en {slot.Name}.";
+      return;
+    }
+    selectedComboOptions.Add(key);
+  }
+
+  private void ToggleComponentModifier(RestaurantComboSlotDto slot, RestaurantComboSlotOptionDto option, RestaurantModifierGroupDto group, RestaurantModifierOptionDto modifier, bool selected)
+  {
+    customizerError = null;
+    var chosen = ComponentModifiers(slot.Id, option.Id);
+    if (!selected) { chosen.Remove(modifier.Id); return; }
+    var groupIds = group.Options.Select(item => item.Id).ToHashSet();
+    if (group.MaxSelections == 1) chosen.RemoveWhere(groupIds.Contains);
+    else if (chosen.Count(groupIds.Contains) >= group.MaxSelections)
+    {
+      customizerError = $"Puedes elegir hasta {group.MaxSelections} en {group.Name}.";
+      return;
+    }
+    chosen.Add(modifier.Id);
+  }
+
+  private HashSet<long> ComponentModifiers(long slotId, long optionId)
+  {
+    var key = ComboKey(slotId, optionId);
+    if (!componentModifierIds.TryGetValue(key, out var selected))
+      componentModifierIds[key] = selected = [];
+    return selected;
+  }
+
+  private bool IsComponentModifierSelected(long slotId, long optionId, long modifierId)
+    => ComponentModifiers(slotId, optionId).Contains(modifierId);
+  private bool IsComboOptionSelected(long slotId, long optionId) => selectedComboOptions.Contains(ComboKey(slotId, optionId));
+  private static string ComboKey(long slotId, long optionId) => $"{slotId}:{optionId}";
+
+  private async Task ChangeQuantity(BrunoCartLine line, int delta)
+  {
+    line.Quantity = Math.Clamp(line.Quantity + delta, 0, 20);
+    if (line.Quantity <= 0) cart.Remove(line);
+    await PersistCartAsync();
+  }
+
+  private async Task RemoveLine(BrunoCartLine line)
+  {
+    cart.Remove(line);
+    cartAnnouncement = $"{line.ProductName} se quitó de tu pedido.";
+    await PersistCartAsync();
+  }
+
+  private async Task PersistCartAsync()
+  {
+    try { await Js.InvokeVoidAsync("brunoOrdering.saveCart", Website.Instance.PublicSiteKey, cart); }
+    catch { }
+  }
+
+  private void OpenCart() => cartOpen = true;
+  private void CloseCart() => cartOpen = false;
+  private void CloseCustomizer() { selectedProduct = null; selectedSection = null; customizerError = null; }
+  private void GoToCheckout() => Navigation.NavigateTo("/checkout");
+
+  [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+  private static bool HasChoices(RestaurantProductDto product)
+    => product.ModifierGroups.Count > 0 || product.ComboSlots.Any(slot => slot.IsActive);
+  private static string SelectionInstruction(int minimum, int maximum)
+    => minimum == maximum ? $"Elige {minimum}"
+      : minimum == 0 ? $"Opcional, hasta {maximum}"
+      : $"Elige de {minimum} a {maximum}";
+  private static string SignedPrice(decimal value) => value > 0 ? $"+{value:C}" : value.ToString("C");
+  private static string SupplementName(string name, decimal price) => price == 0 ? name : $"{name} ({SignedPrice(price)})";
   private static string ComboSlotSummary(RestaurantComboSlotDto slot)
   {
-    var options=slot.Options.Where(item=>item.IsActive).OrderBy(item=>item.SortOrder).Select(item=>item.PriceDelta>0?$"{item.ComponentProductName} +{item.PriceDelta:C0}":item.ComponentProductName).ToList();
-    if (options.Count==0) { return "(consulta disponibilidad)"; }
-    return slot.MaxSelections>1
-      ? $"({ComboSlotInstruction(slot)}: {string.Join(" · ",options)})"
-      : slot.MinSelections==0 ? $"(opcional: {string.Join(" o ",options)})" : $"({string.Join(" o ",options)})";
+    var options = slot.Options.Where(item => item.IsActive).OrderBy(item => item.SortOrder)
+      .Select(item => item.PriceDelta > 0 ? $"{item.ComponentProductName} +{item.PriceDelta:C0}" : item.ComponentProductName).ToList();
+    if (options.Count == 0) return "(consulta disponibilidad)";
+    return slot.MaxSelections > 1
+      ? $"({SelectionInstruction(slot.MinSelections, slot.MaxSelections).ToLowerInvariant()}: {string.Join(" · ", options)})"
+      : slot.MinSelections == 0 ? $"(opcional: {string.Join(" o ", options)})" : $"({string.Join(" o ", options)})";
   }
-  private static string ComboSlotInstruction(RestaurantComboSlotDto slot)
-    => slot.MinSelections==0 ? $"opcional, elige hasta {slot.MaxSelections}"
-      : slot.MinSelections==slot.MaxSelections ? $"elige {slot.MinSelections}"
-      : $"elige {slot.MinSelections}–{slot.MaxSelections}";
   private static string Slug(string value) => new(value.ToLowerInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '-').ToArray());
 }

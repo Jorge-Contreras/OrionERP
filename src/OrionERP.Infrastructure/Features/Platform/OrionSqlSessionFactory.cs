@@ -61,7 +61,11 @@ public sealed class OrionSqlSessionFactory : IOrionSqlSessionFactory
     if (connection.State != ConnectionState.Open)
       await connection.OpenAsync(ct);
 
+    // sp_reset_connection does not restore the isolation level, so a pooled
+    // session can arrive still SERIALIZABLE from an earlier transaction. Queue
+    // claims use READPAST, which SQL Server rejects outside READ COMMITTED.
     await connection.ExecuteAsync(new CommandDefinition("""
+      SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
       EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=NULL, @read_only=0;
       EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=NULL, @read_only=0;
       EXEC sys.sp_set_session_context @key=N'OrionERP.SiteId', @value=NULL, @read_only=0;

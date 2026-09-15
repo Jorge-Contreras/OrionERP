@@ -34,6 +34,20 @@
         "OrionERP.Web"
       ],
       "port": 5221
+    },
+    {
+      "name": "bruno-web-artifacts",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/OrionERP.Bruno.Web/OrionERP.Bruno.Web.csproj",
+        "--artifacts-path",
+        "artifacts/preview-bruno",
+        "-lp",
+        "OrionERP.Bruno.Web"
+      ],
+      "port": 5220
     }
   ]
 }

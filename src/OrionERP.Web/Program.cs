@@ -511,6 +511,8 @@ builder.Services.Configure<RestaurantQzTraySigningOptions>(
   builder.Configuration.GetSection(RestaurantQzTraySigningOptions.SectionName));
 builder.Services.Configure<RestaurantEventBroadcastOptions>(
   builder.Configuration.GetSection(RestaurantEventBroadcastOptions.SectionName));
+builder.Services.Configure<RestaurantOnlineOrderProcessingOptions>(
+  builder.Configuration.GetSection(RestaurantOnlineOrderProcessingOptions.SectionName));
 builder.Services.Configure<CompanyDocumentPresentationOptions>(
   builder.Configuration.GetSection(CompanyDocumentPresentationOptions.SectionName));
 builder.Services.Configure<ReservacionPdfOptions>(options =>
@@ -534,6 +536,7 @@ builder.Services.AddTrainingEnvironment(
 builder.Services.AddScoped<IUiMessageService, UiMessageService>();
 builder.Services.AddScoped<IOperationErrorPresenter, OperationErrorPresenter>();
 builder.Services.AddHostedService<RestaurantEventBroadcaster>();
+builder.Services.AddHostedService<RestaurantOnlineOrderImportWorker>();
 
 builder.Host.UseWindowsService();
 

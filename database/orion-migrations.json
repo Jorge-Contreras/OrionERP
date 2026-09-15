@@ -427,6 +427,51 @@
         "Orion_Sandbox",
         "grupocarpio"
       ]
+    },
+    {
+      "id": "20260914_restaurant_online_ordering",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering.sql",
+      "description": "Checkout de Restaurante aislado por PublicSite/RFC, cobro y recuperación PayPal, importación POS y notificación durable, inicialmente deshabilitado.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260914_restaurant_online_ordering_runtime_corrections",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_runtime_corrections.sql",
+      "description": "Endurece captura atómica, recuperación PayPal/reembolsos, correo durable, membresía pública y permisos mínimos del checkout Restaurant.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260914_restaurant_online_ordering_status_view_permission_hotfix",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_status_view_permission_hotfix.sql",
+      "description": "Revoca la lectura pública directa del view global de checkout y conserva únicamente el estado consultado por contexto y token.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260914_restaurant_online_ordering_capture_refund_reconciliation",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_capture_refund_reconciliation.sql",
+      "description": "Concilia los reembolsos completados que PayPal reporta como PAYMENT.CAPTURE.REFUNDED, exigiendo que la captura, el monto y el checkout coincidan con el reembolso local.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260914_restaurant_online_ordering_tracking_ready_email_status",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_tracking_ready_email_status.sql",
+      "description": "Devuelve en el estado público de seguimiento si el correo de pedido listo ya se envió, para no afirmar un envío que sigue en cola o falló.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
     }
   ]
 }

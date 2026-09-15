@@ -9,7 +9,7 @@ public sealed class HostModel : PageModel
     var route = Request.Path.Value?.TrimEnd('/') ?? string.Empty;
     if (string.IsNullOrEmpty(route)) route = "/";
 
-    if (!BrunoSiteConstants.PublicRoutes.Contains(route))
+    if (!BrunoSiteConstants.IsPublicRoute(route))
     {
       Response.StatusCode = StatusCodes.Status404NotFound;
     }

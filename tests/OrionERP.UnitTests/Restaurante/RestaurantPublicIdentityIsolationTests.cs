@@ -369,13 +369,21 @@ public sealed class RestaurantPublicIdentityIsolationTests
   [Fact]
   public void Loyalty_membership_commands_require_the_same_public_site_and_company()
   {
-    var source = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/LoyaltyService.cs");
+    var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/LoyaltyService.cs");
+    var migration = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_runtime_corrections.sql");
 
-    Assert.Contains("identityUser.PublicSiteId=@PublicSiteId", source, StringComparison.Ordinal);
-    Assert.Contains("company.Rfc=@Rfc", source, StringComparison.Ordinal);
-    Assert.Contains("publicSite.ModuleCode='RESTAURANT'", source, StringComparison.Ordinal);
-    Assert.Contains("member.PublicSiteId=@PublicSiteId", source, StringComparison.Ordinal);
-    Assert.Contains("userInfo.PublicSiteId=member.PublicSiteId", source, StringComparison.Ordinal);
+    Assert.Contains("restaurante.PublicMemberCreate", service, StringComparison.Ordinal);
+    Assert.Contains("restaurante.PublicMemberVerificationUpdate", service, StringComparison.Ordinal);
+    Assert.Contains("restaurante.PublicMemberQrIssue", service, StringComparison.Ordinal);
+    Assert.Contains("restaurante.PublicMemberConsentsUpdate", service, StringComparison.Ordinal);
+    Assert.Contains("restaurante.PublicMemberClosureRequest", service, StringComparison.Ordinal);
+    Assert.Contains("identityUser.PublicSiteId=@PublicSiteId", migration, StringComparison.Ordinal);
+    Assert.Contains("companyInfo.Rfc=@ContextRfc", migration, StringComparison.Ordinal);
+    Assert.Contains("publicSite.ModuleCode=''RESTAURANT''", migration, StringComparison.Ordinal);
+    Assert.Contains("member.PublicSiteId=@PublicSiteId", migration, StringComparison.Ordinal);
+    Assert.Contains("WHERE Id=@IdentityUserId AND PublicSiteId=@PublicSiteId", migration, StringComparison.Ordinal);
+    Assert.Contains("userInfo.PublicSiteId=member.PublicSiteId", service, StringComparison.Ordinal);
   }
 
   private static ServiceProvider CreateIdentityProvider(

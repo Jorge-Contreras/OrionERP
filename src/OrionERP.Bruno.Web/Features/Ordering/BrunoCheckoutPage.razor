@@ -1,0 +1,404 @@
+@page "/checkout"
+@implements IAsyncDisposable
+@using System.Security.Claims
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@inject IOnlineRestaurantCheckoutService CheckoutService
+@inject IRestaurantMembershipService MembershipService
+@inject IPublicWebsiteInstanceContext Website
+@inject PublicWebsitePresentationDefinition Presentation
+@inject AuthenticationStateProvider AuthenticationState
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+
+<PageTitle>Revisar pedido · @Presentation.PublicName</PageTitle>
+<HeadContent><meta name="robots" content="noindex,nofollow" /></HeadContent>
+
+<section class="checkout-page">
+  <header class="checkout-heading">
+    <a href="/menu">← Volver al menú</a>
+    <span>Pedido para recoger</span>
+    <h1>Revisa y paga</h1>
+    <p>Tu pedido se preparará lo antes posible. Te enviaremos un correo cuando esté listo; no mostramos un tiempo estimado.</p>
+  </header>
+
+  @if (isLoading)
+  {
+    <section class="checkout-state" aria-live="polite"><div class="checkout-spinner" aria-hidden="true"></div><h2>Revisando tu pedido…</h2></section>
+  }
+  else if (configuration?.IsEnabled != true)
+  {
+    <section class="checkout-state"><h2>Los pedidos en línea aún no están habilitados</h2><p>Puedes consultar el menú y visitarnos en el restaurante.</p><a class="button button--accent" href="/menu">Volver al menú</a></section>
+  }
+  else if (cart.Count == 0)
+  {
+    <section class="checkout-state"><h2>Tu pedido está vacío</h2><p>Agrega tus favoritos del menú antes de continuar.</p><a class="button button--accent" href="/menu">Elegir productos</a></section>
+  }
+  else
+  {
+    @if (!configuration.CanAcceptOrders)
+    {
+      <div class="checkout-alert" role="alert"><strong>No podemos recibir pedidos ahora.</strong><span>@(configuration.UnavailableReason ?? "Vuelve a intentarlo dentro del horario de pedidos.")</span></div>
+    }
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+      <div class="checkout-alert checkout-alert--error" role="alert"><strong>No pudimos continuar</strong><span>@errorMessage</span>@if (!string.IsNullOrWhiteSpace(recoveryTrackingToken)) { <a href="/pedido/@Uri.EscapeDataString(recoveryTrackingToken)">Consultar el estado del pago</a> }</div>
+    }
+
+    <div class="checkout-grid">
+      <div class="checkout-main">
+        <section class="checkout-panel" aria-labelledby="contact-title">
+          <header><span>1</span><div><h2 id="contact-title">Tus datos</h2><p>Usaremos este correo para confirmar el pedido y avisarte cuando esté listo.</p></div></header>
+          @if (isMemberConnected)
+          {
+            <div class="member-connected"><strong>@MembershipName conectado</strong><span>Este pedido se vinculará a tu historial y podrá generar puntos. El canje de puntos sigue disponible solamente en el restaurante.</span></div>
+          }
+          else
+          {
+            <div class="guest-note"><span>Puedes comprar como invitado.</span><a href="/cuenta/acceso?returnUrl=%2Fcheckout" target="_top">Ingresar a @MembershipName</a></div>
+          }
+          <div class="checkout-fields">
+            <label><span>Nombre para el pedido</span><input autocomplete="name" maxlength="150" disabled="@paymentReady" @bind="customerName" /></label>
+            <label><span>Correo electrónico</span><input type="email" inputmode="email" autocomplete="email" maxlength="256" disabled="@paymentReady" @bind="customerEmail" /></label>
+            <label><span>Teléfono</span><input type="tel" inputmode="tel" autocomplete="tel" maxlength="30" disabled="@paymentReady" @bind="customerPhone" /></label>
+          </div>
+        </section>
+
+        <section class="checkout-panel" aria-labelledby="payment-title">
+          <header><span>2</span><div><h2 id="payment-title">Pago seguro</h2><p>PayPal captura el pago de inmediato. No recibimos los datos completos de tu instrumento de pago.</p></div></header>
+          <label class="legal-check">
+            <input type="checkbox" disabled="@paymentReady" @bind="legalAccepted" />
+            <span>Acepto los <a href="/terminos" target="_blank" rel="noopener">términos de pedidos</a> y confirmo que leí el <a href="/privacidad" target="_blank" rel="noopener">aviso de privacidad</a>.</span>
+          </label>
+          <div class="checkout-disclaimer"><strong>Recoger en @Presentation.ShortName</strong><p>Sin entrega, horarios programados, propina ni cancelación desde el sitio. Si necesitas ayuda o un reembolso, contacta directamente al restaurante.</p></div>
+
+          @if (!paymentReady)
+          {
+            <button class="button button--accent checkout-continue" type="button" disabled="@(isQuoting || !configuration.CanAcceptOrders)" @onclick="PreparePaymentAsync">
+              @(isQuoting ? "Confirmando precio…" : "Continuar con PayPal")
+            </button>
+          }
+          else
+          {
+            <div class="payment-locked"><span>Datos confirmados para esta cotización.</span>@if (string.IsNullOrWhiteSpace(recoveryTrackingToken)) { <button type="button" @onclick="EditDetailsAsync">Editar</button> } else { <a href="/pedido/@Uri.EscapeDataString(recoveryTrackingToken)">Ver intento actual</a> }</div>
+            <div id="bruno-paypal-buttons" class="paypal-buttons" aria-live="polite"></div>
+            @if (paymentInProgress) { <p class="payment-progress" role="status">Estamos comunicándonos con PayPal. No cierres esta página ni intentes pagar otra vez.</p> }
+          }
+        </section>
+      </div>
+
+      <aside class="order-summary" aria-labelledby="summary-title">
+        <header><h2 id="summary-title">Tu pedido</h2><a href="/menu">Editar</a></header>
+        @if (quote is null)
+        {
+          <div class="summary-loading"><span>Confirmando precio y disponibilidad…</span></div>
+        }
+        else
+        {
+          <div class="summary-lines">
+            @foreach (var line in quote.Lines)
+            {
+              <article><div><b>@line.Quantity.ToString("0")×</b><span><strong>@line.ProductName</strong>@if (line.ComboSelections.Count > 0) { <small>@string.Join(" · ", line.ComboSelections)</small> }@if (line.Modifiers.Count > 0) { <small>@string.Join(" · ", line.Modifiers)</small> }@if (!string.IsNullOrWhiteSpace(line.Notes)) { <small>“@line.Notes”</small> }</span></div><strong>@line.Total.ToString("C")</strong></article>
+            }
+          </div>
+          <div class="promotion-box">
+            <label for="promotion-code">Código de promoción</label>
+            <div><input id="promotion-code" maxlength="32" disabled="@paymentReady" @bind="promotionCode" placeholder="Opcional" /><button type="button" disabled="@(isQuoting || paymentReady)" @onclick="RefreshQuoteAsync">Aplicar</button></div>
+            @foreach (var promotion in quote.Promotions) { <p><span>@promotion.PromotionName</span><strong>−@promotion.DiscountAmount.ToString("C")</strong></p> }
+          </div>
+          <dl class="summary-totals">
+            <div><dt>Subtotal</dt><dd>@quote.Subtotal.ToString("C")</dd></div>
+            @if (quote.PromotionDiscount > 0) { <div class="discount"><dt>Promociones</dt><dd>−@quote.PromotionDiscount.ToString("C")</dd></div> }
+            <div><dt>IVA incluido</dt><dd>@quote.Tax.ToString("C")</dd></div>
+            <div class="total"><dt>Total</dt><dd>@quote.Total.ToString("C") <small>MXN</small></dd></div>
+          </dl>
+          <p class="quote-expiry">Cotización protegida por 10 minutos. Se validará de nuevo antes de capturar el pago.</p>
+        }
+      </aside>
+    </div>
+  }
+</section>
+
+@code {
+  private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web) { PropertyNameCaseInsensitive = true };
+  private readonly List<BrunoCartLine> cart = [];
+  private RestaurantOnlineOrderingConfigurationDto? configuration;
+  private RestaurantOnlineQuoteResult? quote;
+  private DotNetObjectReference<BrunoCheckoutPage>? dotNetReference;
+  private bool isLoading = true;
+  private bool cartLoaded;
+  private bool isQuoting;
+  private bool paymentReady;
+  private bool payPalRendered;
+  private bool paymentInProgress;
+  private bool isAuthenticated;
+  private bool isMemberConnected;
+  private bool legalAccepted;
+  private string customerName = string.Empty;
+  private string customerEmail = string.Empty;
+  private string customerPhone = string.Empty;
+  private string promotionCode = string.Empty;
+  private string? errorMessage;
+  private string? recoveryTrackingToken;
+  private Guid clientAttemptId = Guid.NewGuid();
+  private string MembershipName => Presentation.MembershipProgramName ?? "tu membresía";
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      var binding = await Website.ResolveRequiredAsync();
+      configuration = await CheckoutService.GetConfigurationAsync(binding);
+      var auth = await AuthenticationState.GetAuthenticationStateAsync();
+      isAuthenticated = auth.User.Identity?.IsAuthenticated == true;
+      if (isAuthenticated)
+      {
+        var userId = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+          var member = await MembershipService.GetMemberProfileByIdentityAsync(binding.CompanyRfc, binding.PublicSiteId, userId);
+          if (member is not null && member.Status == LoyaltyMemberStatuses.Active)
+          {
+            isMemberConnected = true;
+            customerName = member.DisplayName;
+            customerEmail = member.Email;
+            customerPhone = member.Phone;
+          }
+        }
+      }
+    }
+    catch (Exception)
+    {
+      configuration = new RestaurantOnlineOrderingConfigurationDto { IsEnabled = false };
+    }
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (firstRender && !cartLoaded)
+    {
+      cartLoaded = true;
+      try
+      {
+        var pending = await Js.InvokeAsync<BrunoPendingCheckout?>("brunoOrdering.loadPendingCheckout");
+        if (!string.IsNullOrWhiteSpace(pending?.TrackingToken))
+        {
+          Navigation.NavigateTo($"/pedido/{Uri.EscapeDataString(pending.TrackingToken)}");
+          return;
+        }
+        var stored = await Js.InvokeAsync<List<BrunoCartLine>>("brunoOrdering.loadCart", Website.Instance.PublicSiteKey);
+        cart.AddRange(stored ?? []);
+        if (cart.Count > 0 && configuration?.IsEnabled == true) await QuoteAsync();
+      }
+      catch (Exception ex) { errorMessage = FriendlyInteropError(ex, "No pudimos recuperar tu pedido guardado."); }
+      finally { isLoading = false; StateHasChanged(); }
+      return;
+    }
+
+    if (paymentReady && !payPalRendered && quote is not null && configuration is not null)
+    {
+      payPalRendered = true;
+      dotNetReference ??= DotNetObjectReference.Create(this);
+      try
+      {
+        var rendered = await Js.InvokeAsync<bool>("brunoOrdering.renderPayPalButtons", "bruno-paypal-buttons", new BrunoPayPalButtonOptions
+        {
+          ClientId = configuration.PayPalClientId,
+          Currency = configuration.Currency,
+          Locale = configuration.PayPalLocale,
+          QuoteToken = quote.QuoteToken ?? string.Empty,
+          QuoteFingerprint = quote.Fingerprint ?? string.Empty,
+          ClientAttemptId = clientAttemptId,
+          CustomerName = customerName.Trim(),
+          CustomerEmail = customerEmail.Trim(),
+          CustomerPhone = customerPhone.Trim(),
+          TermsAccepted = legalAccepted,
+          TermsVersion = configuration.TermsVersion,
+          PrivacyVersion = configuration.PrivacyVersion
+        }, dotNetReference);
+        if (!rendered) payPalRendered = false;
+      }
+      catch (Exception ex)
+      {
+        payPalRendered = false;
+        errorMessage = FriendlyInteropError(ex, "No pudimos cargar PayPal.");
+        StateHasChanged();
+      }
+    }
+  }
+
+  private async Task RefreshQuoteAsync()
+  {
+    errorMessage = null;
+    await QuoteAsync();
+  }
+
+  private async Task QuoteAsync()
+  {
+    if (cart.Count == 0) { quote = null; return; }
+    isQuoting = true;
+    errorMessage = null;
+    try
+    {
+      var result = await Js.InvokeAsync<RestaurantOnlineQuoteResult>("brunoOrdering.quoteCart", new RestaurantOnlineQuoteRequest
+      {
+        Lines = cart.Select(item => item.ToRequest()).ToList(),
+        PromotionCode = string.IsNullOrWhiteSpace(promotionCode) ? null : promotionCode.Trim()
+      });
+      if (result?.Succeeded != true || string.IsNullOrWhiteSpace(result.QuoteToken))
+        throw new InvalidOperationException(result?.Message ?? "La cotización no es válida.");
+      quote = result;
+    }
+    catch (Exception ex)
+    {
+      quote = null;
+      errorMessage = FriendlyInteropError(ex, "Algún producto, precio o promoción cambió. Revisa el pedido e inténtalo de nuevo.");
+    }
+    finally { isQuoting = false; }
+  }
+
+  private async Task PreparePaymentAsync()
+  {
+    errorMessage = ValidateContact();
+    if (errorMessage is not null) return;
+    await QuoteAsync();
+    if (quote is null) return;
+    if (quote.Total > (configuration?.MaximumOrderAmount ?? 2500m))
+    {
+      errorMessage = $"El total supera el máximo de {(configuration?.MaximumOrderAmount ?? 2500m):C0} MXN.";
+      return;
+    }
+
+    clientAttemptId = Guid.NewGuid();
+    paymentReady = true;
+    payPalRendered = false;
+    paymentInProgress = false;
+  }
+
+  private string? ValidateContact()
+  {
+    if (string.IsNullOrWhiteSpace(customerName) || customerName.Trim().Length > 150)
+      return "Escribe el nombre de quien recogerá el pedido.";
+    if (string.IsNullOrWhiteSpace(customerEmail) || customerEmail.Length > 256 || !new EmailAddressAttribute().IsValid(customerEmail.Trim()))
+      return "Escribe un correo electrónico válido.";
+    var phoneDigits = new string(customerPhone.Where(char.IsDigit).ToArray());
+    if (phoneDigits.Length is < 10 or > 15)
+      return "Escribe un teléfono válido.";
+    if (!legalAccepted)
+      return "Debes aceptar los términos y confirmar que leíste el aviso de privacidad.";
+    if (configuration?.CanAcceptOrders != true)
+      return configuration?.UnavailableReason ?? "Los pedidos no están disponibles en este momento.";
+    if (configuration.AllowGuestCheckout != true && !isMemberConnected)
+      return $"Inicia sesión en {MembershipName} para completar el pedido.";
+    if (string.IsNullOrWhiteSpace(configuration.PayPalClientId))
+      return "El pago en línea no está disponible en este momento.";
+    return null;
+  }
+
+  private async Task EditDetailsAsync()
+  {
+    if (!string.IsNullOrWhiteSpace(recoveryTrackingToken))
+    {
+      Navigation.NavigateTo($"/pedido/{Uri.EscapeDataString(recoveryTrackingToken)}");
+      return;
+    }
+    paymentReady = false;
+    payPalRendered = false;
+    paymentInProgress = false;
+    try { await Js.InvokeVoidAsync("brunoOrdering.clearPayPalButtons", "bruno-paypal-buttons"); }
+    catch { }
+  }
+
+  [JSInvokable]
+  public Task OnPaymentStarted()
+  {
+    paymentInProgress = true;
+    errorMessage = null;
+    StateHasChanged();
+    return Task.CompletedTask;
+  }
+
+  [JSInvokable]
+  public Task OnPayPalOrderCreated(string payPalOrderId, string trackingToken)
+  {
+    recoveryTrackingToken = trackingToken;
+    paymentInProgress = true;
+    StateHasChanged();
+    return Task.CompletedTask;
+  }
+
+  [JSInvokable]
+  public async Task OnPaymentCompleted(string json)
+  {
+    RestaurantOnlinePayPalCaptureResult? result = null;
+    try { result = JsonSerializer.Deserialize<RestaurantOnlinePayPalCaptureResult>(json, WebJson); }
+    catch { }
+
+    var tracking = result?.TrackingToken ?? recoveryTrackingToken;
+    if (result?.PaymentCaptured == true || result?.IsPending == true ||
+        string.Equals(result?.CheckoutStatus, RestaurantOnlineCheckoutStatuses.Captured, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(result?.CheckoutStatus, RestaurantOnlineCheckoutStatuses.PosCreated, StringComparison.OrdinalIgnoreCase))
+    {
+      try { await Js.InvokeVoidAsync("brunoOrdering.clearCart", Website.Instance.PublicSiteKey); }
+      catch { }
+    }
+
+    if (!string.IsNullOrWhiteSpace(tracking))
+    {
+      Navigation.NavigateTo($"/pedido/{Uri.EscapeDataString(tracking)}");
+      return;
+    }
+
+    paymentInProgress = false;
+    errorMessage = result?.Message ?? $"PayPal respondió, pero no pudimos recuperar el seguimiento. Contacta a {Presentation.ShortName} antes de intentar pagar otra vez.";
+    StateHasChanged();
+  }
+
+  [JSInvokable]
+  public Task OnPaymentCancelled(string cancelledAttemptId)
+  {
+    if (!Guid.TryParse(cancelledAttemptId, out var cancelledAttempt) || cancelledAttempt != clientAttemptId)
+    {
+      return Task.CompletedTask;
+    }
+    paymentInProgress = false;
+    recoveryTrackingToken = null;
+    errorMessage = "Cancelaste la ventana de PayPal. No se realizó un nuevo cobro.";
+    StateHasChanged();
+    return Task.CompletedTask;
+  }
+
+  [JSInvokable]
+  public Task OnPaymentFailed(string message, string payPalOrderId, string trackingToken)
+  {
+    paymentInProgress = false;
+    if (!string.IsNullOrWhiteSpace(trackingToken))
+    {
+      recoveryTrackingToken = trackingToken;
+      errorMessage = "Ya existe un intento de pago. Consulta su estado antes de volver a pagar.";
+    }
+    else
+    {
+      errorMessage = string.IsNullOrWhiteSpace(message) ? "No pudimos completar el pago con PayPal." : message;
+    }
+    StateHasChanged();
+    return Task.CompletedTask;
+  }
+
+  private static string FriendlyInteropError(Exception exception, string fallback)
+  {
+    var message = exception.Message;
+    if (string.IsNullOrWhiteSpace(message)) return fallback;
+    var marker = "Error: ";
+    var markerIndex = message.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+    if (markerIndex >= 0) message = message[(markerIndex + marker.Length)..];
+    return message.Length <= 400 ? message : fallback;
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    try { await Js.InvokeVoidAsync("brunoOrdering.clearPayPalButtons", "bruno-paypal-buttons"); }
+    catch { }
+    dotNetReference?.Dispose();
+  }
+}

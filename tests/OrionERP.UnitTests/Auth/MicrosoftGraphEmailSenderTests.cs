@@ -82,6 +82,49 @@ public class MicrosoftGraphEmailSenderTests
   }
 
   [Fact]
+  public async Task GraphMailClient_CreatesReadsAndSendsDurableDraftByImmutableId()
+  {
+    var handler = new RecordingHttpMessageHandler();
+    var sender = CreateGraphClient(handler);
+
+    var immutableMessageId = await sender.CreateDraftAsync(new MicrosoftGraphMailMessage
+    {
+      ToRecipients = ["cliente@example.com"],
+      Subject = "Pedido confirmado",
+      Message = "<p>Tu pedido fue confirmado.</p>"
+    });
+    var state = await sender.GetMessageStateAsync(immutableMessageId);
+    await sender.SendDraftAsync(immutableMessageId);
+
+    Assert.Equal("immutable-message-id", immutableMessageId);
+    Assert.Equal(MicrosoftGraphMailMessageState.Draft, state);
+    var graphRequests = handler.Requests
+      .Where(request => request.Uri.StartsWith("https://graph.microsoft.com/", StringComparison.Ordinal))
+      .ToArray();
+    Assert.Equal(3, graphRequests.Length);
+    Assert.Equal("https://graph.microsoft.com/v1.0/users/info%40orion.land/messages", graphRequests[0].Uri);
+    Assert.Equal("https://graph.microsoft.com/v1.0/users/info%40orion.land/messages/immutable-message-id?$select=id,isDraft", graphRequests[1].Uri);
+    Assert.Equal("https://graph.microsoft.com/v1.0/users/info%40orion.land/messages/immutable-message-id/send", graphRequests[2].Uri);
+    Assert.All(graphRequests, request => Assert.Equal("IdType=\"ImmutableId\"", request.PreferHeader));
+  }
+
+  [Fact]
+  public async Task GraphMailClient_RecognizesAlreadySentAndMissingDurableMessages()
+  {
+    var sentHandler = new RecordingHttpMessageHandler { ReturnedMessageIsDraft = false };
+    var sentClient = CreateGraphClient(sentHandler);
+    Assert.Equal(
+      MicrosoftGraphMailMessageState.Sent,
+      await sentClient.GetMessageStateAsync("immutable-message-id"));
+
+    var missingHandler = new RecordingHttpMessageHandler { ReturnMessageNotFound = true };
+    var missingClient = CreateGraphClient(missingHandler);
+    Assert.Equal(
+      MicrosoftGraphMailMessageState.Missing,
+      await missingClient.GetMessageStateAsync("immutable-message-id"));
+  }
+
+  [Fact]
   public async Task GraphMailClient_ThrowsWhenGraphMailConfigIsIncomplete()
   {
     var sender = new MicrosoftGraphMailClient<GraphMailOptions>(
@@ -110,9 +153,24 @@ public class MicrosoftGraphEmailSenderTests
     Assert.Equal("<p>Hola</p>", graphClient.LastMessage);
   }
 
+  private static MicrosoftGraphMailClient<GraphMailOptions> CreateGraphClient(
+    RecordingHttpMessageHandler handler)
+    => new(
+      new HttpClient(handler),
+      Options.Create(new GraphMailOptions
+      {
+        TenantId = "tenant-id",
+        ClientId = "client-id",
+        ClientSecret = "client-secret",
+        SenderAddress = "info@orion.land"
+      }),
+      NullLogger<MicrosoftGraphMailClient<GraphMailOptions>>.Instance);
+
   private sealed class RecordingHttpMessageHandler : HttpMessageHandler
   {
     public List<CapturedRequest> Requests { get; } = new();
+    public bool ReturnedMessageIsDraft { get; init; } = true;
+    public bool ReturnMessageNotFound { get; init; }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -124,13 +182,40 @@ public class MicrosoftGraphEmailSenderTests
         request.Method.Method,
         request.RequestUri?.ToString() ?? string.Empty,
         body,
-        request.Headers.Authorization?.ToString()));
+        request.Headers.Authorization?.ToString(),
+        request.Headers.TryGetValues("Prefer", out var preferValues)
+          ? string.Join(",", preferValues)
+          : null));
 
       if (request.RequestUri?.AbsoluteUri.Contains("/oauth2/v2.0/token", StringComparison.OrdinalIgnoreCase) == true)
       {
         return new HttpResponseMessage(HttpStatusCode.OK)
         {
           Content = new StringContent("{\"access_token\":\"test-access-token\"}", Encoding.UTF8, "application/json")
+        };
+      }
+
+      if (request.Method == HttpMethod.Post &&
+          request.RequestUri?.AbsolutePath.EndsWith("/messages", StringComparison.Ordinal) == true)
+      {
+        return new HttpResponseMessage(HttpStatusCode.Created)
+        {
+          Content = new StringContent("{\"id\":\"immutable-message-id\",\"isDraft\":true}", Encoding.UTF8, "application/json")
+        };
+      }
+
+      if (request.Method == HttpMethod.Get &&
+          request.RequestUri?.AbsolutePath.Contains("/messages/", StringComparison.Ordinal) == true)
+      {
+        if (ReturnMessageNotFound)
+          return new HttpResponseMessage(HttpStatusCode.NotFound);
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+          Content = new StringContent(
+            $"{{\"id\":\"immutable-message-id\",\"isDraft\":{ReturnedMessageIsDraft.ToString().ToLowerInvariant()}}}",
+            Encoding.UTF8,
+            "application/json")
         };
       }
 
@@ -147,6 +232,21 @@ public class MicrosoftGraphEmailSenderTests
     public string LastSubject { get; private set; } = string.Empty;
     public string LastMessage { get; private set; } = string.Empty;
     public MicrosoftGraphMailMessage? LastMail { get; private set; }
+
+    public Task<string> CreateDraftAsync(
+      MicrosoftGraphMailMessage mail,
+      CancellationToken ct = default)
+      => Task.FromResult("immutable-message-id");
+
+    public Task<MicrosoftGraphMailMessageState> GetMessageStateAsync(
+      string immutableMessageId,
+      CancellationToken ct = default)
+      => Task.FromResult(MicrosoftGraphMailMessageState.Draft);
+
+    public Task SendDraftAsync(
+      string immutableMessageId,
+      CancellationToken ct = default)
+      => Task.CompletedTask;
 
     public Task SendEmailAsync(
       MicrosoftGraphMailMessage mail,
@@ -180,5 +280,6 @@ public class MicrosoftGraphEmailSenderTests
     string Method,
     string Uri,
     string Body,
-    string? AuthorizationHeader);
+    string? AuthorizationHeader,
+    string? PreferHeader);
 }

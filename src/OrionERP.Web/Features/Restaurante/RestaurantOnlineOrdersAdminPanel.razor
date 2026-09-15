@@ -1,0 +1,581 @@
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using Microsoft.AspNetCore.Components.Authorization
+@using OrionERP.Application.Features.Restaurante
+@using OrionERP.Web.State
+@inject IRestaurantCatalogService CatalogService
+@inject IOnlineRestaurantOrderingAdminService OnlineOrderingService
+@inject ICurrentCompanyContext RfcState
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<section class="online-admin" aria-labelledby="online-admin-title">
+  <header class="online-admin__header">
+    <div>
+      <span>Canal Web · PayPal</span>
+      <h2 id="online-admin-title">Pedidos en línea</h2>
+      <p>Controla la venta para recoger sin alterar los horarios ni la operación del punto de venta.</p>
+    </div>
+    <div class="online-admin__site">
+      <label for="online-site">Sede</label>
+      <select id="online-site" @bind="selectedSiteId" @bind:after="LoadAsync" disabled="@(isLoading || sites.Count == 0)">
+        @foreach (var site in sites)
+        {
+          <option value="@site.Id">@site.Name</option>
+        }
+      </select>
+      <button type="button" class="btn btn-outline-primary" @onclick="LoadAsync" disabled="@isLoading">Actualizar</button>
+    </div>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(localMessage))
+  {
+    <div class="alert @(localError ? "alert-danger" : "alert-success")" role="status">@localMessage</div>
+  }
+
+  @if (isLoading || isInitializing)
+  {
+    <div class="online-admin__state" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Cargando configuración…</div>
+  }
+  else if (sites.Count == 0)
+  {
+    <div class="online-admin__state"><strong>No hay una sede activa.</strong><span>Configura primero una sede de restaurante.</span></div>
+  }
+  else if (configuration is null)
+  {
+    <div class="online-admin__state online-admin__state--warning">
+      <strong>Esta sede no tiene un sitio público de restaurante vinculado.</strong>
+      <span>La venta en línea permanece apagada hasta que el vínculo RFC / sitio público sea válido.</span>
+    </div>
+  }
+  else
+  {
+    <div class="online-admin__status @(configuration.IsEnabled ? configuration.IsPaused ? "is-paused" : "is-live" : "is-off")">
+      <span class="oi @(configuration.IsEnabled && !configuration.IsPaused ? "oi-pulse" : "oi-power-standby")" aria-hidden="true"></span>
+      <div>
+        <strong>@OrderingStateLabel</strong>
+        <small>@OrderingStateDescription</small>
+      </div>
+      <span class="online-admin__scope">@configuration.PublicSiteKey · @configuration.Rfc</span>
+    </div>
+
+    <div class="online-admin__layout">
+      <EditForm Model="editor" OnValidSubmit="SaveAsync" class="online-admin__editor">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <article class="online-admin__card">
+          <header><div><span>Publicación</span><h3>Estado del canal</h3></div></header>
+          <label class="online-admin__switch @(CanChangeEnabled ? null : "is-disabled")">
+            <InputCheckbox @bind-Value="editor.IsEnabled" disabled="@(!CanChangeEnabled)" />
+            <span><strong>Aceptar nuevos pedidos</strong><small>Actívalo sólo después de resolver todos los requisitos.</small></span>
+          </label>
+          @if (!configuration.IsEnabled && !configuration.IsReady)
+          {
+            <p class="online-admin__inline-warning"><span class="oi oi-lock-locked" aria-hidden="true"></span> Guarda la configuración pendiente y vuelve a revisar antes de activar.</p>
+          }
+          <label class="online-admin__switch">
+            <InputCheckbox @bind-Value="editor.IsPaused" />
+            <span><strong>Pausa manual</strong><small>Bloquea cotizaciones y cobros nuevos; la recuperación sigue funcionando.</small></span>
+          </label>
+          @if (editor.IsPaused)
+          {
+            <label>Mensaje para clientes
+              <InputTextArea @bind-Value="editor.PauseMessage" maxlength="300" rows="3" placeholder="Por el momento no estamos recibiendo pedidos. Intenta más tarde." />
+            </label>
+          }
+          <div class="online-admin__form-row">
+            <label>Máximo por pedido (MXN)
+              <InputNumber @bind-Value="editor.MaximumOrderAmount" min="0.01" max="999999999" step="0.01" />
+              <small>Sin mínimo. El valor inicial es $2,500.</small>
+            </label>
+            <div class="online-admin__fixed-rule"><span>Modalidad</span><strong>Recoger · lo antes posible</strong><small>Sin entrega, horarios programados ni promesa de tiempo.</small></div>
+          </div>
+          <label class="online-admin__switch">
+            <InputCheckbox @bind-Value="editor.AllowGuestCheckout" />
+            <span><strong>Permitir compra como invitado</strong><small>Los socios continúan acumulando puntos; el canje permanece en restaurante.</small></span>
+          </label>
+        </article>
+
+        <article class="online-admin__card">
+          <header>
+            <div><span>Disponibilidad independiente</span><h3>Horario de pedidos</h3></div>
+            <small>Puede cruzar medianoche</small>
+          </header>
+          <div class="online-admin__schedule">
+            @foreach (var day in schedule)
+            {
+              <div class="online-admin__day @(day.IsOpen ? "is-open" : null)">
+                <label class="online-admin__day-toggle"><input type="checkbox" @bind="day.IsOpen" /><span>@day.Label</span></label>
+                @if (day.IsOpen)
+                {
+                  <div class="online-admin__intervals">
+                    @foreach (var interval in day.Intervals)
+                    {
+                      <div class="online-admin__interval">
+                        <label><span>Abre</span><input type="time" value="@interval.Opens" @onchange="args => interval.Opens = args.Value?.ToString() ?? interval.Opens" /></label>
+                        <label><span>Cierra</span><input type="time" value="@interval.Closes" @onchange="args => interval.Closes = args.Value?.ToString() ?? interval.Closes" /></label>
+                        <button type="button" title="Eliminar intervalo" aria-label="Eliminar intervalo de @day.Label" @onclick="() => RemoveInterval(day, interval)">×</button>
+                      </div>
+                    }
+                    <button type="button" class="online-admin__add-interval" @onclick="() => AddInterval(day)">+ Agregar intervalo</button>
+                  </div>
+                }
+                else
+                {
+                  <span class="online-admin__closed">Cerrado</span>
+                }
+              </div>
+            }
+          </div>
+        </article>
+
+        <article class="online-admin__card">
+          <header>
+            <div><span>Catálogo explícito</span><h3>Productos habilitados</h3></div>
+            <strong>@editor.EnabledProductIds.Count / @configuration.Products.Count</strong>
+          </header>
+          <label class="online-admin__search"><span class="oi oi-magnifying-glass" aria-hidden="true"></span><input @bind="productSearch" @bind:event="oninput" placeholder="Buscar por nombre o SKU" /></label>
+          <div class="online-admin__product-actions">
+            <button type="button" @onclick="EnableVisibleProducts">Habilitar visibles</button>
+            <button type="button" @onclick="DisableVisibleProducts">Deshabilitar visibles</button>
+          </div>
+          <div class="online-admin__products">
+            @foreach (var product in FilteredProducts)
+            {
+              var isChecked = editor.EnabledProductIds.Contains(product.ProductId);
+              <label class="online-admin__product @(isChecked ? "is-enabled" : null) @(product.IsActive && !product.IsSoldOut ? null : "is-unavailable")">
+                <input type="checkbox" checked="@isChecked" disabled="@(!product.IsActive)" @onchange="args => SetProductEnabled(product.ProductId, args.Value is true)" />
+                <span><strong>@product.ProductName</strong><small>@product.Sku · @product.Price.ToString("C")</small></span>
+                @if (!product.IsActive) { <em>Inactivo</em> }
+                else if (product.IsSoldOut) { <em>Agotado ahora</em> }
+                else { <em>@(isChecked ? "En Web" : "Sólo POS")</em> }
+              </label>
+            }
+            @if (!FilteredProducts.Any())
+            {
+              <p class="online-admin__empty">No hay productos que coincidan con la búsqueda.</p>
+            }
+          </div>
+          <p class="online-admin__hint">Publicar un producto en el menú no lo habilita para cobrar en línea. Este selector es la autorización independiente.</p>
+        </article>
+
+        <button type="submit" class="btn btn-primary online-admin__save" disabled="@isSaving">@(isSaving ? "Guardando…" : "Guardar configuración")</button>
+      </EditForm>
+
+      <aside class="online-admin__side">
+        <article class="online-admin__card online-admin__readiness @(configuration.IsReady ? "is-ready" : "has-blockers")">
+          <header><div><span>Protección de lanzamiento</span><h3>@(configuration.IsReady ? "Listo para activar" : "Activación bloqueada")</h3></div><span class="oi @(configuration.IsReady ? "oi-circle-check" : "oi-warning")" aria-hidden="true"></span></header>
+          @if (configuration.ReadinessBlockers.Count == 0)
+          {
+            <p>PayPal Live, webhook, horario, tope, catálogo, documentos legales y procesador están validados.</p>
+          }
+          else
+          {
+            <p>Resuelve estos puntos; el sistema no permitirá habilitar cobros mientras falte alguno.</p>
+            <ul>
+              @foreach (var blocker in configuration.ReadinessBlockers)
+              {
+                <li><span class="oi oi-x" aria-hidden="true"></span>@blocker</li>
+              }
+            </ul>
+          }
+          <dl>
+            <div><dt>Procesador</dt><dd>@HeartbeatLabel</dd></div>
+            <div><dt>Términos</dt><dd>@EmptyFallback(configuration.TermsVersion)</dd></div>
+            <div><dt>Privacidad</dt><dd>@EmptyFallback(configuration.PrivacyVersion)</dd></div>
+          </dl>
+        </article>
+
+        <article class="online-admin__card online-admin__settlement">
+          <header><div><span>Conciliación PayPal</span><h3>Liquidación por perfil</h3></div></header>
+          @if (configuration.PaymentSummaries.Count == 0)
+          {
+            <p class="online-admin__empty">Aún no hay capturas conciliadas para este sitio público.</p>
+          }
+          else
+          {
+            <div class="online-admin__settlement-list">
+              @foreach (var summary in configuration.PaymentSummaries)
+              {
+                <article>
+                  <header><strong>@summary.MerchantProfileKey</strong><span>@summary.CaptureCount cobro(s) · @summary.Currency</span></header>
+                  <dl>
+                    <div><dt>Bruto</dt><dd>@summary.GrossAmount.ToString("C")</dd></div>
+                    <div><dt>Comisiones</dt><dd>@summary.FeeAmount.ToString("C")</dd></div>
+                    <div><dt>Neto PayPal</dt><dd>@summary.NetAmount.ToString("C")</dd></div>
+                    <div><dt>Reembolsos al cliente</dt><dd>@summary.RefundedAmount.ToString("C")</dd></div>
+                    <div><dt>Bruto conciliado</dt><dd>@summary.RefundGrossAmount.ToString("C")</dd></div>
+                    <div><dt>Comisión devuelta</dt><dd>@summary.RefundFeeAmount.ToString("C")</dd></div>
+                    <div><dt>Débito neto PayPal</dt><dd>@summary.RefundNetAmount.ToString("C")</dd></div>
+                    <div><dt>Neto después de reembolsos</dt><dd>@(summary.NetAfterRefunds?.ToString("C") ?? "Pendiente")</dd></div>
+                  </dl>
+                  @if (summary.UnreconciledRefundCount > 0)
+                  {
+                    <small class="online-admin__settlement-warning">@summary.UnreconciledRefundCount reembolso(s) aún no tienen desglose financiero de PayPal.</small>
+                  }
+                  <small>@configuration.PublicSiteKey · @summary.Rfc</small>
+                </article>
+              }
+            </div>
+          }
+          <p class="online-admin__hint">El perfil mercantil conserva el historial cuando el sitio cambie de cuenta. Estos importes permiten separar la liquidación compartida por RFC y sitio público.</p>
+        </article>
+
+        <article class="online-admin__card online-admin__recovery">
+          <header><div><span>Pagos y reintentos</span><h3>Recuperación</h3></div><strong>@configuration.RecoveryItems.Count</strong></header>
+          @if (configuration.RecoveryItems.Count == 0)
+          {
+            <div class="online-admin__recovery-empty"><span class="oi oi-circle-check" aria-hidden="true"></span><strong>Sin casos pendientes</strong><small>No hay pagos capturados sin orden, reembolsos pendientes ni errores de proceso.</small></div>
+          }
+          else
+          {
+            <div class="online-admin__recovery-list">
+              @foreach (var item in configuration.RecoveryItems.OrderByDescending(item => item.UpdatedAtUtc))
+              {
+                <article>
+                  <header><span class="online-admin__recovery-status">@RecoveryStatusLabel(item.CheckoutStatus)</span><time>@item.UpdatedAtUtc.ToLocalTime().ToString("dd MMM · HH:mm")</time></header>
+                  <strong>@(item.OrderFolio.HasValue ? $"Orden {item.OrderFolio:000}" : $"Intento {ShortId(item.CheckoutAttemptId)}")</strong>
+                  <p>@item.Total.ToString("C") @item.Currency · @item.RetryCount intento(s)</p>
+                  @if (!string.IsNullOrWhiteSpace(item.LastErrorMessage))
+                  {
+                    <small>@item.LastErrorMessage</small>
+                  }
+                  @if (!string.IsNullOrWhiteSpace(item.PayPalCaptureId))
+                  {
+                    <code>PayPal @ShortProviderId(item.PayPalCaptureId)</code>
+                  }
+                </article>
+              }
+            </div>
+          }
+          <p class="online-admin__hint">Desactivar o pausar pedidos no detiene esta cola. Los reembolsos se confirman con PayPal antes de reflejarse localmente.</p>
+        </article>
+      </aside>
+    </div>
+  }
+</section>
+
+@code {
+  private static readonly (DayOfWeek Day, string Key, string Label)[] DayDefinitions =
+  [
+    (DayOfWeek.Monday, "Monday", "Lunes"),
+    (DayOfWeek.Tuesday, "Tuesday", "Martes"),
+    (DayOfWeek.Wednesday, "Wednesday", "Miércoles"),
+    (DayOfWeek.Thursday, "Thursday", "Jueves"),
+    (DayOfWeek.Friday, "Friday", "Viernes"),
+    (DayOfWeek.Saturday, "Saturday", "Sábado"),
+    (DayOfWeek.Sunday, "Sunday", "Domingo")
+  ];
+
+  private List<RestaurantSiteDto> sites = [];
+  private int selectedSiteId;
+  private RestaurantOnlineOrderingAdminDto? configuration;
+  private RestaurantOnlineOrderingAdminSaveRequest editor = new();
+  private List<ScheduleDayEditor> schedule = CreateClosedSchedule();
+  private string productSearch = string.Empty;
+  private string? localMessage;
+  private bool localError;
+  private bool isLoading;
+  private bool isInitializing = true;
+  private bool isSaving;
+  private string CurrentRfc => RfcState.RequireRfc();
+  private bool CanChangeEnabled => configuration?.IsEnabled == true || configuration?.IsReady == true;
+  private IEnumerable<RestaurantOnlineProductAdminDto> FilteredProducts => configuration is null
+    ? Enumerable.Empty<RestaurantOnlineProductAdminDto>()
+    : configuration.Products
+      .Where(product => string.IsNullOrWhiteSpace(productSearch)
+        || product.ProductName.Contains(productSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+        || product.Sku.Contains(productSearch.Trim(), StringComparison.OrdinalIgnoreCase))
+      .OrderByDescending(product => product.IsActive)
+      .ThenBy(product => product.ProductName, StringComparer.CurrentCultureIgnoreCase);
+
+  private string OrderingStateLabel => configuration switch
+  {
+    { IsEnabled: false } => "Pedidos en línea apagados",
+    { IsPaused: true } => "Pedidos en línea pausados",
+    _ => "Pedidos en línea activos"
+  };
+
+  private string OrderingStateDescription => configuration switch
+  {
+    { IsEnabled: false } => "No se crean cotizaciones ni cobros nuevos.",
+    { IsPaused: true } => configuration.PauseMessage ?? "Los clientes verán una pausa temporal.",
+    _ => "El sitio puede cotizar y cobrar dentro del horario configurado."
+  };
+
+  private string HeartbeatLabel => configuration?.ProcessorHeartbeatAtUtc is not DateTime heartbeat
+    ? "Sin señal"
+    : DateTime.UtcNow - DateTime.SpecifyKind(heartbeat, DateTimeKind.Utc) <= TimeSpan.FromMinutes(2)
+      ? $"Activo · {heartbeat.ToLocalTime():HH:mm:ss}"
+      : $"Atrasado · {heartbeat.ToLocalTime():dd MMM HH:mm}";
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
+      selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+      await LoadAsync();
+    }
+    catch (Exception ex)
+    {
+      Show(ex.Message, true);
+    }
+    finally
+    {
+      isInitializing = false;
+    }
+  }
+
+  private async Task LoadAsync()
+  {
+    localMessage = null;
+    configuration = null;
+    if (selectedSiteId <= 0) return;
+    isLoading = true;
+    try
+    {
+      configuration = await OnlineOrderingService.GetAsync(CurrentRfc, selectedSiteId);
+      if (configuration is null) return;
+      editor = new RestaurantOnlineOrderingAdminSaveRequest
+      {
+        Rfc = CurrentRfc,
+        PublicSiteId = configuration.PublicSiteId,
+        SiteId = configuration.SiteId,
+        IsEnabled = configuration.IsEnabled,
+        IsPaused = configuration.IsPaused,
+        PauseMessage = configuration.PauseMessage,
+        AllowGuestCheckout = configuration.AllowGuestCheckout,
+        PickupEnabled = true,
+        MaximumOrderAmount = configuration.MaximumOrderAmount,
+        OnlineHoursJson = configuration.OnlineHoursJson,
+        TermsVersion = configuration.TermsVersion,
+        PrivacyVersion = configuration.PrivacyVersion,
+        EnabledProductIds = configuration.Products.Where(product => product.IsOnlineEnabled).Select(product => product.ProductId).ToList(),
+        ExpectedConfigurationVersion = configuration.ConfigurationVersion
+      };
+      schedule = ParseSchedule(configuration.OnlineHoursJson);
+    }
+    catch (Exception ex)
+    {
+      localMessage = ex.Message;
+      localError = true;
+    }
+    finally
+    {
+      isLoading = false;
+    }
+  }
+
+  private async Task SaveAsync()
+  {
+    if (configuration is null) return;
+    if (editor.IsEnabled && !configuration.IsReady && !configuration.IsEnabled)
+    {
+      Show("La activación sigue bloqueada. Guarda primero los ajustes pendientes y vuelve a revisar.", true);
+      return;
+    }
+    if (!TrySerializeSchedule(out var scheduleJson, out var scheduleError))
+    {
+      Show(scheduleError!, true);
+      return;
+    }
+    if (editor.IsPaused && string.IsNullOrWhiteSpace(editor.PauseMessage))
+    {
+      Show("Escribe el mensaje que verán los clientes durante la pausa.", true);
+      return;
+    }
+
+    isSaving = true;
+    try
+    {
+      var authentication = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+      editor.Rfc = CurrentRfc;
+      editor.PublicSiteId = configuration.PublicSiteId;
+      editor.SiteId = configuration.SiteId;
+      editor.PickupEnabled = true;
+      editor.OnlineHoursJson = scheduleJson!;
+      editor.EnabledProductIds = editor.EnabledProductIds.Distinct().Order().ToList();
+      var result = await OnlineOrderingService.SaveAsync(
+        editor,
+        authentication.User.Identity?.Name ?? "restaurant-admin");
+      if (result.Success)
+      {
+        await LoadAsync();
+        Show(result.Message, false);
+      }
+      else
+      {
+        Show(result.Message, true);
+      }
+    }
+    catch (Exception ex)
+    {
+      Show(ex.Message, true);
+    }
+    finally
+    {
+      isSaving = false;
+    }
+  }
+
+  private void SetProductEnabled(long productId, bool enabled)
+  {
+    if (enabled)
+    {
+      if (!editor.EnabledProductIds.Contains(productId)) editor.EnabledProductIds.Add(productId);
+    }
+    else
+    {
+      editor.EnabledProductIds.RemoveAll(id => id == productId);
+    }
+  }
+
+  private void EnableVisibleProducts()
+  {
+    foreach (var product in FilteredProducts.Where(product => product.IsActive)) SetProductEnabled(product.ProductId, true);
+  }
+
+  private void DisableVisibleProducts()
+  {
+    foreach (var product in FilteredProducts) SetProductEnabled(product.ProductId, false);
+  }
+
+  private static void AddInterval(ScheduleDayEditor day)
+  {
+    day.Intervals.Add(new ScheduleIntervalEditor { Opens = "09:00", Closes = "21:00" });
+  }
+
+  private static void RemoveInterval(ScheduleDayEditor day, ScheduleIntervalEditor interval)
+  {
+    day.Intervals.Remove(interval);
+    if (day.Intervals.Count == 0) day.IsOpen = false;
+  }
+
+  private bool TrySerializeSchedule(out string? json, out string? error)
+  {
+    var result = new Dictionary<string, List<ScheduleIntervalEditor>>(StringComparer.Ordinal);
+    foreach (var day in schedule)
+    {
+      if (!day.IsOpen)
+      {
+        result[day.Key] = [];
+        continue;
+      }
+      if (day.Intervals.Count == 0)
+      {
+        json = null;
+        error = $"Agrega al menos un intervalo para {day.Label.ToLowerInvariant()}.";
+        return false;
+      }
+      foreach (var interval in day.Intervals)
+      {
+        if (!TimeOnly.TryParseExact(interval.Opens, "HH:mm", out var opens)
+            || !TimeOnly.TryParseExact(interval.Closes, "HH:mm", out var closes)
+            || opens == closes)
+        {
+          json = null;
+          error = $"Revisa el horario de {day.Label.ToLowerInvariant()}; apertura y cierre deben ser horas distintas.";
+          return false;
+        }
+      }
+      result[day.Key] = day.Intervals;
+    }
+    if (result.Values.All(intervals => intervals.Count == 0))
+    {
+      json = null;
+      error = "Configura al menos un día con horario de pedidos.";
+      return false;
+    }
+    json = JsonSerializer.Serialize(result);
+    error = null;
+    return true;
+  }
+
+  private static List<ScheduleDayEditor> ParseSchedule(string? json)
+  {
+    var result = CreateClosedSchedule();
+    if (string.IsNullOrWhiteSpace(json)) return result;
+    try
+    {
+      using var document = JsonDocument.Parse(json);
+      if (document.RootElement.ValueKind != JsonValueKind.Object) return result;
+      foreach (var day in result)
+      {
+        var property = document.RootElement.EnumerateObject()
+          .FirstOrDefault(item => string.Equals(item.Name, day.Key, StringComparison.OrdinalIgnoreCase));
+        if (property.Value.ValueKind != JsonValueKind.Array) continue;
+        foreach (var interval in property.Value.EnumerateArray())
+        {
+          if (!TryReadProperty(interval, "opens", out var opens)
+              || !TryReadProperty(interval, "closes", out var closes)) continue;
+          var opensText = opens.GetString();
+          var closesText = closes.GetString();
+          if (TimeOnly.TryParseExact(opensText, "HH:mm", out _)
+              && TimeOnly.TryParseExact(closesText, "HH:mm", out _))
+          {
+            day.Intervals.Add(new ScheduleIntervalEditor { Opens = opensText!, Closes = closesText! });
+          }
+        }
+        day.IsOpen = day.Intervals.Count > 0;
+      }
+    }
+    catch (JsonException) { }
+    return result;
+  }
+
+  private static bool TryReadProperty(JsonElement element, string name, out JsonElement value)
+  {
+    if (element.ValueKind == JsonValueKind.Object)
+    {
+      foreach (var property in element.EnumerateObject())
+      {
+        if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+        {
+          value = property.Value;
+          return true;
+        }
+      }
+    }
+    value = default;
+    return false;
+  }
+
+  private static List<ScheduleDayEditor> CreateClosedSchedule()
+    => DayDefinitions.Select(item => new ScheduleDayEditor { Key = item.Key, Label = item.Label }).ToList();
+
+  private void Show(string value, bool error)
+  {
+    localMessage = value;
+    localError = error;
+  }
+
+  private static string RecoveryStatusLabel(string value) => value switch
+  {
+    RestaurantOnlineCheckoutStatuses.Captured => "Pago capturado",
+    RestaurantOnlineCheckoutStatuses.CapturedNeedsOrder => "Falta crear orden",
+    RestaurantOnlineCheckoutStatuses.CapturePending => "Captura pendiente",
+    RestaurantOnlineCheckoutStatuses.RefundRequested => "Reembolso solicitado",
+    RestaurantOnlineCheckoutStatuses.RefundPending => "Reembolso pendiente",
+    RestaurantOnlineCheckoutStatuses.Failed => "Requiere atención",
+    _ => value
+  };
+
+  private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
+  private static string ShortProviderId(string value) => value.Length <= 12 ? value : $"…{value[^12..]}";
+  private static string EmptyFallback(string? value) => string.IsNullOrWhiteSpace(value) ? "Pendiente" : value;
+
+  private sealed class ScheduleDayEditor
+  {
+    public string Key { get; init; } = string.Empty;
+    public string Label { get; init; } = string.Empty;
+    public bool IsOpen { get; set; }
+    public List<ScheduleIntervalEditor> Intervals { get; } = [];
+  }
+
+  private sealed class ScheduleIntervalEditor
+  {
+    [JsonPropertyName("opens")] public string Opens { get; set; } = "09:00";
+    [JsonPropertyName("closes")] public string Closes { get; set; } = "21:00";
+  }
+}

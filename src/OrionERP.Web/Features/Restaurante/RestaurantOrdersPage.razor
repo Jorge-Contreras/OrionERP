@@ -12,6 +12,7 @@
 @inject IRestaurantCashService CashService
 @inject IRestaurantQuickPinService QuickPinService
 @inject IRestaurantAccountingService AccountingService
+@inject IOnlineRestaurantOrderingAdminService OnlineOrderingService
 @inject ICurrentCompanyContext RfcState
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime Js
@@ -36,12 +37,19 @@
     </div>
   </section>
   <nav class="orders-filters">@foreach(var filter in new[]{"Active","Ready","Dispatched","Delivered","Completed","Cancelled"}){<button type="button" class="@(statusFilter==filter?"is-active":null)" @onclick="()=>statusFilter=filter">@FilterLabel(filter) <b>@Count(filter)</b></button>}</nav>
+  <nav class="orders-source-filters" aria-label="Filtrar por origen">
+    <span>Origen</span>
+    @foreach(var source in new[]{"All","POS","Web"})
+    {
+      <button type="button" class="@(sourceFilter==source?"is-active":null)" @onclick="()=>sourceFilter=source">@SourceFilterLabel(source) <b>@SourceCount(source)</b></button>
+    }
+  </nav>
   <section class="orders-grid">
     @foreach(var order in FilteredOrders)
     {
       <article @key="order.Id" class="order-card @KitchenProgressClass(order)">
         <header>
-          <div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if(!string.IsNullOrWhiteSpace(order.CustomerName)){<em class="order-card__customer">@order.CustomerName</em>}</div>
+          <div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if(IsWebOrder(order)){<mark class="order-source-badge"><span class="oi oi-globe" aria-hidden="true"></span> Web · PayPal</mark>}@if(!string.IsNullOrWhiteSpace(order.CustomerName)){<em class="order-card__customer">@order.CustomerName</em>}</div>
           <b>@StatusLabel(order.Status)</b>
         </header>
         <div class="order-card__summary">
@@ -72,7 +80,7 @@
             <button type="button" class="order-log-button" @onclick="()=>OpenOrderLogAsync(order)">
               <span class="oi oi-list-rich" aria-hidden="true"></span> Bitácora
             </button>
-            @if(order.CashRegisterId.HasValue){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">Correcciones / CFDI</button>}
+            @if(order.CashRegisterId.HasValue || IsWebOrder(order)){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">@(IsWebOrder(order) ? "Reembolso PayPal" : "Correcciones / CFDI")</button>}
             @if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}
             else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}
             else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}
@@ -122,14 +130,15 @@
     <section class="order-correction" role="dialog" aria-modal="true" aria-label="Correcciones supervisadas">
       <div class="order-correction__card">
         <header><div><span>Orden @correctionOrder.Folio.ToString("000")@if(!string.IsNullOrWhiteSpace(correctionOrder.CustomerName)){<text> · @correctionOrder.CustomerName</text>}</span><h2>Corrección supervisada</h2></div><button type="button" @onclick="CloseCorrections" aria-label="Cerrar">×</button></header>
-        <nav>@foreach(var mode in new[]{"Payment","Refund","Cancel","Cfdi"}){<button type="button" class="@(correctionMode==mode?"is-active":null)" @onclick="()=>correctionMode=mode">@CorrectionLabel(mode)</button>}</nav>
+        <nav>@foreach(var mode in CorrectionModes){<button type="button" class="@(correctionMode==mode?"is-active":null)" @onclick="()=>correctionMode=mode">@CorrectionLabel(mode)</button>}</nav>
         @if(correctionMode=="Payment")
         {
           <div class="order-correction__fields"><label>Forma de pago<select @bind="correctionPaymentMethod"><option value="Cash">Efectivo</option><option value="ExternalCard">Tarjeta externa</option><option value="Transfer">Transferencia</option></select></label><label>Importe<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label><label>Propina<input type="number" min="0" step="0.01" @bind="correctionTip" /></label></div>
         }
         else if(correctionMode=="Refund")
         {
-          <div class="order-correction__fields"><label>Pago<select @bind="selectedPaymentId"><option value="">Seleccionar…</option>@foreach(var payment in correctionPayments.Where(x=>x.RefundableAmount>0)){<option value="@payment.Id">@PaymentMethodLabel(payment.PaymentMethod) · @payment.RefundableAmount.ToString("C")</option>}</select></label><label>Importe a reembolsar<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label></div>
+          <div class="order-correction__fields"><label>Pago<select @bind="selectedPaymentId"><option value="">Seleccionar…</option>@foreach(var payment in correctionPayments.Where(x=>x.RefundableAmount>0)){<option value="@payment.Id">@(IsWebCorrection && payment.PaymentMethod=="Platform" ? "PayPal" : PaymentMethodLabel(payment.PaymentMethod)) · @payment.RefundableAmount.ToString("C")</option>}</select></label><label>Importe a reembolsar<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label></div>
+          @if(IsWebCorrection){<p class="order-correction__warning">La solicitud se enviará primero a PayPal. La orden y el pago local sólo se marcarán reembolsados después de que PayPal confirme el resultado.</p>}
         }
         else if(correctionMode=="Cancel")
         {
@@ -140,7 +149,13 @@
           <div class="order-correction__fields"><label>ID del comprobante CFDI<input type="number" min="1" @bind="correctionCfdiId" /></label></div><p class="order-correction__warning">Si la venta ya entró en una póliza diaria, se generará una reversión supervisada de su porción y después la póliza individual ligada a <code>Transaccion_Comprobante</code>.</p>
         }
         <label>Motivo<textarea @bind="correctionReason" rows="2"></textarea></label>
-        <div class="order-correction__supervisor"><label>Supervisor<input @bind="supervisorIdentity" autocomplete="username" placeholder="Correo o usuario" /></label><label>PIN<input type="password" inputmode="numeric" autocomplete="current-password" @bind="supervisorPin" /></label></div>
+        <div class="order-correction__supervisor">
+          @if(IsWebCorrection)
+          {
+            <label>Caja de autorización<select @bind="correctionAuthorizationRegisterId"><option value="">Seleccionar…</option>@foreach(var register in correctionRegisters){<option value="@register.Id">@register.Name</option>}</select></label>
+          }
+          <label>Supervisor<input @bind="supervisorIdentity" autocomplete="username" placeholder="Correo o usuario" /></label><label>PIN<input type="password" inputmode="numeric" autocomplete="current-password" @bind="supervisorPin" /></label>
+        </div>
         <footer><button type="button" class="btn btn-outline-secondary" @onclick="CloseCorrections">Cerrar</button><button type="button" class="btn btn-danger" disabled="@correctionBusy" @onclick="ApplyCorrectionAsync">Autorizar y aplicar</button></footer>
       </div>
     </section>
@@ -229,16 +244,19 @@
   private bool isLoadingOrders;
   private int loadVersion;
   private string statusFilter = "Active";
+  private string sourceFilter = "All";
   private string? message;
   private bool isError;
   private RestaurantOrderDto? correctionOrder;
   private List<RestaurantPaymentDto> correctionPayments = [];
   private List<RestaurantCashShiftDto> correctionShifts = [];
+  private List<RestaurantCashRegisterDto> correctionRegisters = [];
   private string correctionMode = "Payment";
   private string correctionPaymentMethod = "Cash";
   private Guid? selectedPaymentId;
   private decimal correctionAmount;
   private decimal correctionTip;
+  private int? correctionAuthorizationRegisterId;
   private int correctionCfdiId;
   private string correctionReason = string.Empty;
   private string supervisorIdentity = string.Empty;
@@ -256,6 +274,10 @@
 
   private string CurrentRfc => RfcState.RequireRfc();
   private RestaurantSiteDto? SelectedSite => sites.FirstOrDefault(site => site.Id == selectedSiteId);
+  private bool IsWebCorrection => correctionOrder is not null && IsWebOrder(correctionOrder);
+  private IReadOnlyList<string> CorrectionModes => IsWebCorrection
+    ? ["Refund"]
+    : ["Payment", "Refund", "Cancel", "Cfdi"];
   private DateOnly CurrentServiceDate => RestaurantServiceDayPolicy.GetServiceDate(DateTimeOffset.UtcNow, ResolveSelectedTimeZone());
   private bool IsCurrentServiceDay => selectedServiceDate == CurrentServiceDate;
   private string ServiceDateLabel => Capitalize(selectedServiceDate.ToString("dddd d 'de' MMMM 'de' yyyy", SpanishMexico));
@@ -264,6 +286,7 @@
   private IEnumerable<RestaurantOrderDto> FilteredOrders => (statusFilter == "Active"
       ? orders.Where(order => order.Status is not ("Completed" or "Cancelled"))
       : orders.Where(order => order.Status == statusFilter))
+    .Where(order => sourceFilter == "All" || string.Equals(order.SalesChannel, sourceFilter, StringComparison.OrdinalIgnoreCase))
     .OrderBy(order => order.OperationalDate)
     .ThenBy(order => order.Folio)
     .ThenBy(order => order.CreatedAt)
@@ -353,7 +376,9 @@
     correctionOrder = order;
     correctionPayments = (await OrderService.GetPaymentsAsync(CurrentRfc, order.Id)).ToList();
     correctionShifts = (await CashService.GetShiftsAsync(CurrentRfc, selectedSiteId)).Where(shift => shift.Status == "Open").ToList();
-    correctionMode = order.BalanceDue > 0 ? "Payment" : "Refund";
+    correctionRegisters = (await CashService.GetRegistersAsync(CurrentRfc, selectedSiteId)).Where(register => register.IsActive).ToList();
+    correctionAuthorizationRegisterId = order.CashRegisterId ?? correctionRegisters.FirstOrDefault()?.Id;
+    correctionMode = IsWebOrder(order) ? "Refund" : order.BalanceDue > 0 ? "Payment" : "Refund";
     selectedPaymentId = correctionPayments.FirstOrDefault(payment => payment.RefundableAmount > 0)?.Id;
     correctionAmount = correctionMode == "Payment"
       ? order.BalanceDue
@@ -369,6 +394,8 @@
   {
     correctionOrder = null;
     correctionPayments = [];
+    correctionRegisters = [];
+    correctionAuthorizationRegisterId = null;
     supervisorPin = string.Empty;
   }
 
@@ -471,14 +498,21 @@
 
   private async Task ApplyCorrectionAsync()
   {
-    if (correctionOrder is null || !correctionOrder.CashRegisterId.HasValue) return;
+    if (correctionOrder is null) return;
     correctionBusy = true;
     try
     {
+      var authorizationRegisterId = correctionOrder.CashRegisterId
+        ?? correctionAuthorizationRegisterId;
+      if (!authorizationRegisterId.HasValue)
+      {
+        Show("Se necesita una caja activa con PIN rápido configurado para autorizar el reembolso.", true);
+        return;
+      }
       var verification = await QuickPinService.VerifySupervisorPinAsync(new()
       {
         Rfc = CurrentRfc,
-        CashRegisterId = correctionOrder.CashRegisterId.Value,
+        CashRegisterId = authorizationRegisterId.Value,
         UserNameOrEmail = supervisorIdentity,
         Pin = supervisorPin
       });
@@ -492,7 +526,25 @@
       var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
       var requestedBy = auth.User.Identity?.Name ?? "caja";
       RestaurantCommandResult result;
-      if (correctionMode == "Payment")
+      if (IsWebOrder(correctionOrder))
+      {
+        if (correctionMode != "Refund")
+        {
+          Show("Las órdenes web sólo admiten solicitudes de reembolso PayPal desde esta pantalla.", true);
+          return;
+        }
+        result = await OnlineOrderingService.RequestRefundAsync(new()
+        {
+          Rfc = CurrentRfc,
+          OrderId = correctionOrder.Id,
+          Amount = correctionAmount,
+          IdempotencyKey = Guid.NewGuid().ToString("N"),
+          Reason = correctionReason,
+          RequestedByUserName = requestedBy,
+          SupervisorUserName = verification.UserName!
+        });
+      }
+      else if (correctionMode == "Payment")
       {
         var shift = correctionShifts.FirstOrDefault(item => item.CashRegisterId == correctionOrder.CashRegisterId);
         result = await OrderService.AddPaymentAsync(new()
@@ -556,10 +608,15 @@
     }
   }
 
-  private int Count(string filter) => filter == "Active"
-    ? orders.Count(order => order.Status is not ("Completed" or "Cancelled"))
-    : orders.Count(order => order.Status == filter);
+  private int Count(string filter) => orders.Count(order =>
+    (filter == "Active" ? order.Status is not ("Completed" or "Cancelled") : order.Status == filter)
+    && (sourceFilter == "All" || string.Equals(order.SalesChannel, sourceFilter, StringComparison.OrdinalIgnoreCase)));
+  private int SourceCount(string source) => orders.Count(order =>
+    (statusFilter == "Active" ? order.Status is not ("Completed" or "Cancelled") : order.Status == statusFilter)
+    && (source == "All" || string.Equals(order.SalesChannel, source, StringComparison.OrdinalIgnoreCase)));
   private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", "Cancelled" => "Canceladas", _ => value };
+  private static string SourceFilterLabel(string value) => value switch { "All" => "Todas", "POS" => "Punto de venta", "Web" => "Web · PayPal", _ => value };
+  private static bool IsWebOrder(RestaurantOrderDto order) => string.Equals(order.SalesChannel, RestaurantSalesChannels.Web, StringComparison.OrdinalIgnoreCase);
   private static string TypeLabel(string value) => value switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => value };
   private static string StatusLabel(string value) => value switch { "AwaitingPayment" => "Pendiente de pago", "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Cancelled" => "Cancelada", "Pending" => "Pendiente", _ => value };
   private static string ModifierInstruction(RestaurantOrderLineModifierDto modifier)

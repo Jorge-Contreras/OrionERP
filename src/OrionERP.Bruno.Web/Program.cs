@@ -13,14 +13,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Common;
+using OrionERP.Application.Features.Payments.PayPal;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Bruno.Web;
 using OrionERP.Bruno.Web.Configuration;
+using OrionERP.Bruno.Web.Features.Ordering;
 using OrionERP.Bruno.Web.Services;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Mail;
+using OrionERP.Infrastructure.Features.Payments.PayPal;
 using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.Infrastructure.Features.Restaurante;
 
@@ -88,6 +91,9 @@ var canonicalBaseUrl = publicWebsite.CanonicalBaseUri.GetLeftPart(UriPartial.Aut
 builder.Configuration[$"{BrunoSiteOptions.SectionName}:PublicBaseUrl"] = canonicalBaseUrl;
 builder.Configuration[$"{RestaurantMailOptions.SectionName}:PublicBaseUrl"] = canonicalBaseUrl;
 builder.Configuration[$"{RestaurantMailOptions.SectionName}:SenderAddress"] = presentation.PublicEmail;
+builder.Configuration[$"{RestaurantCheckoutOptions.SectionName}:PublicBaseUrl"] = canonicalBaseUrl;
+builder.Configuration[$"{RestaurantCheckoutOptions.SectionName}:TermsVersion"] = presentation.TermsVersion;
+builder.Configuration[$"{RestaurantCheckoutOptions.SectionName}:PrivacyVersion"] = presentation.PrivacyVersion;
 builder.Configuration[$"{BrunoTurnstileOptions.SectionName}:ExpectedHostname"] = publicWebsite.CanonicalHost;
 builder.Configuration["AllowedHosts"] =
   $"{publicWebsite.CanonicalHost};www.{publicWebsite.CanonicalHost};localhost;127.0.0.1";
@@ -180,6 +186,21 @@ builder.Services.AddRazorPages(options =>
 });
 builder.Services.AddServerSideBlazor();
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAntiforgery(options =>
+{
+  // The layout emits a token on every page, and antiforgery throws on a Secure-only
+  // cookie over plain HTTP, so Development (http://localhost:5220) drops the __Host- prefix.
+  var requireSecureCookie = !builder.Environment.IsDevelopment();
+  options.Cookie.Name = requireSecureCookie
+    ? $"__Host-OrionRestaurant.{publicWebsite.PublicSiteKey}.Xsrf"
+    : $"OrionRestaurant.{publicWebsite.PublicSiteKey}.Xsrf";
+  options.Cookie.HttpOnly = true;
+  options.Cookie.SecurePolicy = requireSecureCookie
+    ? CookieSecurePolicy.Always
+    : CookieSecurePolicy.SameAsRequest;
+  options.Cookie.SameSite = SameSiteMode.Strict;
+  options.HeaderName = "X-CSRF-TOKEN";
+});
 
 builder.Services.AddPublicWebsiteInstance(connectionString, publicWebsite, presentation);
 builder.Services.AddScoped<PublicWebsiteSqlConnectionFactory>();
@@ -190,6 +211,28 @@ builder.Services.AddScoped<IRestaurantLoyaltyService, LoyaltyService>();
 builder.Services.AddScoped<IRestaurantMembershipService>(sp => sp.GetRequiredService<IRestaurantLoyaltyService>());
 builder.Services.AddScoped<IRestaurantPublicCatalogService, RestaurantPublicCatalogService>();
 builder.Services.AddScoped<IPublicIdentityReadiness, PublicIdentityReadiness>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IOnlineRestaurantQuoteTokenService, RestaurantOnlineQuoteTokenService>();
+builder.Services.AddScoped<IOnlineRestaurantCheckoutService, RestaurantOnlineCheckoutService>();
+builder.Services.AddScoped<IOnlineRestaurantQuoteService>(services =>
+  services.GetRequiredService<IOnlineRestaurantCheckoutService>());
+builder.Services
+  .AddOptions<RestaurantCheckoutOptions>()
+  .Bind(builder.Configuration.GetSection(RestaurantCheckoutOptions.SectionName))
+  .Validate(
+    options => RestaurantCheckoutOptionsPolicy.Validate(options, builder.Environment.IsProduction()).Count == 0,
+    "RestaurantCheckout contiene una configuración inválida para el ambiente actual.")
+  .ValidateOnStart();
+builder.Services.AddHttpClient<IPayPalOrdersClient, PayPalOrdersClient<RestaurantCheckoutOptions>>(client =>
+  client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddHttpClient("RestaurantPayPalHistorical", client =>
+  client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddScoped<IRestaurantPayPalClientResolver, RestaurantPayPalClientResolver>();
+builder.Services.AddScoped<IPayPalRecoveryProcessor, RestaurantPayPalRecoveryProcessor>();
+builder.Services.AddScoped<IOnlineRestaurantOrderEmailSender, OnlineRestaurantOrderEmailSender>();
+builder.Services.AddScoped<IOnlineRestaurantOrderNotificationQueue, OnlineRestaurantOrderNotificationQueue>();
+builder.Services.AddHostedService<OnlineRestaurantOrderNotificationWorker>();
+builder.Services.AddHostedService<OnlineRestaurantPaymentRecoveryWorker>();
 
 builder.Services
   .AddOptions<RestaurantMailOptions>()
@@ -223,12 +266,33 @@ builder.Services.AddHttpClient<IBrunoTurnstileService, BrunoTurnstileService>(cl
 builder.Services.AddRateLimiter(options =>
 {
   options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-  options.AddFixedWindowLimiter("account", limiter =>
-  {
-    limiter.PermitLimit = 10;
-    limiter.Window = TimeSpan.FromMinutes(1);
-    limiter.QueueLimit = 0;
-  });
+  options.AddPolicy("account", context =>
+    RateLimitPartition.GetFixedWindowLimiter(
+      context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+      _ => new FixedWindowRateLimiterOptions
+      {
+        PermitLimit = 10,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0
+      }));
+  options.AddPolicy("checkout", context =>
+    RateLimitPartition.GetFixedWindowLimiter(
+      context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+      _ => new FixedWindowRateLimiterOptions
+      {
+        PermitLimit = 30,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0
+      }));
+  options.AddPolicy("webhook", context =>
+    RateLimitPartition.GetFixedWindowLimiter(
+      context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+      _ => new FixedWindowRateLimiterOptions
+      {
+        PermitLimit = 120,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0
+      }));
   options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     RateLimitPartition.GetFixedWindowLimiter(
       context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -252,13 +316,29 @@ if (!app.Environment.IsDevelopment())
 app.UseConfiguredPublicWebsite();
 app.Use(async (context, next) =>
 {
+  var incoming = context.Request.Headers["X-Correlation-ID"].ToString();
+  var correlationId = Guid.TryParse(incoming, out var parsed)
+    ? parsed.ToString("N")
+    : Guid.NewGuid().ToString("N");
+  context.TraceIdentifier = correlationId;
+  context.Response.Headers["X-Correlation-ID"] = correlationId;
+  await next();
+});
+app.Use(async (context, next) =>
+{
+  var isPrivateCheckoutPath = context.Request.Path.StartsWithSegments("/checkout")
+    || context.Request.Path.StartsWithSegments("/pedido")
+    || context.Request.Path.StartsWithSegments("/api/restaurant/checkout");
   context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-  context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+  context.Response.Headers["Referrer-Policy"] = isPrivateCheckoutPath ? "no-referrer" : "strict-origin-when-cross-origin";
+  if (isPrivateCheckoutPath) context.Response.Headers.CacheControl = "no-store, private";
   context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)";
   context.Response.Headers["Content-Security-Policy"] =
     "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
-    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com; " +
-    "frame-src https://challenges.cloudflare.com; connect-src 'self' https://cloudflareinsights.com; base-uri 'self'; frame-ancestors 'none';";
+    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://www.paypal.com https://www.sandbox.paypal.com https://www.paypalobjects.com https://*.paypal.com https://*.paypalobjects.com; " +
+    "frame-src https://challenges.cloudflare.com https://www.paypal.com https://www.sandbox.paypal.com https://*.paypal.com https://*.paypalobjects.com; " +
+    "connect-src 'self' https://cloudflareinsights.com https://www.paypal.com https://www.sandbox.paypal.com https://api.paypal.com https://api-m.paypal.com https://api-m.sandbox.paypal.com https://*.paypal.com https://*.paypalobjects.com; " +
+    "base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://*.paypal.com;";
   await next();
 });
 app.UseStaticFiles();
@@ -339,7 +419,9 @@ app.MapGet("/readyz", async (
   IPublicIdentityScopeAccessor identityScope,
   IPublicIdentityReadiness identityReadiness,
   IRestaurantPublicCatalogService publicCatalog,
+  IOnlineRestaurantCheckoutService checkout,
   IOptions<BrunoTurnstileOptions> turnstile,
+  IOptions<RestaurantCheckoutOptions> checkoutOptions,
   ILoggerFactory loggerFactory,
   CancellationToken ct) =>
 {
@@ -349,10 +431,30 @@ app.MapGet("/readyz", async (
     if (!await identityReadiness.IsReadyAsync(identityScope.Current, ct))
       return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
     var settings = await publicCatalog.GetSettingsAsync(binding, ct);
-    return settings is null ||
-           (settings.IsMembershipEnabled && !turnstile.Value.IsConfigured)
-      ? Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable)
-      : Results.Text("OK", "text/plain");
+    if (settings is null || (settings.IsMembershipEnabled && !turnstile.Value.IsConfigured))
+      return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    var online = await checkout.GetConfigurationAsync(binding, ct);
+    if (online.IsEnabled)
+    {
+      var options = checkoutOptions.Value;
+      var heartbeatMaximumAge = TimeSpan.FromSeconds(options.ProcessorHeartbeatMaxAgeSeconds);
+      var heartbeatIsFresh = online.ProcessorHeartbeatAtUtc.HasValue
+        && DateTime.UtcNow - DateTime.SpecifyKind(online.ProcessorHeartbeatAtUtc.Value, DateTimeKind.Utc) <= heartbeatMaximumAge;
+      var checkoutIsReady = options.IsPayPalConfigured
+        && options.IsWebhookVerificationConfigured
+        && (!app.Environment.IsProduction() || options.UseLivePayPal)
+        && !string.IsNullOrWhiteSpace(online.PayPalClientId)
+        && online.MaximumOrderAmount > 0
+        && !string.IsNullOrWhiteSpace(online.OnlineHoursJson)
+        && string.Equals(online.TermsVersion, presentation.TermsVersion, StringComparison.Ordinal)
+        && string.Equals(online.PrivacyVersion, presentation.PrivacyVersion, StringComparison.Ordinal)
+        && heartbeatIsFresh;
+      if (!checkoutIsReady)
+        return Results.Text("NOT READY", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    return Results.Text("OK", "text/plain");
   }
   catch (Exception exception)
   {
@@ -363,7 +465,7 @@ app.MapGet("/readyz", async (
   }
 });
 app.MapGet("/robots.txt", (IPublicWebsiteInstanceContext website) => Results.Text(
-  $"User-agent: *\nAllow: /\nDisallow: /cuenta/\nSitemap: {website.Instance.CanonicalBaseUri}sitemap.xml\n",
+  $"User-agent: *\nAllow: /\nDisallow: /cuenta/\nDisallow: /checkout\nDisallow: /pedido/\nSitemap: {website.Instance.CanonicalBaseUri}sitemap.xml\n",
   "text/plain"));
 app.MapGet("/sitemap.xml", (IPublicWebsiteInstanceContext website) =>
 {
@@ -374,6 +476,7 @@ app.MapGet("/sitemap.xml", (IPublicWebsiteInstanceContext website) =>
   <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url><loc>{{origin}}/</loc></url>
     <url><loc>{{origin}}/menu</loc></url>
+    <url><loc>{{origin}}/ordenar</loc></url>
     <url><loc>{{origin}}/promociones</loc></url>
     <url><loc>{{origin}}/membresia</loc></url>
     <url><loc>{{origin}}/visitanos</loc></url>
@@ -395,6 +498,7 @@ app.MapGet("/media/productos/{productId:long}", async (
   return image.HasValue ? Results.File(image.Value.Bytes, image.Value.ContentType) : Results.NotFound();
 });
 
+app.MapRestaurantCheckoutApi();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");

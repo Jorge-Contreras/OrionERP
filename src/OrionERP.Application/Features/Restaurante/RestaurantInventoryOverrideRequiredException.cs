@@ -1,9 +1,9 @@
 namespace OrionERP.Application.Features.Restaurante;
 
-public sealed class RestaurantInventoryOverrideRequiredException : InvalidOperationException
+public sealed class RestaurantInventoryOverrideRequiredException : RestaurantOrderBusinessRejectionException
 {
   public RestaurantInventoryOverrideRequiredException(string message)
-    : base(message)
+    : base(RestaurantOrderRejectionCategory.Inventory, message)
   {
   }
 }

@@ -55,15 +55,21 @@ public static class RestaurantComboOrderRules
     ArgumentNullException.ThrowIfNull(selections);
     if (slots.Count == 0)
     {
-      throw new InvalidOperationException($"El combo {comboSku} no tiene grupos activos configurados.");
+      throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Combo,
+        $"El combo {comboSku} no tiene grupos activos configurados.");
     }
     if (selections.Count != selections.Select(selection => selection.ComboSlotOptionId).Distinct().Count())
     {
-      throw new InvalidOperationException("No se puede repetir la misma opción dentro de un combo.");
+      throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Combo,
+        "No se puede repetir la misma opción dentro de un combo.");
     }
     if (selections.Any(selection => slots.All(slot => slot.Id != selection.ComboSlotId)))
     {
-      throw new InvalidOperationException("Una selección no pertenece a los grupos del combo o al RFC seleccionado.");
+      throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Combo,
+        "Una selección no pertenece a los grupos del combo o al RFC seleccionado.");
     }
 
     var resolved = new List<RestaurantComboOrderOptionRule>();
@@ -72,20 +78,25 @@ public static class RestaurantComboOrderRules
       var slotSelections = selections.Where(selection => selection.ComboSlotId == slot.Id).ToList();
       if (slotSelections.Count < slot.MinSelections || slotSelections.Count > slot.MaxSelections)
       {
-        throw new InvalidOperationException(
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Combo,
           $"El grupo {slot.Name} requiere entre {slot.MinSelections} y {slot.MaxSelections} opciones.");
       }
       foreach (var selection in slotSelections)
       {
         var option = slot.Options.SingleOrDefault(candidate =>
           candidate.OptionId == selection.ComboSlotOptionId && candidate.IsActive)
-          ?? throw new InvalidOperationException("Una opción está inactiva o no pertenece al combo y RFC seleccionados.");
+          ?? throw new RestaurantOrderBusinessRejectionException(
+            RestaurantOrderRejectionCategory.Combo,
+            "Una opción está inactiva o no pertenece al combo y RFC seleccionados.");
         resolved.Add(option);
       }
     }
     if (resolved.Count == 0)
     {
-      throw new InvalidOperationException("Un combo debe incluir al menos un componente operativo.");
+      throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Combo,
+        "Un combo debe incluir al menos un componente operativo.");
     }
     return resolved;
   }
@@ -103,14 +114,18 @@ public static class RestaurantComboOrderRules
       .ToList();
     if (productSections.Count == 0)
     {
-      throw new InvalidOperationException("El producto no pertenece al menú vigente de la sede seleccionada.");
+      throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Product,
+        "El producto no pertenece al menú vigente de la sede seleccionada.");
     }
     if (!requestedMenuSectionId.HasValue)
     {
       return productSections[0];
     }
     return productSections.SingleOrDefault(item => item.MenuSectionId == requestedMenuSectionId.Value)
-      ?? throw new InvalidOperationException("La sección seleccionada no contiene el producto en el menú vigente.");
+      ?? throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Product,
+        "La sección seleccionada no contiene el producto en el menú vigente.");
   }
 
   public static IReadOnlyList<RestaurantOrderLineModifierDto> ExpandModifierSnapshot(

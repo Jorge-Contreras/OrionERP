@@ -324,10 +324,13 @@ ALTER FUNCTION rh.fn_WorkforceScopePredicate(@Rfc varchar(50))
 
   IF EXISTS
   (
-    SELECT PolicyObjectId,TargetSchema,TargetTable,PredicateType,OperationDesc,PredicateDefinition FROM #PredicateRestore
+    SELECT PolicyObjectId,TargetSchema COLLATE DATABASE_DEFAULT,TargetTable COLLATE DATABASE_DEFAULT,PredicateType,
+      OperationDesc COLLATE DATABASE_DEFAULT,PredicateDefinition COLLATE DATABASE_DEFAULT
+    FROM #PredicateRestore
     EXCEPT
-    SELECT predicateInfo.object_id,OBJECT_SCHEMA_NAME(predicateInfo.target_object_id),OBJECT_NAME(predicateInfo.target_object_id),
-      predicateInfo.predicate_type,ISNULL(predicateInfo.operation_desc,N''),predicateInfo.predicate_definition
+    SELECT predicateInfo.object_id,OBJECT_SCHEMA_NAME(predicateInfo.target_object_id) COLLATE DATABASE_DEFAULT,
+      OBJECT_NAME(predicateInfo.target_object_id) COLLATE DATABASE_DEFAULT,predicateInfo.predicate_type,
+      ISNULL(predicateInfo.operation_desc,N'') COLLATE DATABASE_DEFAULT,predicateInfo.predicate_definition COLLATE DATABASE_DEFAULT
     FROM sys.security_predicates predicateInfo
   )
   OR EXISTS

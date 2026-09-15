@@ -472,6 +472,24 @@
         "Orion_Sandbox",
         "grupocarpio"
       ]
+    },
+    {
+      "id": "20260914_rls_sa_full_access",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260914_rls_sa_full_access.sql",
+      "description": "El login sa ve y edita todas las filas sin SESSION_CONTEXT para diagnosticar desde SSMS; orion y los principales públicos siguen fail-closed.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260914_rls_sa_full_access_online_ordering",
+      "path": "src/OrionERP.Infrastructure/Features/Platform/Sql/20260914_rls_sa_full_access_online_ordering.sql",
+      "description": "Extiende el acceso completo de sa al checkout en línea de Restaurante, una vez que existe su política.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
     }
   ]
 }

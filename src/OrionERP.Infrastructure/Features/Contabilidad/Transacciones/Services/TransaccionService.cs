@@ -2588,18 +2588,21 @@ WHERE t.ID = @TransaccionId
         return TransaccionCommandResult.Fail("El RFC de la póliza no corresponde al emisor ni al receptor del CFDI.");
       }
 
+      // SQL Server rejects a subquery inside SUM (error 130), so the company filter is a LEFT JOIN.
       const string stateSql = @"
 SELECT
-    CAST(ISNULL(SUM(CASE
-        WHEN tc.Transaccion_ID = @TransaccionId AND tc.Comprobante_ID = @ComprobanteId THEN 0
-        WHEN @RelinkPlaceholder = 1 AND tc.Transaccion_ID = 5505 THEN 0
-        WHEN NOT EXISTS
-        (
-          SELECT 1 FROM dbo.Transacciones AS assignedTransaction
-          WHERE assignedTransaction.ID = tc.Transaccion_ID
-            AND assignedTransaction.RFC = @CompanyRfc
-        ) THEN 0
-        ELSE tc.Monto END), 0) AS decimal(19,4)) AS CfdiAssignedOther,
+    CAST(ISNULL((
+        SELECT SUM(CASE
+            WHEN tc.Transaccion_ID = @TransaccionId AND tc.Comprobante_ID = @ComprobanteId THEN 0
+            WHEN @RelinkPlaceholder = 1 AND tc.Transaccion_ID = 5505 THEN 0
+            WHEN assignedTransaction.ID IS NULL THEN 0
+            ELSE tc.Monto END)
+        FROM dbo.Transaccion_Comprobante AS tc WITH (UPDLOCK, HOLDLOCK)
+        LEFT JOIN dbo.Transacciones AS assignedTransaction
+          ON assignedTransaction.ID = tc.Transaccion_ID
+         AND assignedTransaction.RFC = @CompanyRfc
+        WHERE tc.Comprobante_ID = @ComprobanteId
+    ), 0) AS decimal(19,4)) AS CfdiAssignedOther,
     CAST(ISNULL((
         SELECT SUM(tc2.Monto)
         FROM dbo.Transaccion_Comprobante AS tc2 WITH (UPDLOCK, HOLDLOCK)

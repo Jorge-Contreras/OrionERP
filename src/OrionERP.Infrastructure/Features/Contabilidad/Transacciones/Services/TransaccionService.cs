@@ -351,17 +351,17 @@ GROUP BY Comprobante_Id;",
       if (hasPaymentLinks)
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "La pÃ³liza ya contiene vÃ­nculos de complementos de pago.";
+        candidate.BlockReason = "La póliza ya contiene vínculos de complementos de pago.";
       }
       else if (candidate.Pendiente <= 0.01m)
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "El CFDI ya estÃ¡ totalmente asignado.";
+        candidate.BlockReason = "El CFDI ya está totalmente asignado.";
       }
       else if (regularRemaining <= 0.01m)
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "La pÃ³liza no tiene monto disponible.";
+        candidate.BlockReason = "La póliza no tiene monto disponible.";
       }
     }
 
@@ -373,22 +373,22 @@ GROUP BY Comprobante_Id;",
       if (hasRegularLinks)
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "La pÃ³liza ya contiene vÃ­nculos de CFDI regular.";
+        candidate.BlockReason = "La póliza ya contiene vínculos de CFDI regular.";
       }
       else if (!IsMxn(candidate.MonedaP) || !IsMxn(candidate.MonedaDr))
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "La asignaciÃ³n Pago20 solo estÃ¡ habilitada cuando MonedaP y MonedaDR son MXN.";
+        candidate.BlockReason = "La asignación Pago20 solo está habilitada cuando MonedaP y MonedaDR son MXN.";
       }
       else if (candidate.Pendiente <= 0m)
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "El documento relacionado ya estÃ¡ totalmente asignado.";
+        candidate.BlockReason = "El documento relacionado ya está totalmente asignado.";
       }
       else if (pago20Remaining <= 0.01m)
       {
         candidate.CanLink = false;
-        candidate.BlockReason = "La pÃ³liza no tiene monto disponible.";
+        candidate.BlockReason = "La póliza no tiene monto disponible.";
       }
     }
 
@@ -480,22 +480,22 @@ GROUP BY Transaccion_ID;",
         if (!currencyAllowed)
         {
           candidate.CanLink = false;
-          candidate.BlockReason = "La asignaciÃ³n Pago20 solo estÃ¡ habilitada cuando MonedaP y MonedaDR son MXN.";
+          candidate.BlockReason = "La asignación Pago20 solo está habilitada cuando MonedaP y MonedaDR son MXN.";
         }
         else if (data.Summary.Pendiente <= 0m)
         {
           candidate.CanLink = false;
-          candidate.BlockReason = "El documento relacionado ya estÃ¡ totalmente asignado.";
+          candidate.BlockReason = "El documento relacionado ya está totalmente asignado.";
         }
         else if (candidate.Disponible <= 0m)
         {
           candidate.CanLink = false;
-          candidate.BlockReason = "La pÃ³liza no tiene monto disponible.";
+          candidate.BlockReason = "La póliza no tiene monto disponible.";
         }
         else if (blockedTransactionIds.Contains(candidate.Id))
         {
           candidate.CanLink = false;
-          candidate.BlockReason = "La pÃ³liza ya contiene un vÃ­nculo de CFDI regular o Pago20 legado.";
+          candidate.BlockReason = "La póliza ya contiene un vínculo de CFDI regular o Pago20 legado.";
         }
       }
     }
@@ -610,17 +610,17 @@ WHERE td.Transaccion_ID = @TransaccionId;";
     var retentions = (await multi.ReadAsync<Pago20AccountingTaxRow>()).AsList();
 
     if (header is null)
-      return Pago20AccountingBasisResult.Fail("No se encontrÃ³ la pÃ³liza.");
+      return Pago20AccountingBasisResult.Fail("No se encontró la póliza.");
     if (header.LegacyPaymentLinks > 0)
-      return Pago20AccountingBasisResult.Fail("La pÃ³liza contiene vÃ­nculos Pago20 legados. Migra o desliga esos vÃ­nculos antes de generar movimientos.");
+      return Pago20AccountingBasisResult.Fail("La póliza contiene vínculos Pago20 legados. Migra o desliga esos vínculos antes de generar movimientos.");
     if (documents.Count == 0)
-      return Pago20AccountingBasisResult.Fail("La pÃ³liza no tiene documentos Pago20 ligados.");
+      return Pago20AccountingBasisResult.Fail("La póliza no tiene documentos Pago20 ligados.");
     if (documents.Any(item => !string.Equals(item.TipoDeComprobante, "P", StringComparison.OrdinalIgnoreCase)))
       return Pago20AccountingBasisResult.Fail("Uno de los documentos ligados no pertenece a un CFDI de tipo P.");
     if (documents.Any(item => !IsMxn(item.MonedaP) || !IsMxn(item.MonedaDr)))
-      return Pago20AccountingBasisResult.Fail("La generaciÃ³n contable Pago20 solo admite MonedaP y MonedaDR en MXN.");
+      return Pago20AccountingBasisResult.Fail("La generación contable Pago20 solo admite MonedaP y MonedaDR en MXN.");
     if (documents.Any(item => item.MontoAsignado <= 0m || item.ImpPagado <= 0m))
-      return Pago20AccountingBasisResult.Fail("Todos los vÃ­nculos Pago20 deben tener un monto e ImpPagado mayores que cero.");
+      return Pago20AccountingBasisResult.Fail("Todos los vínculos Pago20 deben tener un monto e ImpPagado mayores que cero.");
     if (documents.Any(item => item.DocumentAssigned - item.ImpPagado > 0.01m))
       return Pago20AccountingBasisResult.Fail("Existe un documento Pago20 asignado por encima de su ImpPagado.");
 
@@ -629,11 +629,11 @@ WHERE td.Transaccion_ID = @TransaccionId;";
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
     if (directions.Length != 1 || string.Equals(directions[0], "Otro", StringComparison.OrdinalIgnoreCase))
-      return Pago20AccountingBasisResult.Fail("Los complementos ligados no comparten una direcciÃ³n vÃ¡lida para el RFC de la pÃ³liza.");
+      return Pago20AccountingBasisResult.Fail("Los complementos ligados no comparten una dirección válida para el RFC de la póliza.");
 
     var unsupportedTaxes = transfers.Concat(retentions)
         .Where(item => item.Importe != 0m && item.ImpuestoDR is not ("001" or "002" or "003"))
-        .Select(item => item.ImpuestoDR ?? "(vacÃ­o)")
+        .Select(item => item.ImpuestoDR ?? "(vacío)")
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
     if (unsupportedTaxes.Length > 0)
@@ -912,7 +912,7 @@ ORDER BY ta.ID DESC;";
       throw new ArgumentException("El archivo adjunto no contiene datos.", nameof(request));
 
     if (request.Content.Length > TransaccionAttachmentCreateRequest.MaxFileSizeBytes)
-      throw new InvalidOperationException("El archivo adjunto excede el tamaÃ±o mÃ¡ximo permitido (5 MB).");
+      throw new InvalidOperationException("El archivo adjunto excede el tamaño máximo permitido (5 MB).");
 
     const string insertSql = @"
 INSERT INTO dbo.TRANSACTION_ATTACHMENT
@@ -1053,7 +1053,7 @@ WHERE ID = @AttachmentId;";
     const string sql = @"SELECT
     CAST(tc.Monto AS decimal(18, 4))                       AS PolizaMonto,
     tc.Comprobante_ID                                      AS ComprobanteId,
-    CASE WHEN cd.Incluir_En_Declaracion = 1 THEN N'âœ”' ELSE N'X' END AS D,
+    CASE WHEN cd.Incluir_En_Declaracion = 1 THEN N'✔' ELSE N'X' END AS D,
     cd.Fecha,
     cd.MESES                                               AS MesGlobal,
     cd.ANIO                                                AS AnioGlobal,
@@ -1341,7 +1341,7 @@ ORDER BY
       throw new ArgumentNullException(nameof(request));
 
     if (request.TransaccionId <= 0 || request.ReservationId <= 0)
-      return TransaccionCommandResult.Fail("Selecciona una pÃ³liza y una reservaciÃ³n vÃ¡lidas.");
+      return TransaccionCommandResult.Fail("Selecciona una póliza y una reservación válidas.");
 
     if (decimal.Abs(request.Amount) < 0.01m)
       return TransaccionCommandResult.Fail("Ingresa un monto distinto de cero.");
@@ -1367,7 +1367,7 @@ WHERE ID = @ReservationId
       if (!reservationExists.HasValue)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("La reservaciÃ³n seleccionada no existe.");
+        return TransaccionCommandResult.Fail("La reservación seleccionada no existe.");
       }
 
       const string existsTransaccionSql = @"SELECT TOP (1) 1
@@ -1385,7 +1385,7 @@ WHERE ID = @TransaccionId
       if (!transaccionExists.HasValue)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("La pÃ³liza seleccionada no existe.");
+        return TransaccionCommandResult.Fail("La póliza seleccionada no existe.");
       }
 
       const string existsLinkSql = @"SELECT TOP (1) 1
@@ -1424,7 +1424,7 @@ WHERE ReservationID = @ReservationId
                 cancellationToken: ct));
 
         await tx.CommitAsync(ct);
-        return TransaccionCommandResult.Ok("AsignaciÃ³n de reservaciÃ³n actualizada.");
+        return TransaccionCommandResult.Ok("Asignación de reservación actualizada.");
       }
 
       const string insertSql = @"INSERT INTO dbo.Reservation_Transacciones
@@ -1446,18 +1446,18 @@ VALUES (@ReservationId, @TransaccionId, @Amount,
               cancellationToken: ct));
 
       await tx.CommitAsync(ct);
-      return TransaccionCommandResult.Ok("ReservaciÃ³n ligada correctamente.");
+      return TransaccionCommandResult.Ok("Reservación ligada correctamente.");
     }
     catch (Exception ex)
     {
       await tx.RollbackAsync(ct);
       _logger.LogError(
           ex,
-          "Error al guardar vÃ­nculo entre transacciÃ³n {TransaccionId} y reservaciÃ³n {ReservationId}",
+          "Error al guardar vínculo entre transacción {TransaccionId} y reservación {ReservationId}",
           request.TransaccionId,
           request.ReservationId);
 
-      return TransaccionCommandResult.Fail("No se pudo guardar la asignaciÃ³n de la reservaciÃ³n.");
+      return TransaccionCommandResult.Fail("No se pudo guardar la asignación de la reservación.");
     }
   }
 
@@ -1488,18 +1488,18 @@ WHERE rt.TransaccionID = @TransaccionId
               cancellationToken: ct));
 
       return affectedRows > 0
-          ? TransaccionCommandResult.Ok("AsignaciÃ³n eliminada correctamente.")
-          : TransaccionCommandResult.Fail("No se encontrÃ³ la asignaciÃ³n a eliminar.");
+          ? TransaccionCommandResult.Ok("Asignación eliminada correctamente.")
+          : TransaccionCommandResult.Fail("No se encontró la asignación a eliminar.");
     }
     catch (Exception ex)
     {
       _logger.LogError(
           ex,
-          "Error al eliminar vÃ­nculo entre transacciÃ³n {TransaccionId} y reservaciÃ³n {ReservationId}",
+          "Error al eliminar vínculo entre transacción {TransaccionId} y reservación {ReservationId}",
           transaccionId,
           reservationId);
 
-      return TransaccionCommandResult.Fail("No se pudo eliminar la asignaciÃ³n de la reservaciÃ³n.");
+      return TransaccionCommandResult.Fail("No se pudo eliminar la asignación de la reservación.");
     }
   }
 
@@ -1628,7 +1628,7 @@ WHERE Transaccion_ID = @TransaccionId
 
       return updated > 0
           ? TransaccionCommandResult.Ok("Documento Pago20 desligado correctamente.")
-          : TransaccionCommandResult.Fail("No se encontrÃ³ el vÃ­nculo de este documento Pago20 con la pÃ³liza actual.");
+          : TransaccionCommandResult.Fail("No se encontró el vínculo de este documento Pago20 con la póliza actual.");
     }
     catch (Exception ex)
     {
@@ -1638,7 +1638,7 @@ WHERE Transaccion_ID = @TransaccionId
           doctoRelacionadoId,
           transaccionId);
 
-      return TransaccionCommandResult.Fail("No se pudo desligar el documento Pago20. IntÃ©ntalo de nuevo.");
+      return TransaccionCommandResult.Fail("No se pudo desligar el documento Pago20. Inténtalo de nuevo.");
     }
   }
 
@@ -1664,7 +1664,7 @@ WHERE Transaccion_ID = @TransaccionId
       if (!existingFecha.HasValue)
       {
         await tx!.RollbackAsync(ct);
-        return TransaccionGuardarCerrarResult.Fail("TransacciÃ³n no encontrada.");
+        return TransaccionGuardarCerrarResult.Fail("Transacción no encontrada.");
       }
 
       var effectiveFecha = PreserveTimeOfDay(request.Fecha, existingFecha.Value);
@@ -1705,19 +1705,19 @@ WHERE ID = @TransaccionId;";
       if (affected == 0)
       {
         await tx!.RollbackAsync(ct);
-        return TransaccionGuardarCerrarResult.Fail("TransacciÃ³n no encontrada.");
+        return TransaccionGuardarCerrarResult.Fail("Transacción no encontrada.");
       }
 
       var totals = await LoadTotalsAsync(conn, tx, request.TransaccionId, ct);
       await tx!.CommitAsync(ct);
-      return TransaccionGuardarCerrarResult.Ok(totals, "TransacciÃ³n guardada correctamente.");
+      return TransaccionGuardarCerrarResult.Ok(totals, "Transacción guardada correctamente.");
     }
     catch (Exception ex)
     {
       try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
-      _logger.LogError(ex, "Error al guardar y cerrar la transacciÃ³n {TransaccionId}", request.TransaccionId);
+      _logger.LogError(ex, "Error al guardar y cerrar la transacción {TransaccionId}", request.TransaccionId);
       return TransaccionGuardarCerrarResult.Fail(
-          "No se pudo guardar la transacciÃ³n. Verifica los datos de la pÃ³liza (fecha, cuenta, tipo de pÃ³liza y forma de pago) e intÃ©ntalo de nuevo; si el problema persiste, reporta el incidente al Ã¡rea de sistemas.");
+          "No se pudo guardar la transacción. Verifica los datos de la póliza (fecha, cuenta, tipo de póliza y forma de pago) e inténtalo de nuevo; si el problema persiste, reporta el incidente al área de sistemas.");
     }
   }
 
@@ -1739,7 +1739,7 @@ WHERE ID = @TransaccionId;";
       using var conn = await OpenAccountingConnectionAsync(ct);
       await ProcessSatXmlV2Async(conn, transaction: null, transaccionId, attachmentId, ct);
 
-      return TransaccionCommandResult.Ok("El XML del SAT se procesÃ³ correctamente para la transacciÃ³n seleccionada.");
+      return TransaccionCommandResult.Ok("El XML del SAT se procesó correctamente para la transacción seleccionada.");
     }
     catch (Exception ex)
     {
@@ -1764,29 +1764,29 @@ WHERE ID = @TransaccionId;";
       throw new ArgumentNullException(nameof(request));
 
     if (request.TransaccionId <= 0)
-      return TransaccionCommandResult.Fail("La pÃ³liza seleccionada no es vÃ¡lida.");
+      return TransaccionCommandResult.Fail("La póliza seleccionada no es válida.");
 
     if (request.Monto <= 0m)
-      return TransaccionCommandResult.Fail("El monto para el CFDI pÃºblico debe ser mayor que cero.");
+      return TransaccionCommandResult.Fail("El monto para el CFDI público debe ser mayor que cero.");
 
     var mes = NormalizeGlobalMonth(request.GlobalMes);
     if (mes is null)
-      return TransaccionCommandResult.Fail("El mes global seleccionado no es vÃ¡lido.");
+      return TransaccionCommandResult.Fail("El mes global seleccionado no es válido.");
 
     if (request.GlobalAnio < 2000 || request.GlobalAnio > 2100)
-      return TransaccionCommandResult.Fail("El aÃ±o global seleccionado no es vÃ¡lido.");
+      return TransaccionCommandResult.Fail("El año global seleccionado no es válido.");
 
     try
     {
       var header = await GetHeaderAsync(request.TransaccionId, ct);
       if (header is null)
       {
-        return TransaccionCommandResult.Fail("No se encontrÃ³ la pÃ³liza seleccionada.");
+        return TransaccionCommandResult.Fail("No se encontró la póliza seleccionada.");
       }
 
       if (string.IsNullOrWhiteSpace(header.Rfc))
       {
-        return TransaccionCommandResult.Fail("La pÃ³liza seleccionada no tiene RFC emisor configurado.");
+        return TransaccionCommandResult.Fail("La póliza seleccionada no tiene RFC emisor configurado.");
       }
 
       var expeditionZipCode = await ResolveIssuerTaxZipCodeAsync(header.Rfc, ct);
@@ -1801,7 +1801,7 @@ WHERE ID = @TransaccionId;";
           },
           ct);
 
-      return TransaccionCommandResult.Ok("La factura al pÃºblico en general se generÃ³, timbrÃ³ y procesÃ³ correctamente.");
+      return TransaccionCommandResult.Ok("La factura al público en general se generó, timbró y procesó correctamente.");
     }
     catch (CfdiStampingException ex)
     {
@@ -1813,11 +1813,11 @@ WHERE ID = @TransaccionId;";
       if (!string.IsNullOrWhiteSpace(ex.FacturamaCfdiId))
       {
         return TransaccionCommandResult.Fail(
-            $"El CFDI se timbrÃ³ en Facturama ({ex.FacturamaCfdiId}), pero no se pudo completar el registro local: {ex.InnerException?.Message ?? ex.Message}");
+            $"El CFDI se timbró en Facturama ({ex.FacturamaCfdiId}), pero no se pudo completar el registro local: {ex.InnerException?.Message ?? ex.Message}");
       }
 
       return TransaccionCommandResult.Fail(
-          $"No se pudo generar el CFDI pÃºblico: {ex.InnerException?.Message ?? ex.Message}");
+          $"No se pudo generar el CFDI público: {ex.InnerException?.Message ?? ex.Message}");
     }
     catch (Exception ex)
     {
@@ -1826,7 +1826,7 @@ WHERE ID = @TransaccionId;";
           "Failed to stamp public CFDI for transaction {TransaccionId}",
           request.TransaccionId);
 
-      return TransaccionCommandResult.Fail($"No se pudo generar el CFDI pÃºblico: {ex.Message}");
+      return TransaccionCommandResult.Fail($"No se pudo generar el CFDI público: {ex.Message}");
     }
   }
 
@@ -1917,8 +1917,27 @@ WHERE ID = @MovimientoId
           if (hasRelatedRecords)
           {
               await tx!.RollbackAsync(ct);
-              return TransaccionCommandResult.Fail("No se puede eliminar la transacciÃ³n porque tiene registros relacionados (movimientos, adjuntos, comprobantes, etc.).");
+              return TransaccionCommandResult.Fail("No se puede eliminar la transacción porque tiene registros relacionados (movimientos, adjuntos, comprobantes, etc.).");
           }
+
+          // Una póliza generada por la bandeja contable (Hospedaje, Restaurante, Compras) queda
+          // referenciada por su operación, y FK_AccountingOutbox_Transaccion no tiene ON DELETE.
+          // Se suelta ese rastro en la misma transacción: la operación vuelve a pendiente y el
+          // siguiente intento genera una póliza nueva en vez de apuntar a una que ya no existe.
+          const string releaseOutboxSql = @"
+              IF OBJECT_ID(N'contabilidad.AccountingOutbox', N'U') IS NOT NULL
+                  UPDATE contabilidad.AccountingOutbox
+                  SET [Status] = 'Pending',
+                      TransaccionId = NULL,
+                      LinkedAtUtc = NULL,
+                      CompletedAtUtc = NULL,
+                      ClaimedAtUtc = NULL,
+                      ClaimedBy = NULL,
+                      LastError = LEFT(CONCAT(N'La póliza ', @TransaccionId, N' se eliminó manualmente.'), 2000),
+                      UpdatedAtUtc = SYSUTCDATETIME()
+                  WHERE TransaccionId = @TransaccionId;";
+          await conn.ExecuteAsync(
+              new CommandDefinition(releaseOutboxSql, new { TransaccionId = transaccionId }, tx, cancellationToken: ct));
 
           const string deleteSql = @"DELETE FROM dbo.Transacciones WHERE ID = @TransaccionId;";
           var affectedRows = await conn.ExecuteAsync(
@@ -1927,17 +1946,23 @@ WHERE ID = @MovimientoId
           if (affectedRows == 0)
           {
               await tx!.RollbackAsync(ct);
-              return TransaccionCommandResult.Fail("No se encontrÃ³ la transacciÃ³n a eliminar.");
+              return TransaccionCommandResult.Fail("No se encontró la transacción a eliminar.");
           }
 
           await tx!.CommitAsync(ct);
-          return TransaccionCommandResult.Ok("TransacciÃ³n eliminada correctamente.");
+          return TransaccionCommandResult.Ok("Transacción eliminada correctamente.");
+      }
+      catch (SqlException ex) when (ex.Number == 547)
+      {
+          try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
+          _logger.LogWarning(ex, "La transacción {TransaccionId} no se eliminó porque otro registro la referencia", transaccionId);
+          return TransaccionCommandResult.Fail("No se puede eliminar la transacción porque otro registro del sistema todavía la referencia. Quita ese vínculo o cancela la póliza con un asiento inverso.");
       }
       catch (Exception ex)
       {
           try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
-          _logger.LogError(ex, "Error al eliminar la transacciÃ³n {TransaccionId}", transaccionId);
-          return TransaccionCommandResult.Fail($"OcurriÃ³ un error al eliminar la transacciÃ³n: {ex.Message}");
+          _logger.LogError(ex, "Error al eliminar la transacción {TransaccionId}", transaccionId);
+          return TransaccionCommandResult.Fail("Ocurrió un error inesperado al eliminar la transacción. Inténtalo de nuevo y, si persiste, avisa al equipo técnico.");
       }
   }
 
@@ -1975,12 +2000,12 @@ WHERE ID = @MovimientoId
                   sql,
                   parameters,
                   cancellationToken: ct));
-          return TransaccionCreateResult.Ok(newId, "TransacciÃ³n creada correctamente.");
+          return TransaccionCreateResult.Ok(newId, "Transacción creada correctamente.");
       }
       catch (Exception ex)
       {
-          _logger.LogError(ex, "Error al crear la transacciÃ³n.");
-          return TransaccionCreateResult.Fail($"OcurriÃ³ un error al crear la transacciÃ³n: {ex.Message}");
+          _logger.LogError(ex, "Error al crear la transacción.");
+          return TransaccionCreateResult.Fail($"Ocurrió un error al crear la transacción: {ex.Message}");
       }
   }
 
@@ -2201,7 +2226,7 @@ ORDER BY T.Fecha, T.OrdenBalance, T.ID;";
       if (cuadreError is not null)
       {
           _logger.LogWarning(
-              "PÃ³liza descuadrada rechazada para la transacciÃ³n {TransaccionId}: {Detalle}",
+              "Póliza descuadrada rechazada para la transacción {TransaccionId}: {Detalle}",
               request.TransaccionId, cuadreError);
           return TransaccionCommandResult.Fail(cuadreError);
       }
@@ -2315,9 +2340,9 @@ WHERE ID = @MovimientoId
       catch (Exception ex)
       {
           try { await tx!.RollbackAsync(ct); } catch { /* ignored */ }
-          _logger.LogError(ex, "Error al guardar movimientos para la transacciÃ³n {TransaccionId}", request.TransaccionId);
+          _logger.LogError(ex, "Error al guardar movimientos para la transacción {TransaccionId}", request.TransaccionId);
           return TransaccionCommandResult.Fail(
-              "No se pudieron guardar los movimientos contables. Revisa que las cuentas y los importes sean vÃ¡lidos e intÃ©ntalo de nuevo; si el problema persiste, reporta el incidente al Ã¡rea de sistemas.");
+              "No se pudieron guardar los movimientos contables. Revisa que las cuentas y los importes sean válidos e inténtalo de nuevo; si el problema persiste, reporta el incidente al área de sistemas.");
       }
   }
 
@@ -2545,7 +2570,7 @@ WHERE t.ID = @TransaccionId
       if (context is null)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("No se encontrÃ³ la pÃ³liza o el CFDI.");
+        return TransaccionCommandResult.Fail("No se encontró la póliza o el CFDI.");
       }
       if (string.Equals(context.TipoDeComprobante, "P", StringComparison.OrdinalIgnoreCase))
       {
@@ -2560,7 +2585,7 @@ WHERE t.ID = @TransaccionId
       if (!RfcMatches(context.TransaccionRfc, context.EmisorRfc, context.ReceptorRfc))
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("El RFC de la pÃ³liza no corresponde al emisor ni al receptor del CFDI.");
+        return TransaccionCommandResult.Fail("El RFC de la póliza no corresponde al emisor ni al receptor del CFDI.");
       }
 
       const string stateSql = @"
@@ -2616,14 +2641,14 @@ WHERE tc.Comprobante_ID = @ComprobanteId;";
       if (state.HasPaymentLinks)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("La pÃ³liza ya contiene vÃ­nculos de complementos de pago.");
+        return TransaccionCommandResult.Fail("La póliza ya contiene vínculos de complementos de pago.");
       }
       if (updateExisting != state.CurrentLinkExists)
       {
         await tx.RollbackAsync(ct);
         return updateExisting
-            ? TransaccionCommandResult.Fail("No se encontrÃ³ el vÃ­nculo CFDI-pÃ³liza a actualizar.")
-            : TransaccionCommandResult.Fail("Ya existe un vÃ­nculo entre esta pÃ³liza y el CFDI.");
+            ? TransaccionCommandResult.Fail("No se encontró el vínculo CFDI-póliza a actualizar.")
+            : TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el CFDI.");
       }
       if (monto - (context.CfdiTotal - state.CfdiAssignedOther) > 0.01m)
       {
@@ -2633,7 +2658,7 @@ WHERE tc.Comprobante_ID = @ComprobanteId;";
       if (monto - (context.TransaccionTotal - state.TransaccionAssignedOther) > 0.01m)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("El monto excede el saldo disponible de la pÃ³liza.");
+        return TransaccionCommandResult.Fail("El monto excede el saldo disponible de la póliza.");
       }
 
       int affected;
@@ -2668,7 +2693,7 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);",
       if (affected == 0)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("No se pudo guardar el vÃ­nculo CFDI-pÃ³liza.");
+        return TransaccionCommandResult.Fail("No se pudo guardar el vínculo CFDI-póliza.");
       }
 
       if (reassignAttachment)
@@ -2677,18 +2702,18 @@ VALUES (@TransaccionId, @ComprobanteId, @Monto);",
       await tx.CommitAsync(ct);
       return TransaccionCommandResult.Ok(updateExisting
           ? "Monto asignado actualizado correctamente."
-          : "TransacciÃ³n ligada correctamente.");
+          : "Transacción ligada correctamente.");
     }
     catch (SqlException ex) when (ex.Number is 2601 or 2627)
     {
       await RollbackQuietlyAsync(tx, ct);
-      return TransaccionCommandResult.Fail("Ya existe un vÃ­nculo entre esta pÃ³liza y el CFDI.");
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el CFDI.");
     }
     catch (Exception ex)
     {
       await RollbackQuietlyAsync(tx, ct);
-      _logger.LogError(ex, "Error al guardar vÃ­nculo regular {TransaccionId}/{ComprobanteId}", transaccionId, comprobanteId);
-      return TransaccionCommandResult.Fail("No se pudo guardar el vÃ­nculo CFDI-pÃ³liza.");
+      _logger.LogError(ex, "Error al guardar vínculo regular {TransaccionId}/{ComprobanteId}", transaccionId, comprobanteId);
+      return TransaccionCommandResult.Fail("No se pudo guardar el vínculo CFDI-póliza.");
     }
   }
 
@@ -2737,7 +2762,7 @@ WHERE t.ID = @TransaccionId
       if (context is null)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("No se encontrÃ³ la pÃ³liza o el documento Pago20.");
+        return TransaccionCommandResult.Fail("No se encontró la póliza o el documento Pago20.");
       }
       if (!string.Equals(context.TipoDeComprobante, "P", StringComparison.OrdinalIgnoreCase))
       {
@@ -2747,12 +2772,12 @@ WHERE t.ID = @TransaccionId
       if (!IsMxn(context.MonedaP) || !IsMxn(context.MonedaDr))
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("La asignaciÃ³n Pago20 solo admite MonedaP y MonedaDR en MXN.");
+        return TransaccionCommandResult.Fail("La asignación Pago20 solo admite MonedaP y MonedaDR en MXN.");
       }
       if (!RfcMatches(context.TransaccionRfc, context.EmisorRfc, context.ReceptorRfc))
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("El RFC de la pÃ³liza no corresponde al emisor ni al receptor del complemento.");
+        return TransaccionCommandResult.Fail("El RFC de la póliza no corresponde al emisor ni al receptor del complemento.");
       }
 
       const string stateSql = @"
@@ -2782,14 +2807,14 @@ WHERE td.DoctoRelacionado_Id = @DoctoRelacionadoId;";
       if (state.HasDirectCfdiLinks)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("La pÃ³liza ya contiene un vÃ­nculo de CFDI regular o Pago20 legado.");
+        return TransaccionCommandResult.Fail("La póliza ya contiene un vínculo de CFDI regular o Pago20 legado.");
       }
       if (updateExisting != state.CurrentLinkExists)
       {
         await tx.RollbackAsync(ct);
         return updateExisting
-            ? TransaccionCommandResult.Fail("No se encontrÃ³ el vÃ­nculo Pago20 a actualizar.")
-            : TransaccionCommandResult.Fail("Ya existe un vÃ­nculo entre esta pÃ³liza y el documento Pago20.");
+            ? TransaccionCommandResult.Fail("No se encontró el vínculo Pago20 a actualizar.")
+            : TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el documento Pago20.");
       }
       if (monto - (context.ImpPagado - state.DocumentAssignedOther) > 0.01m)
       {
@@ -2799,7 +2824,7 @@ WHERE td.DoctoRelacionado_Id = @DoctoRelacionadoId;";
       if (monto - (context.TransaccionTotal - state.TransaccionAssignedOther) > 0.01m)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("El monto excede el saldo disponible de la pÃ³liza.");
+        return TransaccionCommandResult.Fail("El monto excede el saldo disponible de la póliza.");
       }
 
       var affected = updateExisting
@@ -2819,7 +2844,7 @@ VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);",
       if (affected == 0)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("No se pudo guardar el vÃ­nculo Pago20.");
+        return TransaccionCommandResult.Fail("No se pudo guardar el vínculo Pago20.");
       }
 
       await tx.CommitAsync(ct);
@@ -2830,13 +2855,13 @@ VALUES (@TransaccionId, @DoctoRelacionadoId, @Monto);",
     catch (SqlException ex) when (ex.Number is 2601 or 2627)
     {
       await RollbackQuietlyAsync(tx, ct);
-      return TransaccionCommandResult.Fail("Ya existe un vÃ­nculo entre esta pÃ³liza y el documento Pago20.");
+      return TransaccionCommandResult.Fail("Ya existe un vínculo entre esta póliza y el documento Pago20.");
     }
     catch (Exception ex)
     {
       await RollbackQuietlyAsync(tx, ct);
-      _logger.LogError(ex, "Error al guardar vÃ­nculo Pago20 {TransaccionId}/{DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
-      return TransaccionCommandResult.Fail("No se pudo guardar el vÃ­nculo Pago20.");
+      _logger.LogError(ex, "Error al guardar vínculo Pago20 {TransaccionId}/{DoctoRelacionadoId}", transaccionId, doctoRelacionadoId);
+      return TransaccionCommandResult.Fail("No se pudo guardar el vínculo Pago20.");
     }
   }
 
@@ -2871,20 +2896,20 @@ WHERE tc.Transaccion_ID = @TransaccionId
       if (updated == 0)
       {
         await tx.RollbackAsync(ct);
-        return TransaccionCommandResult.Fail("No se encontrÃ³ el vÃ­nculo solicitado con la pÃ³liza actual.");
+        return TransaccionCommandResult.Fail("No se encontró el vínculo solicitado con la póliza actual.");
       }
 
       var nextTransaccionId = await GetPreferredLinkedTransaccionIdAsync(conn, tx, comprobanteId, ct);
       await ReassignXmlAttachmentAsync(conn, tx, comprobanteId, nextTransaccionId, ct);
       await tx.CommitAsync(ct);
       return TransaccionCommandResult.Ok(requirePaymentType
-          ? "VÃ­nculo Pago20 legado desligado correctamente."
+          ? "Vínculo Pago20 legado desligado correctamente."
           : "Comprobante desligado correctamente.");
     }
     catch (Exception ex)
     {
       await RollbackQuietlyAsync(tx, ct);
-      _logger.LogError(ex, "Error al desligar vÃ­nculo directo {TransaccionId}/{ComprobanteId}", transaccionId, comprobanteId);
+      _logger.LogError(ex, "Error al desligar vínculo directo {TransaccionId}/{ComprobanteId}", transaccionId, comprobanteId);
       return TransaccionCommandResult.Fail("No se pudo desligar el comprobante.");
     }
   }

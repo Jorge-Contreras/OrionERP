@@ -24,6 +24,14 @@
     </div>
   </header>
 
+  <nav class="kds-source-filter" aria-label="Filtrar comandas por origen">
+    <span>Origen</span>
+    @foreach (var source in new[] { "All", "POS", "Web" })
+    {
+      <button type="button" class="@(sourceFilter == source ? "is-active" : null)" @onclick="() => sourceFilter = source">@SourceLabel(source) <b>@SourceCount(source)</b></button>
+    }
+  </nav>
+
   @if (AvailableSections.Count > 0)
   {
     <section class="kds-section-filter" aria-labelledby="kds-section-filter-heading">
@@ -62,6 +70,15 @@
       </div>
     </section>
   }
+  else if (SourceFilteredOrders.Count == 0)
+  {
+    <section class="kds-empty kds-empty--filtered" role="status">
+      <span class="oi oi-filter" aria-hidden="true"></span>
+      <h2>No hay comandas de este origen</h2>
+      <p>Cambia el filtro para ver las demás órdenes activas.</p>
+      <button type="button" @onclick='() => sourceFilter = "All"'>Mostrar todas</button>
+    </section>
+  }
   else if (VisibleSectionGroups.Count == 0)
   {
     <section class="kds-empty kds-empty--filtered" role="status">
@@ -90,6 +107,7 @@
                   <div>
                     <span>@OrderTypeLabel(order.OrderType)</span>
                     <strong>@order.Folio.ToString("000")</strong>
+                    @if (IsWebOrder(order)) { <mark class="kds-source-badge"><span class="oi oi-globe" aria-hidden="true"></span> Web · PayPal</mark> }
                     <span class="kds-ticket__section" style="--section-accent:@card.Section.Color"><i aria-hidden="true"></i>@card.Section.Name</span>
                     @if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="kds-customer">@order.CustomerName</b> }
                     @if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }
@@ -176,10 +194,14 @@
   private int selectedSiteId;
   private bool isLoading;
   private bool canSupervise;
+  private string sourceFilter = "All";
   private string? error;
   private string CurrentRfc => RfcState.RequireRfc();
   private string SectionStorageKey => $"orion.restaurant.kds.sections:{CurrentRfc}:{selectedSiteId}";
-  private IEnumerable<RestaurantOrderDto> OrderedOrders => board.Orders
+  private IReadOnlyList<RestaurantOrderDto> SourceFilteredOrders => board.Orders
+    .Where(order => sourceFilter == "All" || string.Equals(order.SalesChannel, sourceFilter, StringComparison.OrdinalIgnoreCase))
+    .ToList();
+  private IEnumerable<RestaurantOrderDto> OrderedOrders => SourceFilteredOrders
     .OrderBy(order => order.OperationalDate)
     .ThenBy(order => order.Folio)
     .ThenBy(order => order.CreatedAt)
@@ -431,6 +453,11 @@
   }
   private static string SectionDomId(string key) => key.Replace(':', '-');
   private static string OrderTypeLabel(string type) => type switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => type };
+  private int SourceCount(string source) => source == "All"
+    ? board.Orders.Count
+    : board.Orders.Count(order => string.Equals(order.SalesChannel, source, StringComparison.OrdinalIgnoreCase));
+  private static string SourceLabel(string source) => source switch { "All" => "Todas", "POS" => "Punto de venta", "Web" => "Web · PayPal", _ => source };
+  private static bool IsWebOrder(RestaurantOrderDto order) => string.Equals(order.SalesChannel, RestaurantSalesChannels.Web, StringComparison.OrdinalIgnoreCase);
   private static string ComboContext(RestaurantOrderLineDto line)
     => $"COMBO: {line.ParentProductName}{(string.IsNullOrWhiteSpace(line.ComboSlotName) ? string.Empty : $" · {line.ComboSlotName}")}";
   private static string ModifierInstruction(RestaurantOrderLineModifierDto modifier)

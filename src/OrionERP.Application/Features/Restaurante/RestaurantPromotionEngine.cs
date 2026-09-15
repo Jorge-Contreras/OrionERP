@@ -486,11 +486,67 @@ public static class RestaurantPromotionEngine
       .Select(line => new LineState(line))
       .ToDictionary(line => line.Request.LineKey, StringComparer.Ordinal);
 
+  /// <summary>
+  /// Códigos que la caja puede ofrecer ahora: promoción publicada, dentro de vigencia y horario,
+  /// habilitada para el canal y con cupo. No mira la orden: productos participantes y mínimos los
+  /// resuelve la cotización. Lo que sólo falla por no tener socio vinculado se lista marcado.
+  /// </summary>
+  public static IReadOnlyList<RestaurantPromotionCodeOptionDto> AvailableCodes(
+    IReadOnlyList<RestaurantPromotionDefinition> definitions,
+    string channel,
+    Guid? memberId,
+    DateTimeOffset localAt)
+  {
+    ArgumentNullException.ThrowIfNull(definitions);
+    return definitions
+      .Where(definition => IsOpen(definition, channel, localAt))
+      .SelectMany(definition => definition.Codes
+        .Where(code =>
+          code.IsActive &&
+          !string.IsNullOrWhiteSpace(code.Code) &&
+          (!code.GlobalLimit.HasValue || code.RedemptionCount < code.GlobalLimit.Value) &&
+          !(memberId.HasValue && code.PerMemberLimit.HasValue && code.MemberRedemptionCount >= code.PerMemberLimit.Value))
+        .Select(code => (Definition: definition, Code: code)))
+      .GroupBy(pair => NormalizeCode(pair.Code.Code)!, StringComparer.Ordinal)
+      .Select(group => new RestaurantPromotionCodeOptionDto
+      {
+        Code = group.Key,
+        PromotionNames = group.Select(pair => pair.Definition.Name).Distinct(StringComparer.Ordinal).ToList(),
+        RequiresMember = !memberId.HasValue &&
+          group.All(pair => pair.Definition.MemberOnly || pair.Code.PerMemberLimit.HasValue)
+      })
+      .OrderBy(option => option.Code, StringComparer.Ordinal)
+      .ToList();
+  }
+
   private static bool IsEligible(
     RestaurantPromotionDefinition definition,
     RestaurantPromotionQuoteRequest request,
     DateTimeOffset localAt,
     string? normalizedCode)
+  {
+    if (!IsOpen(definition, request.Channel, localAt))
+    {
+      return false;
+    }
+    if (definition.MemberOnly && !request.MemberId.HasValue)
+    {
+      return false;
+    }
+
+    var eligibleCode = definition.Codes.FirstOrDefault(code =>
+      code.IsActive &&
+      !string.IsNullOrWhiteSpace(normalizedCode) &&
+      string.Equals(code.Code, normalizedCode, StringComparison.OrdinalIgnoreCase) &&
+      (!code.GlobalLimit.HasValue || code.RedemptionCount < code.GlobalLimit.Value) &&
+      (!code.PerMemberLimit.HasValue ||
+       request.MemberId.HasValue && code.MemberRedemptionCount < code.PerMemberLimit.Value));
+
+    return !definition.CodeRequired || eligibleCode is not null;
+  }
+
+  /// <summary>Lo que no depende de la orden ni del socio: estado, vigencia, cupo, canal y horario.</summary>
+  private static bool IsOpen(RestaurantPromotionDefinition definition, string? channel, DateTimeOffset localAt)
   {
     if (definition.Status is not (RestaurantPromotionStatuses.Active or RestaurantPromotionStatuses.Scheduled))
     {
@@ -505,29 +561,12 @@ public static class RestaurantPromotionEngine
     {
       return false;
     }
-    if (string.Equals(request.Channel, RestaurantSalesChannels.Pos, StringComparison.OrdinalIgnoreCase) && !definition.PosEnabled ||
-        string.Equals(request.Channel, RestaurantSalesChannels.Web, StringComparison.OrdinalIgnoreCase) && !definition.WebEnabled)
+    if (string.Equals(channel, RestaurantSalesChannels.Pos, StringComparison.OrdinalIgnoreCase) && !definition.PosEnabled ||
+        string.Equals(channel, RestaurantSalesChannels.Web, StringComparison.OrdinalIgnoreCase) && !definition.WebEnabled)
     {
       return false;
     }
-    if (definition.MemberOnly && !request.MemberId.HasValue)
-    {
-      return false;
-    }
-    if (definition.Schedules.Count > 0 && !definition.Schedules.Any(schedule => MatchesSchedule(schedule, localAt)))
-    {
-      return false;
-    }
-
-    var eligibleCode = definition.Codes.FirstOrDefault(code =>
-      code.IsActive &&
-      !string.IsNullOrWhiteSpace(normalizedCode) &&
-      string.Equals(code.Code, normalizedCode, StringComparison.OrdinalIgnoreCase) &&
-      (!code.GlobalLimit.HasValue || code.RedemptionCount < code.GlobalLimit.Value) &&
-      (!code.PerMemberLimit.HasValue ||
-       request.MemberId.HasValue && code.MemberRedemptionCount < code.PerMemberLimit.Value));
-
-    return !definition.CodeRequired || eligibleCode is not null;
+    return definition.Schedules.Count == 0 || definition.Schedules.Any(schedule => MatchesSchedule(schedule, localAt));
   }
 
   private static bool MatchesSchedule(RestaurantPromotionScheduleDto schedule, DateTimeOffset localAt)

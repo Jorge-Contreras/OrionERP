@@ -29,6 +29,7 @@
   <nav class="restaurant-admin__tabs" aria-label="Secciones administrativas">
     <button type="button" class="@(tab == "sites" ? "is-active" : null)" @onclick='() => tab = "sites"'>Sedes</button>
     <button type="button" class="@(tab == "products" ? "is-active" : null)" @onclick='() => tab = "products"'>Productos</button>
+    <button type="button" class="@(tab == "online" ? "is-active" : null)" @onclick='() => tab = "online"'>Pedidos en línea</button>
     <button type="button" class="@(tab == "screens" ? "is-active" : null)" @onclick='() => tab = "screens"'>Pantallas</button>
   </nav>
 
@@ -90,6 +91,10 @@
   else if (tab == "screens")
   {
     <RestaurantScreensPanel OnMessage="OnScreensMessage" />
+  }
+  else if (tab == "online")
+  {
+    <RestaurantOnlineOrdersAdminPanel />
   }
   else
   {

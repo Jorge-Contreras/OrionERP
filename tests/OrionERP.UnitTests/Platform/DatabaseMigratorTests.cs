@@ -250,6 +250,16 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260912_nested_recipe_unit_cost_recalculation.sql"));
     actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_runtime_corrections.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_status_view_permission_hotfix.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_capture_refund_reconciliation.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_tracking_ready_email_status.sql"));
+    actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_expand.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_company_controls.sql"));
@@ -678,6 +688,73 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("REMOVE_DBO_BYPASS", sql, StringComparison.Ordinal);
           Assert.Contains("NO_UNSCOPED_DBO_BYPASS", sql, StringComparison.Ordinal);
           Assert.Contains("ALTER FUNCTION logistica.fn_RfcAccessPredicate", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_restaurant_online_ordering":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("brunos-main", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_restaurant_online_ordering_runtime_corrections":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("brunos-main", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_restaurant_online_ordering_status_view_permission_hotfix":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Contains("vw_PublicOnlineCheckoutStatus", sql, StringComparison.Ordinal);
+          Assert.Contains("OnlineCheckoutStatusGet", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_restaurant_online_ordering_capture_refund_reconciliation":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("PAYMENT.CAPTURE.REFUNDED", sql, StringComparison.Ordinal);
+          Assert.Contains("transactionInfo.ProviderCaptureId=@ProviderCaptureId", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_restaurant_online_ordering_tracking_ready_email_status":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ReadyNotificationStatus", sql, StringComparison.Ordinal);
+          Assert.Contains("attempt.TrackingTokenHash=@TrackingTokenHash", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_rls_sa_full_access":
+          Assert.Contains("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ADD_SA_BYPASS", sql, StringComparison.Ordinal);
+          Assert.Contains("(SUSER_SID()=0x01 AND DATABASE_PRINCIPAL_ID()=1)", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION logistica.fn_RfcAccessPredicate", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("N'orion'", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_rls_sa_full_access_online_ordering":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ADD_SA_BYPASS", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION restaurante.fn_OnlineOrderingScopePredicate", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("N'orion'", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Equal(
             ["Orion_Sandbox", "grupocarpio"],
             migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());

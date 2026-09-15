@@ -857,6 +857,10 @@
   gap: .45rem;
 }
 
+.pos-membership__lookup--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .pos-membership__lookup button,
 .pos-membership__member button {
   min-height: 2.75rem;

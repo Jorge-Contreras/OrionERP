@@ -89,6 +89,31 @@ public sealed class AccountingOutboxTests
   }
 
   [Fact]
+  public void DeletingAPolicy_ReleasesItsOutboxOperationBeforeTheDelete()
+  {
+    var service = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Services/TransaccionService.cs");
+    var deleteBlock = Between(
+      service,
+      "public async Task<TransaccionCommandResult> DeleteTransaccionAsync",
+      "public async Task<TransaccionCreateResult> CreateTransaccionAsync");
+
+    // FK_AccountingOutbox_Transaccion no tiene ON DELETE: sin soltar el rastro primero,
+    // borrar una póliza de Hospedaje ya completada choca con error 547.
+    var release = deleteBlock.IndexOf("UPDATE contabilidad.AccountingOutbox", StringComparison.Ordinal);
+    var delete = deleteBlock.IndexOf("DELETE FROM dbo.Transacciones", StringComparison.Ordinal);
+    Assert.True(release > 0, "El borrado no suelta la operación de la bandeja contable.");
+    Assert.True(delete > release, "La operación se suelta después del DELETE.");
+    Assert.Contains("new CommandDefinition(releaseOutboxSql, new { TransaccionId = transaccionId }, tx,", deleteBlock, StringComparison.Ordinal);
+    // CK_AccountingOutbox_Completed exige póliza en una operación completada.
+    Assert.Contains("SET [Status] = 'Pending'", deleteBlock, StringComparison.Ordinal);
+    Assert.Contains("TransaccionId = NULL", deleteBlock, StringComparison.Ordinal);
+    Assert.Contains("CompletedAtUtc = NULL", deleteBlock, StringComparison.Ordinal);
+    // El usuario no recibe el texto crudo de SQL Server.
+    Assert.DoesNotContain("{ex.Message}", deleteBlock, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void TheDailyLink_CanBeRetriedWithoutCollidingWithItsOwnUniqueIndex()
   {
     var service = RepoFile.Read(

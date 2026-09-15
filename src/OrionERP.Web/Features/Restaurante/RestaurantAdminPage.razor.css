@@ -4,7 +4,8 @@
 .restaurant-admin__hero p { margin:0; color:#d9eee8; }
 .restaurant-admin__hero .restaurant-admin__rfc-context { display:inline-flex; gap:.3rem; margin-top:.45rem; padding:.35rem .6rem; border:1px solid rgba(255,255,255,.28); border-radius:.55rem; background:rgba(0,0,0,.12); font-size:.82rem; letter-spacing:.02em; }
 .restaurant-admin__eyebrow,.restaurant-admin__panel-title span { text-transform:uppercase; letter-spacing:.13em; font-size:.72rem; font-weight:800; color:#9bd4c4; }
-.restaurant-admin__tabs { display:flex; gap:.5rem; margin:1rem 0; padding:.35rem; width:max-content; background:#e9efed; border-radius:999px; }
+.restaurant-admin__tabs { display:flex; gap:.5rem; margin:1rem 0; padding:.35rem; width:max-content; max-width:100%; overflow-x:auto; background:#e9efed; border-radius:999px; scrollbar-width:thin; }
+.restaurant-admin__tabs button { flex:none; }
 .restaurant-admin__tabs button { border:0; background:transparent; padding:.7rem 1.2rem; border-radius:999px; font-weight:800; }
 .restaurant-admin__tabs button.is-active { background:white; color:#1d6b58; box-shadow:0 4px 12px rgba(0,0,0,.08); }
 .restaurant-admin__grid { display:grid; grid-template-columns:minmax(300px,.9fr) minmax(360px,1.1fr); gap:1rem; }

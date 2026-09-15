@@ -6,8 +6,10 @@ public sealed class BrunoEmailOnlyVerificationTests
   public void LoyaltyActivationAndUsage_RequireConfirmedEmailOnly()
   {
     var service = ReadRepoFile("src/OrionERP.Infrastructure/Features/Restaurante/LoyaltyService.cs");
+    var migration = ReadRepoFile(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_runtime_corrections.sql");
 
-    Assert.Contains("WHEN (EmailVerified=1 OR @EmailVerified=1)", service, StringComparison.Ordinal);
+    Assert.Contains("EmailVerified=1 OR @EmailVerified=1", migration, StringComparison.Ordinal);
     Assert.Contains(
       "member.NormalizedPhone=@NormalizedPhone AND member.EmailVerified=1",
       service,
@@ -16,7 +18,7 @@ public sealed class BrunoEmailOnlyVerificationTests
       "member.NormalizedPhone=@NormalizedPhone AND member.PhoneVerified=1",
       service,
       StringComparison.Ordinal);
-    Assert.DoesNotContain("AND (PhoneVerified=1 OR @PhoneVerified=1)", service, StringComparison.Ordinal);
+    Assert.DoesNotContain("PhoneVerified=1 OR @PhoneVerified=1", migration, StringComparison.Ordinal);
     Assert.DoesNotContain("AND EmailVerified=1 AND PhoneVerified=1", service, StringComparison.Ordinal);
   }
 

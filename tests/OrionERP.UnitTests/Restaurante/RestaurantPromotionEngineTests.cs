@@ -180,6 +180,49 @@ public sealed class RestaurantPromotionEngineTests
     Assert.Equal(10m, afterClosing.PromotionDiscountTotal);
   }
 
+  [Fact]
+  public void AvailableCodes_ListsOnlyCodesTheCashierCanUseNow()
+  {
+    var open = Promotion(RestaurantPromotionRuleTypes.PercentOff, id: 1, name: "Martes");
+    open.Codes = [PromoCode("MARTES"), PromoCode("APAGADO", isActive: false)];
+    var exhausted = Promotion(RestaurantPromotionRuleTypes.PercentOff, id: 2, name: "Agotada");
+    exhausted.Codes = [new RestaurantPromotionCodeDto { Code = "AGOTADO", IsActive = true, GlobalLimit = 5, RedemptionCount = 5 }];
+    var expired = Promotion(RestaurantPromotionRuleTypes.PercentOff, id: 3, name: "Vencida");
+    expired.ValidToLocal = new DateTime(2026, 8, 1);
+    expired.Codes = [PromoCode("VENCIDO")];
+    var evening = Promotion(RestaurantPromotionRuleTypes.PercentOff, id: 4, name: "Noche");
+    evening.Schedules =
+    [
+      new RestaurantPromotionScheduleDto
+      {
+        DayOfWeek = (byte)DayOfWeek.Tuesday,
+        StartsAt = new TimeSpan(20, 0, 0),
+        EndsAt = new TimeSpan(23, 0, 0)
+      }
+    ];
+    evening.Codes = [PromoCode("NOCHE")];
+    var webOnly = Promotion(RestaurantPromotionRuleTypes.PercentOff, id: 5, name: "Web");
+    webOnly.PosEnabled = false;
+    webOnly.WebEnabled = true;
+    webOnly.Codes = [PromoCode("WEB")];
+    var members = Promotion(RestaurantPromotionRuleTypes.PercentOff, id: 6, name: "Socios");
+    members.MemberOnly = true;
+    members.Codes = [PromoCode("SOCIOS")];
+
+    var options = RestaurantPromotionEngine.AvailableCodes(
+      [open, exhausted, expired, evening, webOnly, members],
+      RestaurantSalesChannels.Pos,
+      memberId: null,
+      TuesdayAt(11));
+
+    Assert.Equal(new[] { "MARTES", "SOCIOS" }, options.Select(option => option.Code));
+    Assert.False(options[0].RequiresMember);
+    Assert.True(options[1].RequiresMember);
+  }
+
+  private static RestaurantPromotionCodeDto PromoCode(string code, bool isActive = true)
+    => new() { Code = code, IsActive = isActive };
+
   private static RestaurantPromotionQuoteRequest QuoteRequest(params RestaurantPromotionQuoteLineRequest[] lines)
     => new()
     {

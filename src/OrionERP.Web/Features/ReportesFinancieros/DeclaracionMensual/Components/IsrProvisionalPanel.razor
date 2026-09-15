@@ -14,7 +14,8 @@
 @if (YaGenerado)
 {
     <div class="alert alert-success">
-        La provisión de ISR de este periodo ya se generó en la póliza <strong>@TransaccionId</strong>.
+        La provisión de ISR de este periodo ya se generó en la póliza
+        <a class="fw-bold" href="/contabilidad/transacciones/@TransaccionId" target="_blank" rel="noopener">@TransaccionId</a>.
     </div>
 }
 else if (Filas.Count == 0)

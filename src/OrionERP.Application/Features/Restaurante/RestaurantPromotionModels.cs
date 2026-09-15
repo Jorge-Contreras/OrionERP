@@ -77,6 +77,17 @@ public sealed class RestaurantPromotionCodeDto
   public bool IsActive { get; set; }
 }
 
+/// <summary>
+/// Código que la caja puede ofrecer en este momento. Un mismo código puede pertenecer a
+/// varias promociones; por eso trae la lista de nombres.
+/// </summary>
+public sealed class RestaurantPromotionCodeOptionDto
+{
+  public string Code { get; set; } = string.Empty;
+  public IReadOnlyList<string> PromotionNames { get; set; } = Array.Empty<string>();
+  public bool RequiresMember { get; set; }
+}
+
 public sealed class RestaurantPromotionDto
 {
   public long Id { get; set; }

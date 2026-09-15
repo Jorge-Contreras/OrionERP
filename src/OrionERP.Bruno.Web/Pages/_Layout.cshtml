@@ -1,16 +1,22 @@
 @using System.Text.Json
 @using System.Text.Json.Serialization
 @using Microsoft.Extensions.Options
+@using Microsoft.AspNetCore.Antiforgery
 @using Microsoft.AspNetCore.Components.Web
 @using OrionERP.Bruno.Web.Configuration
 @inject IOptions<BrunoTurnstileOptions> Turnstile
 @inject IOptions<BrunoSiteOptions> BrunoSite
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
+@inject IAntiforgery Antiforgery
 @{
   var isAccountPage = Context.Request.Path.StartsWithSegments("/cuenta");
-  var canonicalPath = Context.Request.Path == "/" ? string.Empty : Context.Request.Path.Value;
-  var shouldNoIndex = isAccountPage || Context.Response.StatusCode >= 400;
+  var isCheckoutPage = Context.Request.Path.StartsWithSegments("/checkout");
+  var isTrackingPage = Context.Request.Path.StartsWithSegments("/pedido");
+  var canonicalPath = Context.Request.Path == "/"
+    ? string.Empty
+    : isTrackingPage ? "/pedido" : Context.Request.Path.Value;
+  var shouldNoIndex = isAccountPage || isCheckoutPage || isTrackingPage || Context.Response.StatusCode >= 400;
   var canonicalOrigin = Website.Instance.CanonicalBaseUri.GetLeftPart(UriPartial.Authority);
   var canonicalUrl = canonicalOrigin + canonicalPath;
   var openGraphImage = canonicalOrigin + Presentation.Asset("open-graph");
@@ -30,6 +36,7 @@
   var schemaJson = JsonSerializer.Serialize(
     schema,
     new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+  var antiforgeryToken = Antiforgery.GetAndStoreTokens(Context).RequestToken;
 }
 <!DOCTYPE html>
 <html lang="@Presentation.Locale">
@@ -39,6 +46,7 @@
   <meta name="theme-color" content="@Presentation.PrimaryDarkColor" />
   <meta name="color-scheme" content="dark" />
   <meta name="description" content="@Presentation.SeoDescription" />
+  <meta name="csrf-token" content="@antiforgeryToken" />
   <link rel="canonical" href="@canonicalUrl" />
   @if (shouldNoIndex)
   {
@@ -89,12 +97,13 @@
   }
   @RenderBody()
   <script src="~/js/brunos-ui.js" asp-append-version="true" defer></script>
+  <script src="~/js/brunos-ordering.js" asp-append-version="true" defer></script>
   <script src="~/_framework/blazor.server.js"></script>
   @if (Turnstile.Value.IsConfigured)
   {
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   }
-  @if (!string.IsNullOrWhiteSpace(BrunoSite.Value.CloudflareAnalyticsToken))
+  @if (!isCheckoutPage && !isTrackingPage && !string.IsNullOrWhiteSpace(BrunoSite.Value.CloudflareAnalyticsToken))
   {
     <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"@BrunoSite.Value.CloudflareAnalyticsToken"}'></script>
   }

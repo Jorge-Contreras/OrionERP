@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using OrionERP.Application.Features.Hospitality.PublicBooking;
+using OrionERP.Application.Features.Payments.PayPal;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Bonhomia.Web.Features.Bonhomia.Checkout;
 using OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
 using OrionERP.Infrastructure.Features.Mail;
+using OrionERP.Infrastructure.Features.Payments.PayPal;
 using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.Infrastructure.Features.Reservaciones.ListaReservaciones.Pdf;
 
@@ -219,7 +221,9 @@ builder.Services.Configure<ReservacionPdfOptions>(options =>
 builder.Services.AddScoped<IHospitalityWebsiteScopeAccessor, HospitalityWebsiteScopeAccessor>();
 builder.Services.AddScoped<IHospitalityPublicDataReader, HospitalityPublicDataReader>();
 builder.Services.AddScoped<IHospitalityPublicBookingService, HospitalityPublicBookingService>();
-builder.Services.AddHttpClient<IHospitalityPayPalClient, HospitalityPayPalClient>();
+builder.Services.AddHttpClient<IPayPalOrdersClient, PayPalOrdersClient<HospitalityCheckoutOptions>>(client =>
+  client.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddScoped<IHospitalityPayPalClient, HospitalityPayPalClient>();
 builder.Services.AddHttpClient<IMicrosoftGraphMailClient<HospitalityMailOptions>, MicrosoftGraphMailClient<HospitalityMailOptions>>();
 builder.Services.AddScoped<IHospitalityReservationConfirmationEmailSender, HospitalityReservationConfirmationEmailSender>();
 builder.Services.AddSingleton<IHospitalityQuoteTokenService, HospitalityQuoteTokenService>();

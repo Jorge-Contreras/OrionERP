@@ -42,6 +42,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       throw new InvalidOperationException("Los puntos a canjear no pueden ser negativos.");
     }
+    var salesChannel = NormalizeSalesChannel(request.SalesChannel);
     foreach (var line in request.Lines)
     {
       if (line.IsCustom)
@@ -82,10 +83,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         FROM restaurante.Site WITH (UPDLOCK, HOLDLOCK)
         WHERE Rfc = @Rfc AND Id = @SiteId;
         """, new { Rfc = rfc, request.SiteId }, tx, cancellationToken: ct))
-        ?? throw new InvalidOperationException("La sede no existe en el RFC seleccionado.");
+        ?? throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Availability,
+          "La sede no existe en el RFC seleccionado.");
       if (!site.IsEnabled)
       {
-        throw new InvalidOperationException("Restaurante está deshabilitado para esta sede.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Availability,
+          "Restaurante está deshabilitado para esta sede.");
       }
       if (request.AllowInventoryDeficit && string.IsNullOrWhiteSpace(request.SupervisorAuthorizedBy))
       {
@@ -126,7 +131,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
               "Uno o más productos de la orden están marcados como agotados.");
           }
         }
-        throw new InvalidOperationException("Uno o más productos están inactivos o pertenecen a otro RFC.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Product,
+          "Uno o más productos están inactivos o pertenecen a otro RFC.");
       }
 
       var timeZone = TimeZoneInfo.FindSystemTimeZoneById(site.TimeZoneId);
@@ -165,12 +172,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
               "Uno o más componentes del combo están marcados como agotados.");
           }
         }
-        throw new InvalidOperationException("Uno o más componentes del combo están inactivos, agotados o pertenecen a otro RFC.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Product,
+          "Uno o más componentes del combo están inactivos, agotados o pertenecen a otro RFC.");
       }
       products.AddRange(components.Where(component => products.All(product => product.Id != component.Id)));
       if (components.Any(component => string.Equals(component.ProductKind, RestaurantProductKinds.Combo, StringComparison.OrdinalIgnoreCase)))
       {
-        throw new InvalidOperationException("La versión actual no permite incluir un combo dentro de otro combo.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Combo,
+          "La versión actual no permite incluir un combo dentro de otro combo.");
       }
 
       var allOperationalProductIds = requestedProductIds
@@ -340,9 +351,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         Rfc = rfc,
         SiteId = request.SiteId,
         At = localNow,
-        Channel = string.IsNullOrWhiteSpace(request.SalesChannel)
-          ? RestaurantSalesChannels.Pos
-          : request.SalesChannel.Trim(),
+        Channel = salesChannel,
         OrderType = request.OrderType,
         MemberId = member?.Id,
         Code = request.PromotionCode,
@@ -402,7 +411,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
       if (normalizedPromotionCode is not null && !promotionQuote.CodeAccepted)
       {
-        throw new InvalidOperationException(promotionQuote.Message ?? "El código promocional no es elegible.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.PromotionCode,
+          promotionQuote.Message ?? "El código promocional no es elegible.");
       }
 
       var promotionDiscount = promotionQuote.PromotionDiscountTotal;
@@ -474,13 +485,17 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       }
       if (paymentAmount > total + 0.01m)
       {
-        throw new InvalidOperationException("Los pagos no pueden exceder el total de la orden.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Pricing,
+          "Los pagos no pueden exceder el total de la orden.");
       }
       var orderType = NormalizeOrderType(request.OrderType);
       var externalCod = orderType == "Delivery" && request.ExternalProviderId.HasValue && paymentAmount < total;
       if (orderType is "Pickup" or "Table" && paymentAmount < total)
       {
-        throw new InvalidOperationException("Las órdenes para recoger o mesa deben pagarse antes de enviarse a cocina.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Pricing,
+          "Las órdenes para recoger o mesa deben pagarse antes de enviarse a cocina.");
       }
 
       var operationalDate = DateOnly.FromDateTime(localNow.TimeOfDay < site.OperationalDayCutoff ? localNow.AddDays(-1).Date : localNow.Date);
@@ -517,14 +532,16 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         """
         INSERT INTO restaurante.[Order]
           (Id, Rfc, SiteId, Folio, OperationalDate, OrderType, [Status], PaymentStatus,
-           CustomerName, CustomerPhone, DiningTableId, CashRegisterId, CashShiftId,
+           CustomerName, CustomerPhone, CustomerEmail, PublicSiteId, OnlineCheckoutAttemptId,
+           SalesChannel, DiningTableId, CashRegisterId, CashShiftId,
            Subtotal, DiscountTotal, TaxTotal, TipTotal, Total, BalanceDue, TaxRateSnapshot,
            PricesIncludeTaxSnapshot, InventoryReservationId, TheoreticalCost, IdempotencyKey,
            Notes, CreatedBy, PaidAt, SentToKitchenAt,MemberId,MembershipNumberSnapshot,
            PromotionDiscountTotal,EligibleMerchandiseTotal,PointsEarned,RedeemedPoints,RedemptionValue)
         VALUES
           (@Id, @Rfc, @SiteId, @Folio, @OperationalDate, @OrderType, @Status, @PaymentStatus,
-           @CustomerName, @CustomerPhone, @DiningTableId, @CashRegisterId, @CashShiftId,
+           @CustomerName, @CustomerPhone, @CustomerEmail, @PublicSiteId, @OnlineCheckoutAttemptId,
+           @SalesChannel, @DiningTableId, @CashRegisterId, @CashShiftId,
            @Subtotal, @DiscountTotal, @TaxTotal, @TipTotal, @Total, @BalanceDue, @TaxRate,
            @PricesIncludeTax, @ReservationId, @TheoreticalCost, @IdempotencyKey,
            @Notes, @CreatedBy, CASE WHEN @PaymentStatus = 'Paid' THEN SYSUTCDATETIME() END,
@@ -542,6 +559,10 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           PaymentStatus = paymentStatus,
           CustomerName = NullIfWhiteSpace(request.CustomerName),
           CustomerPhone = NullIfWhiteSpace(request.CustomerPhone),
+          CustomerEmail = NullIfWhiteSpace(request.CustomerEmail),
+          request.PublicSiteId,
+          request.OnlineCheckoutAttemptId,
+          SalesChannel = salesChannel,
           request.DiningTableId,
           request.CashRegisterId,
           request.CashShiftId,
@@ -588,7 +609,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       await RestaurantOrderEventWriter.AddAsync(
         conn, tx, rfc, request.SiteId, orderId,
         "OrderCreated", "Order", "Orden generada",
-        $"{OrderTypeLabel(orderType)} · {pricedLines.Count} partida(s) · Total {total:C}",
+        $"{OrderTypeLabel(orderType)} · {(salesChannel == RestaurantSalesChannels.Web ? "Web / PayPal · " : string.Empty)}{pricedLines.Count} partida(s) · Total {total:C}",
         userName, ct, $"order:{orderId}:created");
 
       if (reservation.ReservationId.HasValue)
@@ -1306,6 +1327,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         await AddOrderTransitionEventAsync(
           conn, tx, normalizedRfc, line.SiteId, line.OrderId, orderTransition, userName, ct);
+        if (string.Equals(orderTransition.NextStatus, RestaurantOrderStatuses.Ready, StringComparison.Ordinal))
+        {
+          await EnqueueReadyNotificationAsync(
+            conn, tx, normalizedRfc, line.OrderId, ct);
+        }
       }
       await AddOutboxEventAsync(conn, tx, normalizedRfc, line.SiteId, "OrderLineStatusChanged", line.OrderId.ToString(), new { line.OrderId, lineId, status = normalizedStatus }, ct);
       await tx.CommitAsync(ct);
@@ -1764,7 +1790,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var payment = await conn.QuerySingleOrDefaultAsync<RefundPaymentRow>(new CommandDefinition(
         """
         SELECT paymentInfo.Id,paymentInfo.OrderId,paymentInfo.PaymentMethod,paymentInfo.Amount,paymentInfo.RefundedAmount,
-               orderInfo.SiteId,orderInfo.CashRegisterId,orderInfo.Total,orderInfo.[Status] AS OrderStatus
+               orderInfo.SiteId,orderInfo.CashRegisterId,orderInfo.Total,orderInfo.BalanceDue,orderInfo.[Status] AS OrderStatus
         FROM restaurante.Payment paymentInfo WITH (UPDLOCK,HOLDLOCK)
         JOIN restaurante.[Order] orderInfo WITH (UPDLOCK,HOLDLOCK)
           ON orderInfo.Rfc=paymentInfo.Rfc AND orderInfo.Id=paymentInfo.OrderId
@@ -1827,7 +1853,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var netPaid = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
         "SELECT CAST(ISNULL(SUM(Amount-RefundedAmount),0) AS decimal(18,2)) FROM restaurante.Payment WHERE Rfc=@Rfc AND OrderId=@OrderId;",
         new { Rfc = rfc, payment.OrderId }, tx, cancellationToken: ct));
-      var balanceDue = Math.Max(0, decimal.Round(payment.Total - netPaid, 2, MidpointRounding.AwayFromZero));
+      // A POS correction refunds a payment to record it again by another method, so the
+      // balance reopens. A provider refund returns the money to the customer instead: the
+      // order settles for less and keeps whatever balance it already had.
+      var balanceDue = request.ReopenBalance
+        ? Math.Max(0, decimal.Round(payment.Total - netPaid, 2, MidpointRounding.AwayFromZero))
+        : payment.BalanceDue;
       var paymentStatus = netPaid <= 0.01m ? RestaurantPaymentStatuses.Refunded : RestaurantPaymentStatuses.PartiallyRefunded;
       await conn.ExecuteAsync(new CommandDefinition(
         """
@@ -2083,13 +2114,17 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         if (line.ComboSelections.Count > 0)
         {
-          throw new InvalidOperationException("Solo los productos tipo combo aceptan selecciones de combo.");
+          throw new RestaurantOrderBusinessRejectionException(
+            RestaurantOrderRejectionCategory.Combo,
+            "Solo los productos tipo combo aceptan selecciones de combo.");
         }
         continue;
       }
       if (line.ModifierOptionIds.Count > 0)
       {
-        throw new InvalidOperationException("Los modificadores de un combo deben capturarse en cada componente.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Combo,
+          "Los modificadores de un combo deben capturarse en cada componente.");
       }
       var productSlots = comboRows
         .Where(row => row.ComboProductId == product.Id)
@@ -2122,10 +2157,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         {
           if (selection.Notes?.Trim().Length > 500)
           {
-            throw new InvalidOperationException("La nota de un componente no puede exceder 500 caracteres.");
+            throw new RestaurantOrderBusinessRejectionException(
+              RestaurantOrderRejectionCategory.Combo,
+              "La nota de un componente no puede exceder 500 caracteres.");
           }
           var option = slot.SingleOrDefault(row => row.ComboSlotOptionId == selection.ComboSlotOptionId && row.ComponentProductId.HasValue)
-            ?? throw new InvalidOperationException("Una opción está inactiva o no pertenece al combo y RFC seleccionados.");
+            ?? throw new RestaurantOrderBusinessRejectionException(
+              RestaurantOrderRejectionCategory.Combo,
+              "Una opción está inactiva o no pertenece al combo y RFC seleccionados.");
           var component = products.Single(item => item.Id == option.ComponentProductId!.Value);
           var selectedModifiers = ValidateProductModifierSelection(
             component.Id,
@@ -2140,7 +2179,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
               ProductId = component.Id,
               MenuSectionId = option.RouteMenuSectionId.Value,
               MenuSectionName = option.RouteMenuSectionName
-                ?? throw new InvalidOperationException("La ruta operacional del componente no tiene sección válida."),
+                ?? throw new RestaurantOrderBusinessRejectionException(
+                  RestaurantOrderRejectionCategory.Combo,
+                  "La ruta operacional del componente no tiene sección válida."),
               MenuSectionSortOrder = option.RouteMenuSectionSortOrder ?? int.MaxValue
             };
           }
@@ -2149,7 +2190,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             var inferredRoutes = menuSections.Where(item => item.ProductId == component.Id).ToList();
             if (inferredRoutes.Count != 1)
             {
-              throw new InvalidOperationException(
+              throw new RestaurantOrderBusinessRejectionException(
+                RestaurantOrderRejectionCategory.Combo,
                 inferredRoutes.Count == 0
                   ? $"El componente {component.Sku} no tiene una ruta operacional en el menú activo."
                   : $"El componente {component.Sku} aparece en varias secciones; configura su ruta operacional en el combo.");
@@ -2218,13 +2260,76 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
   private static async Task ValidateOperationalReferencesAsync(DbConnection conn, DbTransaction tx, string rfc, RestaurantOrderCreateRequest request, CancellationToken ct)
   {
     var orderType = NormalizeOrderType(request.OrderType);
-    var salesChannel = string.IsNullOrWhiteSpace(request.SalesChannel)
-      ? RestaurantSalesChannels.Pos
-      : request.SalesChannel.Trim();
+    var salesChannel = NormalizeSalesChannel(request.SalesChannel);
     if (string.Equals(salesChannel, RestaurantSalesChannels.Pos, StringComparison.OrdinalIgnoreCase) &&
         (!request.CashRegisterId.HasValue || !request.CashShiftId.HasValue))
     {
       throw new InvalidOperationException("Las ventas de Punto de Venta requieren seleccionar un turno de caja abierto.");
+    }
+    if (salesChannel == RestaurantSalesChannels.Pos &&
+        (request.PublicSiteId.HasValue || request.OnlineCheckoutAttemptId.HasValue))
+    {
+      throw new InvalidOperationException("Una venta de Punto de Venta no puede ligarse a un intento de pago en línea.");
+    }
+    if (salesChannel == RestaurantSalesChannels.Web)
+    {
+      if (!request.PublicSiteId.HasValue || !request.OnlineCheckoutAttemptId.HasValue)
+      {
+        throw new InvalidOperationException("La orden web requiere el sitio público y el intento de pago verificado.");
+      }
+      if (!string.Equals(orderType, "Pickup", StringComparison.Ordinal))
+      {
+        throw new InvalidOperationException("Las órdenes web sólo están habilitadas para recoger en restaurante.");
+      }
+      if (request.CashRegisterId.HasValue || request.CashShiftId.HasValue)
+      {
+        throw new InvalidOperationException("Una orden web no debe asociarse a una caja o turno de efectivo.");
+      }
+      if (string.IsNullOrWhiteSpace(request.CustomerEmail))
+      {
+        throw new InvalidOperationException("La orden web requiere el correo del cliente.");
+      }
+      if (request.PointsToRedeem > 0)
+      {
+        throw new InvalidOperationException("El canje de puntos está disponible únicamente en restaurante.");
+      }
+      if (request.AllowInventoryDeficit || request.Lines.Any(line => line.IsCustom))
+      {
+        throw new InvalidOperationException("Las órdenes web no permiten déficit de inventario ni cargos personalizados.");
+      }
+      if (request.Payments.Count != 1 ||
+          NormalizePaymentMethod(request.Payments[0].PaymentMethod) != "Platform" ||
+          request.Payments[0].TipAmount != 0 ||
+          string.IsNullOrWhiteSpace(request.Payments[0].ExternalReference))
+      {
+        throw new InvalidOperationException("La orden web requiere un único pago de plataforma, sin propina y con referencia externa.");
+      }
+      var isCapturedAttempt = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+        """
+        SELECT CAST(CASE WHEN EXISTS
+        (
+          SELECT 1
+          FROM restaurante.OnlineCheckoutAttempt attemptInfo WITH (UPDLOCK,HOLDLOCK)
+          WHERE attemptInfo.Id=@AttemptId
+            AND attemptInfo.PublicSiteId=@PublicSiteId
+            AND attemptInfo.Rfc=@Rfc
+            AND attemptInfo.SiteId=@SiteId
+            AND attemptInfo.[State] IN ('Captured','CapturedNeedsOrder')
+            AND attemptInfo.PayPalCaptureId=@CaptureId
+            AND attemptInfo.RestaurantOrderId IS NULL
+        ) THEN 1 ELSE 0 END AS bit);
+        """, new
+        {
+          Rfc = rfc,
+          request.SiteId,
+          AttemptId = request.OnlineCheckoutAttemptId,
+          request.PublicSiteId,
+          CaptureId = request.Payments[0].ExternalReference!.Trim()
+        }, tx, cancellationToken: ct));
+      if (!isCapturedAttempt)
+      {
+        throw new InvalidOperationException("El pago web no corresponde a un intento capturado pendiente de importar para este sitio.");
+      }
     }
     if (orderType == "Table" && !request.DiningTableId.HasValue)
     {
@@ -2302,7 +2407,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     {
       if (productModifiers.All(row => row.Id != optionId))
       {
-        throw new InvalidOperationException($"Un modificador no corresponde a {context} o al RFC seleccionado.");
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Modifier,
+          $"Un modificador no corresponde a {context} o al RFC seleccionado.");
       }
     }
     foreach (var group in productModifiers.GroupBy(row => row.ModifierGroupId))
@@ -2312,7 +2419,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       var definition = group.First();
       if (selected < definition.MinSelections || selected > definition.MaxSelections)
       {
-        throw new InvalidOperationException(
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Modifier,
           $"El grupo {definition.GroupName} requiere entre {definition.MinSelections} y {definition.MaxSelections} opciones para {context}.");
       }
     }
@@ -2574,7 +2682,12 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       "SELECT [Status] FROM logistica.InventoryReservation WITH (UPDLOCK, HOLDLOCK) WHERE Rfc=@Rfc AND Id=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct));
     if (status == "Consumed") return false;
-    if (status != "Reserved") throw new InvalidOperationException("La reserva de inventario ya no está disponible.");
+    if (status != "Reserved")
+    {
+      throw new RestaurantOrderBusinessRejectionException(
+        RestaurantOrderRejectionCategory.Inventory,
+        "La reserva de inventario ya no está disponible.");
+    }
     var lines = (await conn.QueryAsync<ReservationLineRow>(new CommandDefinition(
       "SELECT Id, MaterialId, LocationId, MaterialLotId, ReservedQuantity, FrozenUnitCost FROM logistica.InventoryReservationLine WHERE Rfc=@Rfc AND ReservationId=@Id;",
       new { Rfc = rfc, Id = reservationId }, tx, cancellationToken: ct))).AsList();
@@ -2700,7 +2813,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     var sql =
       $"""
       SELECT orderInfo.Id, orderInfo.Folio, orderInfo.OperationalDate, orderInfo.OrderType, orderInfo.[Status],
-             orderInfo.PaymentStatus, orderInfo.CustomerName, diningTable.[Name] AS TableName, orderInfo.Notes,
+             orderInfo.PaymentStatus, orderInfo.CustomerName, orderInfo.CustomerEmail,
+             orderInfo.PublicSiteId, orderInfo.OnlineCheckoutAttemptId, orderInfo.SalesChannel,
+             diningTable.[Name] AS TableName, orderInfo.Notes,
               orderInfo.Total, orderInfo.BalanceDue,orderInfo.PromotionDiscountTotal,
               orderInfo.MemberId,orderInfo.MembershipNumberSnapshot AS MembershipNumber,orderInfo.PointsEarned,
               orderInfo.RedeemedPoints AS PointsRedeemed,orderInfo.RedemptionValue,
@@ -2833,7 +2948,8 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
         cancellationToken: ct));
       if (promotionUpdated != 1)
       {
-        throw new InvalidOperationException(
+        throw new RestaurantOrderBusinessRejectionException(
+          RestaurantOrderRejectionCategory.Promotion,
           $"La promoción {adjustment.PromotionName} alcanzó su límite mientras se cobraba la orden.");
       }
 
@@ -2854,16 +2970,22 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           },
           tx,
           cancellationToken: ct))
-          ?? throw new InvalidOperationException($"El código {adjustment.Code} de «{adjustment.PromotionName}» se desactivó mientras se cobraba la orden.");
+          ?? throw new RestaurantOrderBusinessRejectionException(
+            RestaurantOrderRejectionCategory.PromotionCode,
+            $"El código {adjustment.Code} de «{adjustment.PromotionName}» se desactivó mientras se cobraba la orden.");
         if (code.GlobalLimit.HasValue && code.RedemptionCount >= code.GlobalLimit.Value)
         {
-          throw new InvalidOperationException($"El código {adjustment.Code} alcanzó su tope de {code.GlobalLimit.Value} usos mientras se cobraba la orden.");
+          throw new RestaurantOrderBusinessRejectionException(
+            RestaurantOrderRejectionCategory.PromotionCode,
+            $"El código {adjustment.Code} alcanzó su tope de {code.GlobalLimit.Value} usos mientras se cobraba la orden.");
         }
         if (code.PerMemberLimit.HasValue)
         {
           if (!memberId.HasValue)
           {
-            throw new InvalidOperationException($"El código {adjustment.Code} permite {code.PerMemberLimit.Value} canje(s) por socio y la orden no tiene membresía vinculada.");
+            throw new RestaurantOrderBusinessRejectionException(
+              RestaurantOrderRejectionCategory.PromotionCode,
+              $"El código {adjustment.Code} permite {code.PerMemberLimit.Value} canje(s) por socio y la orden no tiene membresía vinculada.");
           }
           var memberUses = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
             """
@@ -2875,7 +2997,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             cancellationToken: ct));
           if (memberUses >= code.PerMemberLimit.Value)
           {
-            throw new InvalidOperationException($"Este socio ya canjeó {adjustment.Code} {memberUses} de {code.PerMemberLimit.Value} vez(veces) permitida(s).");
+            throw new RestaurantOrderBusinessRejectionException(
+              RestaurantOrderRejectionCategory.PromotionCode,
+              $"Este socio ya canjeó {adjustment.Code} {memberUses} de {code.PerMemberLimit.Value} vez(veces) permitida(s).");
           }
         }
         var codeUpdated = await conn.ExecuteAsync(new CommandDefinition(
@@ -2890,7 +3014,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           cancellationToken: ct));
         if (codeUpdated != 1)
         {
-          throw new InvalidOperationException($"El código {adjustment.Code} alcanzó su límite mientras se cobraba la orden.");
+          throw new RestaurantOrderBusinessRejectionException(
+            RestaurantOrderRejectionCategory.PromotionCode,
+            $"El código {adjustment.Code} alcanzó su límite mientras se cobraba la orden.");
         }
         codeId = code.Id;
       }
@@ -3064,6 +3190,35 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       $"{OrderStatusLabel(transition.CurrentStatus)} → {OrderStatusLabel(transition.NextStatus)}",
       actor, ct);
 
+  private static async Task EnqueueReadyNotificationAsync(
+    DbConnection conn,
+    DbTransaction tx,
+    string rfc,
+    Guid orderId,
+    CancellationToken ct)
+  {
+    var isWebOrder = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+      """
+      SELECT CAST(CASE WHEN EXISTS
+      (
+        SELECT 1 FROM restaurante.[Order]
+        WHERE Rfc=@Rfc AND Id=@OrderId AND SalesChannel='Web'
+          AND PublicSiteId IS NOT NULL AND OnlineCheckoutAttemptId IS NOT NULL
+      ) THEN 1 ELSE 0 END AS bit);
+      """,
+      new { Rfc = rfc, OrderId = orderId },
+      tx,
+      cancellationToken: ct));
+    if (!isWebOrder) return;
+
+    await conn.ExecuteAsync(new CommandDefinition(
+      "restaurante.OnlineOrderNotificationEnqueue",
+      new { RestaurantOrderId = orderId, NotificationType = "Ready" },
+      tx,
+      commandType: CommandType.StoredProcedure,
+      cancellationToken: ct));
+  }
+
   private static async Task<RestaurantOrderResult?> FindDuplicateAsync(DbConnection conn, DbTransaction tx, string rfc, int siteId, string key, CancellationToken ct)
     => await conn.QuerySingleOrDefaultAsync<RestaurantOrderResult>(new CommandDefinition(
       """
@@ -3097,6 +3252,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       "table" or "mesa" => "Table",
       "delivery" or "domicilio" => "Delivery",
       _ => throw new InvalidOperationException("Modalidad de orden no válida.")
+    };
+
+  private static string NormalizeSalesChannel(string? value)
+    => value?.Trim().ToLowerInvariant() switch
+    {
+      null or "" or "pos" => RestaurantSalesChannels.Pos,
+      "web" => RestaurantSalesChannels.Web,
+      _ => throw new InvalidOperationException("Canal de venta no válido.")
     };
 
   private static string NormalizePaymentMethod(string? value)
@@ -3345,6 +3508,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     public int SiteId { get; set; }
     public int? CashRegisterId { get; set; }
     public decimal Total { get; set; }
+    public decimal BalanceDue { get; set; }
     public string OrderStatus { get; set; } = string.Empty;
   }
   private sealed class PromotionCodeLimitRow

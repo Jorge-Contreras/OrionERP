@@ -45,17 +45,7 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
     MicrosoftGraphMailMessage mail,
     CancellationToken ct = default)
   {
-    ArgumentNullException.ThrowIfNull(mail);
-    ArgumentException.ThrowIfNullOrWhiteSpace(mail.Subject);
-    ArgumentException.ThrowIfNullOrWhiteSpace(mail.Message);
-
-    var toRecipients = NormalizeRecipients(mail.ToRecipients);
-    var ccRecipients = NormalizeRecipients(mail.CcRecipients);
-    var bccRecipients = NormalizeRecipients(mail.BccRecipients);
-    if (toRecipients.Count == 0)
-    {
-      throw new ArgumentException("At least one recipient is required.", nameof(mail));
-    }
+    var graphMessage = BuildGraphMessage(mail);
 
     var options = _options.Value;
     EnsureConfigured(options);
@@ -68,14 +58,7 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
 
     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
     request.Content = JsonContent.Create(
-      new GraphSendMailRequest(
-        new GraphMessage(
-          mail.Subject,
-          new GraphItemBody(LooksLikeHtml(mail.Message) ? "HTML" : "Text", mail.Message),
-          BuildRecipients(toRecipients),
-          BuildRecipients(ccRecipients),
-          BuildRecipients(bccRecipients)),
-        true),
+      new GraphSendMailRequest(graphMessage, true),
       options: JsonOptions);
 
     using var response = await _httpClient.SendAsync(request, ct);
@@ -94,7 +77,135 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
     _logger.LogInformation(
       "Graph email queued from {SenderAddress} to {RecipientCount} recipient(s).",
       options.SenderAddress,
-      toRecipients.Count + ccRecipients.Count + bccRecipients.Count);
+      graphMessage.ToRecipients.Count + graphMessage.CcRecipients.Count + graphMessage.BccRecipients.Count);
+  }
+
+  public async Task<string> CreateDraftAsync(
+    MicrosoftGraphMailMessage mail,
+    CancellationToken ct = default)
+  {
+    var graphMessage = BuildGraphMessage(mail);
+    var options = _options.Value;
+    EnsureConfigured(options);
+
+    var accessToken = await RequestAccessTokenAsync(options, ct);
+    using var request = CreateImmutableMessageRequest(
+      HttpMethod.Post,
+      $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(options.SenderAddress)}/messages",
+      accessToken);
+    request.Content = JsonContent.Create(graphMessage, options: JsonOptions);
+
+    using var response = await _httpClient.SendAsync(request, ct);
+    var responseBody = await response.Content.ReadAsStringAsync(ct);
+    var payload = response.IsSuccessStatusCode
+      ? JsonSerializer.Deserialize<GraphMessageStateResponse>(responseBody, JsonOptions)
+      : null;
+    if (!response.IsSuccessStatusCode || string.IsNullOrWhiteSpace(payload?.Id) || payload.IsDraft != true)
+    {
+      _logger.LogError(
+        "Graph draft creation failed for sender {SenderAddress} with status code {StatusCode}.",
+        options.SenderAddress,
+        (int)response.StatusCode);
+      throw new InvalidOperationException("No se pudo crear el borrador de correo mediante Microsoft Graph.");
+    }
+
+    _logger.LogInformation(
+      "Graph durable email draft created from {SenderAddress} for {RecipientCount} recipient(s).",
+      options.SenderAddress,
+      graphMessage.ToRecipients.Count + graphMessage.CcRecipients.Count + graphMessage.BccRecipients.Count);
+    return payload.Id;
+  }
+
+  public async Task<MicrosoftGraphMailMessageState> GetMessageStateAsync(
+    string immutableMessageId,
+    CancellationToken ct = default)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(immutableMessageId);
+    var options = _options.Value;
+    EnsureConfigured(options);
+
+    var accessToken = await RequestAccessTokenAsync(options, ct);
+    using var request = CreateImmutableMessageRequest(
+      HttpMethod.Get,
+      $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(options.SenderAddress)}/messages/{Uri.EscapeDataString(immutableMessageId.Trim())}?$select=id,isDraft",
+      accessToken);
+    using var response = await _httpClient.SendAsync(request, ct);
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+      return MicrosoftGraphMailMessageState.Missing;
+
+    var responseBody = await response.Content.ReadAsStringAsync(ct);
+    var payload = response.IsSuccessStatusCode
+      ? JsonSerializer.Deserialize<GraphMessageStateResponse>(responseBody, JsonOptions)
+      : null;
+    if (!response.IsSuccessStatusCode || string.IsNullOrWhiteSpace(payload?.Id) || payload.IsDraft is null)
+    {
+      _logger.LogError(
+        "Graph message-state lookup failed for sender {SenderAddress} with status code {StatusCode}.",
+        options.SenderAddress,
+        (int)response.StatusCode);
+      throw new InvalidOperationException("No se pudo consultar el estado del correo mediante Microsoft Graph.");
+    }
+
+    return payload.IsDraft.Value
+      ? MicrosoftGraphMailMessageState.Draft
+      : MicrosoftGraphMailMessageState.Sent;
+  }
+
+  public async Task SendDraftAsync(
+    string immutableMessageId,
+    CancellationToken ct = default)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(immutableMessageId);
+    var options = _options.Value;
+    EnsureConfigured(options);
+
+    var accessToken = await RequestAccessTokenAsync(options, ct);
+    using var request = CreateImmutableMessageRequest(
+      HttpMethod.Post,
+      $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(options.SenderAddress)}/messages/{Uri.EscapeDataString(immutableMessageId.Trim())}/send",
+      accessToken);
+    using var response = await _httpClient.SendAsync(request, ct);
+    if (!response.IsSuccessStatusCode)
+    {
+      _logger.LogError(
+        "Graph draft send failed for sender {SenderAddress} with status code {StatusCode}.",
+        options.SenderAddress,
+        (int)response.StatusCode);
+      throw new InvalidOperationException("No se pudo enviar el borrador mediante Microsoft Graph.");
+    }
+
+    _logger.LogInformation("Graph durable email draft accepted for delivery from {SenderAddress}.", options.SenderAddress);
+  }
+
+  private static HttpRequestMessage CreateImmutableMessageRequest(
+    HttpMethod method,
+    string requestUri,
+    string accessToken)
+  {
+    var request = new HttpRequestMessage(method, requestUri);
+    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+    request.Headers.TryAddWithoutValidation("Prefer", "IdType=\"ImmutableId\"");
+    return request;
+  }
+
+  private static GraphMessage BuildGraphMessage(MicrosoftGraphMailMessage mail)
+  {
+    ArgumentNullException.ThrowIfNull(mail);
+    ArgumentException.ThrowIfNullOrWhiteSpace(mail.Subject);
+    ArgumentException.ThrowIfNullOrWhiteSpace(mail.Message);
+
+    var toRecipients = NormalizeRecipients(mail.ToRecipients);
+    var ccRecipients = NormalizeRecipients(mail.CcRecipients);
+    var bccRecipients = NormalizeRecipients(mail.BccRecipients);
+    if (toRecipients.Count == 0)
+      throw new ArgumentException("At least one recipient is required.", nameof(mail));
+
+    return new GraphMessage(
+      mail.Subject,
+      new GraphItemBody(LooksLikeHtml(mail.Message) ? "HTML" : "Text", mail.Message),
+      BuildRecipients(toRecipients),
+      BuildRecipients(ccRecipients),
+      BuildRecipients(bccRecipients));
   }
 
   private static IReadOnlyList<string> NormalizeRecipients(IReadOnlyList<string>? recipients)
@@ -171,6 +282,8 @@ public sealed class MicrosoftGraphMailClient<TOptions> : IMicrosoftGraphMailClie
     => body.Contains('<') && body.Contains('>');
 
   private sealed record GraphTokenResponse([property: JsonPropertyName("access_token")] string AccessToken);
+
+  private sealed record GraphMessageStateResponse(string Id, bool? IsDraft);
 
   private sealed record GraphSendMailRequest(GraphMessage Message, bool SaveToSentItems);
 

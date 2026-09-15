@@ -1,5 +1,6 @@
 @page "/"
 @inject IRestaurantPublicCatalogService CatalogService
+@inject IOnlineRestaurantCheckoutService CheckoutService
 @inject IPublicWebsiteInstanceContext Website
 @inject PublicWebsitePresentationDefinition Presentation
 
@@ -32,6 +33,10 @@ else
         <small>Cómo llegar</small>
       </a>
       <div class="hero__actions">
+        @if (ordering?.CanAcceptOrders == true)
+        {
+          <a class="button button--accent" href="/ordenar">Ordenar para recoger</a>
+        }
         @if (membershipEnabled)
         {
           <a class="button button--accent club-cta" href="/cuenta/registro" target="_top"><span>Únete gratis a @MembershipName</span><small>Crea tu cuenta</small></a>
@@ -104,13 +109,22 @@ else
   </section>
 
   <section class="order-preview">
-    <div><span>Próximamente</span><h2>Ordena como te convenga</h2><p>Estamos preparando pedidos en línea para recolección y entrega. Mientras tanto, visítanos en el jardín para disfrutar el menú completo.</p></div>
-    <div class="order-preview__steps"><span><b>1</b> Confirma ubicación</span><span><b>2</b> Elige recolección o entrega</span><span><b>3</b> Arma y paga tu orden</span></div>
+    @if (ordering?.IsEnabled == true)
+    {
+      <div><span>Pedidos en línea</span><h2>Pide y recoge aquí</h2><p>Arma tu pedido, paga de forma segura con PayPal y espera nuestro correo para venir a recogerlo.</p><a class="button button--accent" href="/ordenar">Empezar pedido</a></div>
+      <div class="order-preview__steps"><span><b>1</b> Elige y personaliza</span><span><b>2</b> Paga con PayPal</span><span><b>3</b> Espera el correo de listo</span></div>
+    }
+    else
+    {
+      <div><span>Próximamente</span><h2>Pedidos para recoger</h2><p>Estamos preparando pedidos en línea para recolección en @Presentation.ShortName. Mientras tanto, visítanos en el jardín para disfrutar el menú completo.</p></div>
+      <div class="order-preview__steps"><span><b>1</b> Elige y personaliza</span><span><b>2</b> Paga en línea</span><span><b>3</b> Recibe el aviso de listo</span></div>
+    }
   </section>
 }
 
 @code {
   private RestaurantPublicSiteSettingsDto? settings;
+  private RestaurantOnlineOrderingConfigurationDto? ordering;
   private List<RestaurantProductDto> featuredProducts = [];
   private bool membershipEnabled;
   private string timeZoneId = "UTC";
@@ -153,6 +167,8 @@ else
         .Where(product => !product.IsSoldOut)
         .Take(3)
         .ToList();
+      try { ordering = await CheckoutService.GetConfigurationAsync(binding); }
+      catch { ordering = null; }
     }
     catch
     {

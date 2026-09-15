@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Features.Hospitality.PublicBooking;
 using OrionERP.Infrastructure.Features.Hospitality.PublicBooking;
+using OrionERP.Infrastructure.Features.Payments.PayPal;
 
 namespace OrionERP.UnitTests.Bonhomia;
 
@@ -452,16 +453,24 @@ public class HospitalityPayPalClientTests
     };
 
   private static HospitalityPayPalClient CreateClient(HttpMessageHandler handler, HospitalityCheckoutOptions? options = null)
-    => new(
-      new HttpClient(handler),
-      Options.Create(options ?? new HospitalityCheckoutOptions
+  {
+    var configuredOptions = Options.Create(options ?? new HospitalityCheckoutOptions
       {
         Environment = "Sandbox",
         Currency = "MXN",
         PayPalClientId = "client-id",
         PayPalClientSecret = "client-secret"
-      }),
+      });
+    var transport = new PayPalOrdersClient<HospitalityCheckoutOptions>(
+      new HttpClient(handler),
+      configuredOptions,
+      NullLogger<PayPalOrdersClient<HospitalityCheckoutOptions>>.Instance);
+
+    return new HospitalityPayPalClient(
+      transport,
+      configuredOptions,
       NullLogger<HospitalityPayPalClient>.Instance);
+  }
 
   private static StringContent JsonContent(string json)
     => new(json, Encoding.UTF8, "application/json");

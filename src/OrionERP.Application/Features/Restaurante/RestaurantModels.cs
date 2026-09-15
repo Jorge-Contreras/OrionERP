@@ -175,6 +175,7 @@ public sealed class RestaurantProductDto
   public int? PreparationMinutes { get; set; }
   public bool IsActive { get; set; }
   public bool IsSoldOut { get; set; }
+  public bool CanOrderOnline { get; set; }
   public bool HasImage { get; set; }
   public bool HasVariantImage { get; set; }
   public string ProductType { get; set; } = string.Empty;
@@ -321,6 +322,8 @@ public sealed class RestaurantOrderCreateRequest
 {
   [Required] public string Rfc { get; set; } = string.Empty;
   [Required] public int SiteId { get; set; }
+  public long? PublicSiteId { get; set; }
+  public Guid? OnlineCheckoutAttemptId { get; set; }
   public int? CashRegisterId { get; set; }
   public Guid? CashShiftId { get; set; }
   [Required] public string IdempotencyKey { get; set; } = string.Empty;
@@ -328,6 +331,7 @@ public sealed class RestaurantOrderCreateRequest
   public int? DiningTableId { get; set; }
   [Required, StringLength(150)] public string CustomerName { get; set; } = string.Empty;
   public string? CustomerPhone { get; set; }
+  [EmailAddress, StringLength(320)] public string? CustomerEmail { get; set; }
   public string? Notes { get; set; }
   public string? DeliveryAddress { get; set; }
   public string? DeliveryReferences { get; set; }
@@ -412,6 +416,11 @@ public sealed class RestaurantPaymentRefundRequest
   [Required, StringLength(100)] public string IdempotencyKey { get; set; } = string.Empty;
   [Required, StringLength(500)] public string Reason { get; set; } = string.Empty;
   [Required, StringLength(256)] public string SupervisorUserName { get; set; } = string.Empty;
+  /// <summary>
+  /// True for POS corrections, where the refunded amount is collected again by another method.
+  /// False for provider refunds (PayPal) that return the money to the customer for good.
+  /// </summary>
+  public bool ReopenBalance { get; set; } = true;
 }
 
 public sealed class RestaurantQuickPinSetupRequest
@@ -467,6 +476,10 @@ public sealed class RestaurantOrderDto
   public string Status { get; set; } = string.Empty;
   public string PaymentStatus { get; set; } = string.Empty;
   public string? CustomerName { get; set; }
+  public string? CustomerEmail { get; set; }
+  public long? PublicSiteId { get; set; }
+  public Guid? OnlineCheckoutAttemptId { get; set; }
+  public string SalesChannel { get; set; } = RestaurantSalesChannels.Pos;
   public string? TableName { get; set; }
   public string? Notes { get; set; }
   public decimal Total { get; set; }

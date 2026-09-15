@@ -27,9 +27,10 @@ public sealed class RestaurantComboOrderRulesTests
       new(1, "Extras", 0, 2, [new(1, 10, 100)])
     ];
 
-    var error = Assert.Throws<InvalidOperationException>(() =>
+    var error = Assert.Throws<RestaurantOrderBusinessRejectionException>(() =>
       RestaurantComboOrderRules.ValidateAndResolveSelections("COMBO-1", slots, []));
 
+    Assert.Equal(RestaurantOrderRejectionCategory.Combo, error.Category);
     Assert.Contains("al menos un componente operativo", error.Message, StringComparison.OrdinalIgnoreCase);
   }
 
@@ -45,23 +46,26 @@ public sealed class RestaurantComboOrderRulesTests
       new() { ComboSlotId = 1, ComboSlotOptionId = 10 }
     ];
 
-    Assert.Throws<InvalidOperationException>(() =>
+    var error = Assert.Throws<RestaurantOrderBusinessRejectionException>(() =>
       RestaurantComboOrderRules.ValidateAndResolveSelections("COMBO-1", slots, selections));
+    Assert.Equal(RestaurantOrderRejectionCategory.Combo, error.Category);
   }
 
   [Fact]
   public void RequireActiveMenuMembership_RejectsOmittedOrManipulatedSectionOutsideCurrentMenu()
   {
-    var emptyError = Assert.Throws<InvalidOperationException>(() =>
+    var emptyError = Assert.Throws<RestaurantOrderBusinessRejectionException>(() =>
       RestaurantComboOrderRules.RequireActiveMenuMembership(50, null, []));
+    Assert.Equal(RestaurantOrderRejectionCategory.Product, emptyError.Category);
     Assert.Contains("menú vigente", emptyError.Message, StringComparison.OrdinalIgnoreCase);
 
     RestaurantMenuSectionMembershipRule[] memberships =
     [
       new(50, 7, "Comida", 1)
     ];
-    Assert.Throws<InvalidOperationException>(() =>
+    var manipulatedError = Assert.Throws<RestaurantOrderBusinessRejectionException>(() =>
       RestaurantComboOrderRules.RequireActiveMenuMembership(50, 99, memberships));
+    Assert.Equal(RestaurantOrderRejectionCategory.Product, manipulatedError.Category);
     Assert.Equal(7, RestaurantComboOrderRules.RequireActiveMenuMembership(50, null, memberships).MenuSectionId);
   }
 

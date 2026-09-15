@@ -52,6 +52,23 @@ public sealed class RestaurantPublicCatalogService : IRestaurantPublicCatalogSer
       return null;
 
     var menu = await _catalogService.GetPublicCatalogAsync(binding.CompanyRfc, siteId.Value, at, ct);
+    using var onlineBootstrap = await connection.QueryMultipleAsync(new CommandDefinition(
+      "restaurante.OnlineOrderingBootstrapGet",
+      commandType: CommandType.StoredProcedure,
+      cancellationToken: ct));
+    _ = await onlineBootstrap.ReadSingleOrDefaultAsync<dynamic>();
+    var onlineProductIds = (await onlineBootstrap.ReadAsync<long>()).ToHashSet();
+    foreach (var product in menu.Sections.SelectMany(section => section.Products))
+    {
+      product.CanOrderOnline = onlineProductIds.Contains(product.Id);
+      foreach (var option in product.ComboSlots.SelectMany(slot => slot.Options))
+      {
+        if (option.ComponentProduct is not null)
+        {
+          option.ComponentProduct.CanOrderOnline = onlineProductIds.Contains(option.ComponentProduct.Id);
+        }
+      }
+    }
     IReadOnlyList<RestaurantPublicPromotionDto> promotions = Array.Empty<RestaurantPublicPromotionDto>();
     if (settings.IsPromotionsEnabled)
     {

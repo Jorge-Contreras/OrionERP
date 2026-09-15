@@ -118,6 +118,43 @@ public sealed class RfcTenantIsolationRemediationTests
     }
   }
 
+  [Fact]
+  public void SaFullAccess_OnlyTheSaLoginSkipsTheCompanyContext()
+  {
+    const string SaBypass = "(SUSER_SID()=0x01 AND DATABASE_PRINCIPAL_ID()=1)";
+    var core = RepoFile.Read("src/OrionERP.Infrastructure/Features/Platform/Sql/20260914_rls_sa_full_access.sql");
+    var onlineOrdering = RepoFile.Read(
+      "src/OrionERP.Infrastructure/Features/Platform/Sql/20260914_rls_sa_full_access_online_ordering.sql");
+    var rebuilt = new (string Script, string Function)[]
+    {
+      (core, "contabilidad.fn_AccountingScopePredicate"),
+      (core, "fiscal.fn_DeclarationScopePredicate"),
+      (core, "logistica.fn_InventoryCoreScopePredicate"),
+      (core, "logistica.fn_RfcAccessPredicate"),
+      (core, "orion.fn_HospitalityPaymentScopePredicate"),
+      (core, "orion.fn_HospitalityScopePredicate"),
+      (core, "rh.fn_RfcAccessPredicate"),
+      (core, "rh.fn_WorkforceScopePredicate"),
+      (onlineOrdering, "restaurante.fn_OnlineOrderingScopePredicate")
+    };
+
+    foreach (var (script, function) in rebuilt)
+    {
+      var start = script.IndexOf("ALTER FUNCTION " + function, StringComparison.Ordinal);
+      Assert.True(start >= 0, $"Falta ALTER FUNCTION {function}.");
+      var body = script[start..script.IndexOf("';", start, StringComparison.Ordinal)];
+      Assert.Contains(SaBypass, body, StringComparison.Ordinal);
+      Assert.DoesNotContain("USER_NAME()=N''dbo''", body, StringComparison.Ordinal);
+    }
+
+    foreach (var script in new[] { core, onlineOrdering })
+    {
+      Assert.Contains("IF SUSER_SID()=0x01", script, StringComparison.Ordinal);
+      Assert.Contains("EXECUTE AS LOGIN=N'sa'", script, StringComparison.Ordinal);
+      Assert.DoesNotContain("IS_SRVROLEMEMBER", script, StringComparison.OrdinalIgnoreCase);
+    }
+  }
+
   private static string FindRepositoryRoot()
   {
     var current = new DirectoryInfo(AppContext.BaseDirectory);

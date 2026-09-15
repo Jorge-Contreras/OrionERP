@@ -738,6 +738,27 @@ public sealed class DatabaseMigrationManifestTests
             ["Orion_Sandbox", "grupocarpio"],
             migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
           break;
+        case "20260914_rls_sa_full_access":
+          Assert.Contains("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ADD_SA_BYPASS", sql, StringComparison.Ordinal);
+          Assert.Contains("(SUSER_SID()=0x01 AND DATABASE_PRINCIPAL_ID()=1)", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION logistica.fn_RfcAccessPredicate", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("N'orion'", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260914_rls_sa_full_access_online_ordering":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ADD_SA_BYPASS", sql, StringComparison.Ordinal);
+          Assert.Contains("ALTER FUNCTION restaurante.fn_OnlineOrderingScopePredicate", sql, StringComparison.Ordinal);
+          Assert.DoesNotContain("N'orion'", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
         default:
           throw new Xunit.Sdk.XunitException($"La migración {migration.Id} no tiene política explícita de literales heredados.");
       }

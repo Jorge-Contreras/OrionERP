@@ -8,12 +8,12 @@ namespace OrionERP.IntegrationTests.Platform;
 
 public sealed class CompanyModuleAccessSqlIntegrationTests
 {
-  // Mapa de Orion_Sandbox al 2026-09-14: sólo OHM tiene sede de Hospedaje, sólo Bruno's
-  // de Restaurante, la empresa de prueba dual ambas y el resto ninguna.
+  // Mapa de Orion_Sandbox recreado el 2026-09-15: sólo OHM tiene sede de Hospedaje, sólo
+  // Bruno's de Restaurante y el resto ninguna. La empresa sintética dual (TST260910DUAL01)
+  // ya no existe ahí, así que no se usa como caso.
   [Theory, Trait("Category", "SqlIntegration")]
   [InlineData("BRUNOS260707L26", false, true)]
   [InlineData("OHM191112Q26", true, false)]
-  [InlineData("TST260910DUAL01", true, true)]
   [InlineData("AOBA880201779", false, false)]
   public async Task Sandbox_ReportsEachCompanysUsableModules(string rfc, bool hospitality, bool restaurant)
   {

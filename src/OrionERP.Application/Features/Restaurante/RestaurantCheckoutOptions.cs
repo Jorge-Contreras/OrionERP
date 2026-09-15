@@ -47,12 +47,21 @@ public static class RestaurantCheckoutOptionsPolicy
     }
     if (production)
     {
-      if (!options.UseLivePayPal)
-        errors.Add("La venta en producción requiere RestaurantCheckout:Environment=Live.");
-      if (!options.IsPayPalConfigured)
-        errors.Add("La venta en producción requiere credenciales PayPal de RestaurantCheckout.");
-      if (!options.IsWebhookVerificationConfigured)
-        errors.Add("La venta en producción requiere RestaurantCheckout:PayPalWebhookId.");
+      // Online ordering ships disabled. Until the private Live PayPal profile is installed the
+      // public site must still start; checkout stays closed through the runtime readiness gates.
+      // Once any PayPal setting is present, the whole Live profile has to be complete.
+      var hasPayPalSettings = !string.IsNullOrWhiteSpace(options.PayPalClientId)
+        || !string.IsNullOrWhiteSpace(options.PayPalClientSecret)
+        || !string.IsNullOrWhiteSpace(options.PayPalWebhookId);
+      if (hasPayPalSettings)
+      {
+        if (!options.UseLivePayPal)
+          errors.Add("La venta en producción requiere RestaurantCheckout:Environment=Live.");
+        if (!options.IsPayPalConfigured)
+          errors.Add("La venta en producción requiere credenciales PayPal de RestaurantCheckout.");
+        if (!options.IsWebhookVerificationConfigured)
+          errors.Add("La venta en producción requiere RestaurantCheckout:PayPalWebhookId.");
+      }
       if (!Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicUri)
           || publicUri.Scheme != Uri.UriSchemeHttps)
         errors.Add("RestaurantCheckout:PublicBaseUrl debe ser HTTPS en producción.");

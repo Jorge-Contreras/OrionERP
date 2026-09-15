@@ -373,6 +373,32 @@ public sealed class RestaurantOnlineOrderingPolicyTests
   }
 
   [Fact]
+  public void RestaurantCheckoutProductionValidation_LetsTheSiteStartBeforeTheLiveProfileIsInstalled()
+  {
+    // Online ordering ships disabled. On 2026-09-14 the first production publish crashed
+    // Bruno's whole website at startup because no PayPal settings existed yet.
+    var withoutPayPal = new RestaurantCheckoutOptions
+    {
+      Environment = "Sandbox",
+      Currency = "MXN",
+      PublicBaseUrl = "https://brunosgarden.com"
+    };
+
+    Assert.Empty(RestaurantCheckoutOptionsPolicy.Validate(withoutPayPal, production: true));
+
+    var partialLiveProfile = new RestaurantCheckoutOptions
+    {
+      Environment = "Live",
+      Currency = "MXN",
+      PayPalClientId = "client",
+      PublicBaseUrl = "https://brunosgarden.com"
+    };
+    var errors = RestaurantCheckoutOptionsPolicy.Validate(partialLiveProfile, production: true);
+    Assert.Contains(errors, item => item.Contains("credenciales", StringComparison.OrdinalIgnoreCase));
+    Assert.Contains(errors, item => item.Contains("Webhook", StringComparison.OrdinalIgnoreCase));
+  }
+
+  [Fact]
   public void PayPalRequestIds_AreDeterministicAndProviderBounded()
   {
     var source = "brunos-capture-17b37f34d9cc45aeb45ff350d2ca7750";

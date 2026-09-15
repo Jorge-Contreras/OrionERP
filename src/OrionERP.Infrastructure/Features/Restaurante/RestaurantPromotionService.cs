@@ -33,18 +33,7 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
     var rfc = LogisticsRfc.Require(request.Rfc);
     using var conn = CreateConnection();
     await conn.OpenAsync(ct);
-    var site = await conn.QuerySingleOrDefaultAsync<SiteTimeZoneRow>(new CommandDefinition(
-      """
-      SELECT siteInfo.TimeZoneId,
-             CAST(ISNULL(settings.IsPromotionsEnabled,0) AS bit) AS IsPromotionsEnabled
-      FROM restaurante.Site siteInfo
-      LEFT JOIN restaurante.PublicSiteSettings settings
-        ON settings.Rfc=siteInfo.Rfc AND settings.SiteId=siteInfo.Id
-      WHERE siteInfo.Rfc=@Rfc AND siteInfo.Id=@SiteId AND siteInfo.IsEnabled=1;
-      """,
-      new { Rfc = rfc, request.SiteId },
-      cancellationToken: ct))
-      ?? throw new InvalidOperationException("La sede no existe o está deshabilitada.");
+    var site = await LoadSiteAsync(conn, rfc, request.SiteId, ct);
     var localAt = ConvertToSiteTime(request.At, site.TimeZoneId);
     if (!site.IsPromotionsEnabled)
     {
@@ -65,6 +54,39 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
     return normalizedCode is null || quote.CodeAccepted
       ? quote
       : await ExplainCodeRejectionAsync(conn, null, rfc, request.SiteId, normalizedCode, quote, ct);
+  }
+
+  public async Task<IReadOnlyList<RestaurantPromotionCodeOptionDto>> GetAvailableCodesAsync(
+    string rfc,
+    int siteId,
+    DateTimeOffset at,
+    string channel,
+    Guid? memberId = null,
+    CancellationToken ct = default)
+  {
+    var normalizedRfc = LogisticsRfc.Require(rfc);
+    using var conn = CreateConnection();
+    await conn.OpenAsync(ct);
+    var site = await LoadSiteAsync(conn, normalizedRfc, siteId, ct);
+    if (!site.IsPromotionsEnabled)
+    {
+      return Array.Empty<RestaurantPromotionCodeOptionDto>();
+    }
+
+    var definitions = await LoadDefinitionsAsync(
+      conn,
+      null,
+      normalizedRfc,
+      siteId,
+      memberId,
+      null,
+      includeInactive: false,
+      ct);
+    return RestaurantPromotionEngine.AvailableCodes(
+      definitions,
+      channel,
+      memberId,
+      ConvertToSiteTime(at, site.TimeZoneId));
   }
 
   public async Task<IReadOnlyList<RestaurantPromotionDto>> GetPromotionsAsync(
@@ -722,6 +744,24 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
             }
           ]);
   }
+
+  private static async Task<SiteTimeZoneRow> LoadSiteAsync(
+    DbConnection conn,
+    string rfc,
+    int siteId,
+    CancellationToken ct)
+    => await conn.QuerySingleOrDefaultAsync<SiteTimeZoneRow>(new CommandDefinition(
+      """
+      SELECT siteInfo.TimeZoneId,
+             CAST(ISNULL(settings.IsPromotionsEnabled,0) AS bit) AS IsPromotionsEnabled
+      FROM restaurante.Site siteInfo
+      LEFT JOIN restaurante.PublicSiteSettings settings
+        ON settings.Rfc=siteInfo.Rfc AND settings.SiteId=siteInfo.Id
+      WHERE siteInfo.Rfc=@Rfc AND siteInfo.Id=@SiteId AND siteInfo.IsEnabled=1;
+      """,
+      new { Rfc = rfc, SiteId = siteId },
+      cancellationToken: ct))
+      ?? throw new InvalidOperationException("La sede no existe o está deshabilitada.");
 
   private static DateTimeOffset ConvertToSiteTime(DateTimeOffset at, string timeZoneId)
   {

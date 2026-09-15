@@ -13,7 +13,8 @@
 @if (YaGenerado)
 {
     <div class="alert alert-success">
-        El cierre de este periodo ya se generó en la póliza <strong>@TransaccionId</strong>.
+        El cierre de este periodo ya se generó en la póliza
+        <a class="fw-bold" href="/contabilidad/transacciones/@TransaccionId" target="_blank" rel="noopener">@TransaccionId</a>.
     </div>
 }
 else if (Filas.Count == 0)

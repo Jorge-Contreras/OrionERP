@@ -296,7 +296,7 @@
               <div class="pos-membership__member">
                 <span class="oi oi-person" aria-hidden="true"></span>
                 <div><strong>@selectedMember.DisplayName</strong><small>@selectedMember.MembershipNumber · @selectedMember.MaskedPhone · @selectedMember.PointsBalance puntos</small></div>
-                <button type="button" @onclick="ClearMember">Quitar</button>
+                <button type="button" @onclick="ClearMemberAsync">Quitar</button>
               </div>
               @if (redemptionPreview is not null)
               {
@@ -335,11 +335,20 @@
                 </div>
               }
             }
-            <div class="pos-membership__lookup">
+            <div class="pos-membership__lookup pos-membership__lookup--single">
               <label>Código promocional
-                <input @bind="promotionCode" @bind:event="oninput" maxlength="32" autocomplete="off" placeholder="Ej. MARTES2X1" />
+                <select @bind="promotionCode" @bind:after="ApplyPromotionCodeAsync">
+                  <option value="">@(availablePromotionCodes.Count == 0 ? "No hay códigos vigentes" : "Sin código")</option>
+                  @if (!string.IsNullOrWhiteSpace(promotionCode) && !availablePromotionCodes.Any(option => option.Code == promotionCode))
+                  {
+                    <option value="@promotionCode">@promotionCode (ya no vigente)</option>
+                  }
+                  @foreach (var option in availablePromotionCodes)
+                  {
+                    <option value="@option.Code">@option.Code — @string.Join(", ", option.PromotionNames)@(option.RequiresMember ? " · requiere socio" : string.Empty)</option>
+                  }
+                </select>
               </label>
-              <button type="button" @onclick="() => RefreshPromotionQuoteAsync()" disabled="@(isQuotingPromotions || cart.Count == 0)">@(isQuotingPromotions ? "Calculando…" : "Aplicar")</button>
             </div>
             @if (promotionQuote is not null)
             {
@@ -819,6 +828,9 @@
   private int redemptionPoints;
   private int appliedRedemptionPoints;
   private string? promotionCode;
+  private IReadOnlyList<RestaurantPromotionCodeOptionDto> availablePromotionCodes = [];
+  private DateTimeOffset promotionCodesLoadedAt;
+  private static readonly TimeSpan PromotionCodesMaxAge = TimeSpan.FromMinutes(5);
   private RestaurantPromotionQuoteDto? promotionQuote;
   private string? deliveryAddress;
   private string? deliveryReferences;
@@ -845,7 +857,6 @@
   private bool isBusy = true;
   private bool isSubmitting;
   private bool isLookingUpMember;
-  private bool isQuotingPromotions;
   private bool isPrinting;
   private bool isPrintingTransferSlip;
   private string? transferSlipWarning;
@@ -1108,6 +1119,7 @@
         isMenuOpen = cart.Count == 0;
         hasInitializedWorkspace = true;
       }
+      await LoadPromotionCodesAsync();
       await RefreshPromotionQuoteAsync();
     }
     catch (Exception ex) { error = ex.Message; }
@@ -1615,6 +1627,7 @@
         ? redemptionPreview.MinimumRedeemPoints
         : 0;
       appliedRedemptionPoints = 0;
+      await LoadPromotionCodesAsync();
       await RefreshPromotionQuoteAsync();
     }
     catch (Exception ex)
@@ -1630,14 +1643,38 @@
     }
   }
 
-  private void ClearMember()
+  private async Task ClearMemberAsync()
   {
     selectedMember = null;
     memberIdentifier = null;
     redemptionPreview = null;
     redemptionPoints = appliedRedemptionPoints = 0;
-    _ = RefreshPromotionQuoteAsync();
+    await LoadPromotionCodesAsync();
+    await RefreshPromotionQuoteAsync();
   }
+
+  // Los códigos vigentes dependen de la hora (vigencia y horario) y de los canjes: se recargan con
+  // la sede, al vincular o quitar socio, después de cada venta y, cuando mucho, cada cinco minutos.
+  private async Task LoadPromotionCodesAsync()
+  {
+    try
+    {
+      availablePromotionCodes = await PromotionService.GetAvailableCodesAsync(
+        CurrentRfc,
+        selectedSiteId,
+        DateTimeOffset.UtcNow,
+        RestaurantSalesChannels.Pos,
+        selectedMember?.Id);
+    }
+    catch (Exception ex)
+    {
+      availablePromotionCodes = [];
+      error = $"No se pudieron cargar los códigos promocionales. {ex.Message}";
+    }
+    promotionCodesLoadedAt = DateTimeOffset.UtcNow;
+  }
+
+  private Task ApplyPromotionCodeAsync() => RefreshPromotionQuoteAsync();
 
   private async Task RefreshPromotionQuoteAsync(bool preserveRedemption = false)
   {
@@ -1645,12 +1682,15 @@
     {
       InvalidateRedemption();
     }
+    if (DateTimeOffset.UtcNow - promotionCodesLoadedAt > PromotionCodesMaxAge)
+    {
+      await LoadPromotionCodesAsync();
+    }
     if (catalog is null || cart.Count == 0)
     {
       promotionQuote = null;
       return;
     }
-    isQuotingPromotions = true;
     try
     {
       var products = catalog.Sections
@@ -1684,10 +1724,6 @@
     {
       promotionQuote = null;
       error = $"No se pudieron calcular las promociones. {ex.Message}";
-    }
-    finally
-    {
-      isQuotingPromotions = false;
     }
   }
 
@@ -1806,7 +1842,11 @@
 
     // El inventario acaba de moverse. Se recalcula ya cerrado el cobro, no dentro, para no sumarle
     // latencia a la venta.
-    if (orderCompleted) await RefreshSaleAlertsAsync();
+    if (orderCompleted)
+    {
+      await LoadPromotionCodesAsync();
+      await RefreshSaleAlertsAsync();
+    }
   }
 
   private void OpenSupervisorOverride(SupervisorOverrideKind kind, string message)

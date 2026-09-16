@@ -67,6 +67,35 @@ public sealed class PlatformExecutionScopeSqlTests
   }
 
   [Fact, Trait("Category", "SqlIntegration")]
+  public async Task SessionFactory_ReturnsAPooledSerializableSessionToReadCommitted()
+  {
+    if (!Enabled) return;
+    // sp_reset_connection leaves the isolation level alone, so a pooled session
+    // carries SERIALIZABLE over from whichever feature used it last. Queue
+    // claims read with READPAST, which SQL Server rejects at that level.
+    var connectionString = SandboxConnectionString("PlatformIsolationReset-" + Guid.NewGuid().ToString("N"));
+    var (_, restaurant) = await LoadFixtureScopesAsync(connectionString);
+    var factory = new OrionSqlSessionFactory(connectionString);
+
+    await using (var poisoned = new SqlConnection(connectionString))
+    {
+      await poisoned.OpenAsync();
+      await using var transaction = (SqlTransaction)await poisoned.BeginTransactionAsync(
+        System.Data.IsolationLevel.Serializable);
+      await transaction.CommitAsync();
+      Assert.Equal(4, await ScalarAsync<int>(poisoned,
+        "SELECT transaction_isolation_level FROM sys.dm_exec_sessions WHERE session_id=@@SPID"));
+    }
+
+    await using var scoped = (SqlConnection)await factory.OpenAsync(restaurant);
+    Assert.Equal(2, await ScalarAsync<int>(scoped,
+      "SELECT transaction_isolation_level FROM sys.dm_exec_sessions WHERE session_id=@@SPID"));
+
+    using var poolKey = new SqlConnection(connectionString);
+    SqlConnection.ClearPool(poolKey);
+  }
+
+  [Fact, Trait("Category", "SqlIntegration")]
   public async Task SessionFactory_RejectsAnExplicitlyDisabledCapability()
   {
     if (!Enabled) return;

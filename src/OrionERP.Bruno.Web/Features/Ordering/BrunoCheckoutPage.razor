@@ -34,6 +34,21 @@
   {
     <section class="checkout-state"><h2>Tu pedido está vacío</h2><p>Agrega tus favoritos del menú antes de continuar.</p><a class="button button--accent" href="/menu">Elegir productos</a></section>
   }
+  else if (MembershipRequired)
+  {
+    <section class="checkout-state checkout-state--membership">
+      <h2>Los pedidos en línea son solo para socios de @MembershipName</h2>
+      <p>Crear tu cuenta es gratis. Guardamos tu pedido de @CartItemCount @(CartItemCount == 1 ? "artículo" : "artículos") en este navegador mientras la creas.</p>
+      <ol class="membership-steps">
+        <li>Crea tu cuenta de @MembershipName.</li>
+        <li>Confirma el correo que te enviamos para activarla.</li>
+        <li>Ingresa y vuelve aquí: tu pedido te estará esperando.</li>
+      </ol>
+      <a class="button button--accent" href="/cuenta/registro?returnUrl=%2Fcheckout" target="_top">Crear mi cuenta gratis</a>
+      <p class="membership-signin">¿Ya eres socio? <a href="/cuenta/acceso?returnUrl=%2Fcheckout" target="_top">Ingresar a @MembershipName</a></p>
+      <a class="membership-back" href="/menu">← Seguir viendo el menú</a>
+    </section>
+  }
   else
   {
     @if (!configuration.CanAcceptOrders)
@@ -55,6 +70,7 @@
           }
           else
           {
+            @* Only reachable with guest checkout on: MembershipRequired takes over the page otherwise. *@
             <div class="guest-note"><span>Puedes comprar como invitado.</span><a href="/cuenta/acceso?returnUrl=%2Fcheckout" target="_top">Ingresar a @MembershipName</a></div>
           }
           <div class="checkout-fields">
@@ -142,6 +158,11 @@
   private string? recoveryTrackingToken;
   private Guid clientAttemptId = Guid.NewGuid();
   private string MembershipName => Presentation.MembershipProgramName ?? "tu membresía";
+  // The quote endpoint rejects a guest cart with "member_required" when the site
+  // has guest checkout turned off. Knowing that here keeps the page from asking
+  // for a price it cannot get, and from calling that refusal a price change.
+  private bool MembershipRequired => configuration?.AllowGuestCheckout != true && !isMemberConnected;
+  private int CartItemCount => cart.Sum(item => (int)item.Quantity);
 
   protected override async Task OnInitializedAsync()
   {
@@ -188,7 +209,7 @@
         }
         var stored = await Js.InvokeAsync<List<BrunoCartLine>>("brunoOrdering.loadCart", Website.Instance.PublicSiteKey);
         cart.AddRange(stored ?? []);
-        if (cart.Count > 0 && configuration?.IsEnabled == true) await QuoteAsync();
+        if (cart.Count > 0 && configuration?.IsEnabled == true && !MembershipRequired) await QuoteAsync();
       }
       catch (Exception ex) { errorMessage = FriendlyInteropError(ex, "No pudimos recuperar tu pedido guardado."); }
       finally { isLoading = false; StateHasChanged(); }
@@ -236,6 +257,12 @@
   private async Task QuoteAsync()
   {
     if (cart.Count == 0) { quote = null; return; }
+    if (MembershipRequired)
+    {
+      quote = null;
+      errorMessage = $"Inicia sesión en {MembershipName} para completar el pedido.";
+      return;
+    }
     isQuoting = true;
     errorMessage = null;
     try
@@ -392,7 +419,10 @@
     var marker = "Error: ";
     var markerIndex = message.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
     if (markerIndex >= 0) message = message[(markerIndex + marker.Length)..];
-    return message.Length <= 400 ? message : fallback;
+    // Whatever follows the first line is a JS stack frame, which is noise for a
+    // diner. Callers that need the server's wording get it as data instead.
+    message = message.Split('\n')[0].Trim();
+    return message.Length is > 0 and <= 400 ? message : fallback;
   }
 
   public async ValueTask DisposeAsync()

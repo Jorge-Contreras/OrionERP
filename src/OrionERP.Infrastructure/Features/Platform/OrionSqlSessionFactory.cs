@@ -64,8 +64,16 @@ public sealed class OrionSqlSessionFactory : IOrionSqlSessionFactory
     // sp_reset_connection does not restore the isolation level, so a pooled
     // session can arrive still SERIALIZABLE from an earlier transaction. Queue
     // claims use READPAST, which SQL Server rejects outside READ COMMITTED.
+    // This has to be its own parameterless batch: SQL Server restores the
+    // previous isolation level when a parameterized command returns, because
+    // SqlClient sends that one through sp_executesql and the level reverts with
+    // the procedure. The scope batch below carries parameters, so the same
+    // statement inside it would be undone the moment the batch completed.
+    await connection.ExecuteAsync(new CommandDefinition(
+      "SET TRANSACTION ISOLATION LEVEL READ COMMITTED;",
+      cancellationToken: ct));
+
     await connection.ExecuteAsync(new CommandDefinition("""
-      SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
       EXEC sys.sp_set_session_context @key=N'OrionRfc', @value=NULL, @read_only=0;
       EXEC sys.sp_set_session_context @key=N'OrionERP.CompanyId', @value=NULL, @read_only=0;
       EXEC sys.sp_set_session_context @key=N'OrionERP.SiteId', @value=NULL, @read_only=0;

@@ -193,7 +193,18 @@
     },
 
     async quoteCart(request) {
-      return await postJson('/api/restaurant/checkout/quote', request);
+      try {
+        return await postJson('/api/restaurant/checkout/quote', request);
+      } catch (error) {
+        // Blazor Server replaces the text of a JS interop exception unless
+        // detailed errors are on, so the server's reason only reaches the page
+        // as data. Return the failure instead of throwing it.
+        return {
+          succeeded: false,
+          code: error.code || 'quote_failed',
+          message: error.message || 'No pudimos confirmar el precio de tu pedido.'
+        };
+      }
     },
 
     async getStatus(trackingToken) {

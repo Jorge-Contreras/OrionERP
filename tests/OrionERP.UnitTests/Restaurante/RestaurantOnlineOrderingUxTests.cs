@@ -62,6 +62,29 @@ public sealed class RestaurantOnlineOrderingUxTests
   }
 
   [Fact]
+  public void Checkout_reports_why_the_quote_failed_instead_of_blaming_the_cart()
+  {
+    var page = Read("src/OrionERP.Bruno.Web/Features/Ordering/BrunoCheckoutPage.razor");
+    var script = Read("src/OrionERP.Bruno.Web/wwwroot/js/brunos-ordering.js");
+    var quoteStart = script.IndexOf("async quoteCart(request)", StringComparison.Ordinal);
+    var quoteEnd = script.IndexOf("async getStatus(", quoteStart, StringComparison.Ordinal);
+
+    Assert.True(quoteStart >= 0 && quoteEnd > quoteStart, "The cart quote helper could not be isolated.");
+    // Blazor Server replaces the text of a thrown JS error, so the endpoint's
+    // reason only reaches the page when it comes back as data.
+    var quoteCart = script[quoteStart..quoteEnd];
+    Assert.Contains("succeeded: false", quoteCart, StringComparison.Ordinal);
+    Assert.Contains("message: error.message", quoteCart, StringComparison.Ordinal);
+
+    // A guest on a members-only site must be sent to registration, not told a price moved.
+    Assert.Contains("configuration?.AllowGuestCheckout != true && !isMemberConnected", page, StringComparison.Ordinal);
+    Assert.Contains("&& !MembershipRequired) await QuoteAsync();", page, StringComparison.Ordinal);
+    Assert.Contains("else if (MembershipRequired)", page, StringComparison.Ordinal);
+    Assert.Contains("/cuenta/registro?returnUrl=%2Fcheckout", page, StringComparison.Ordinal);
+    Assert.Contains("Confirma el correo que te enviamos para activarla.", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Payment_recovery_routes_every_created_attempt_to_status_before_another_payment()
   {
     var checkout = Read("src/OrionERP.Bruno.Web/Features/Ordering/BrunoCheckoutPage.razor");

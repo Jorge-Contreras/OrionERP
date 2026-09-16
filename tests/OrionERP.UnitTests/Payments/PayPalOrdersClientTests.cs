@@ -35,7 +35,8 @@ public sealed class PayPalOrdersClientTests
         {
           Locale = "es-MX",
           ShippingPreference = "NO_SHIPPING",
-          UserAction = "PAY_NOW"
+          UserAction = "PAY_NOW",
+          LandingPage = "guest_checkout"
         },
         PurchaseUnits =
         [
@@ -58,6 +59,7 @@ public sealed class PayPalOrdersClientTests
     Assert.Equal("es-MX", context.GetProperty("locale").GetString());
     Assert.Equal("NO_SHIPPING", context.GetProperty("shipping_preference").GetString());
     Assert.Equal("PAY_NOW", context.GetProperty("user_action").GetString());
+    Assert.Equal("GUEST_CHECKOUT", context.GetProperty("landing_page").GetString());
   }
 
   [Fact]

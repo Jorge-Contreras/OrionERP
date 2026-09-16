@@ -41,6 +41,8 @@ public sealed class PayPalExperienceContext
   public string Locale { get; set; } = string.Empty;
   public string ShippingPreference { get; set; } = string.Empty;
   public string UserAction { get; set; } = string.Empty;
+  /// <summary>LOGIN, GUEST_CHECKOUT o NO_PREFERENCE. Vacio deja decidir a PayPal.</summary>
+  public string LandingPage { get; set; } = string.Empty;
 }
 
 public sealed class PayPalPurchaseUnitRequest

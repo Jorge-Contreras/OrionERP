@@ -73,7 +73,8 @@ public sealed class PayPalOrdersClient<TOptions> : IPayPalOrdersClient
             {
               locale = EmptyToNull(order.ExperienceContext.Locale),
               shipping_preference = EmptyToNull(order.ExperienceContext.ShippingPreference)?.ToUpperInvariant(),
-              user_action = EmptyToNull(order.ExperienceContext.UserAction)?.ToUpperInvariant()
+              user_action = EmptyToNull(order.ExperienceContext.UserAction)?.ToUpperInvariant(),
+              landing_page = EmptyToNull(order.ExperienceContext.LandingPage)?.ToUpperInvariant()
             }
           }
         },

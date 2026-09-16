@@ -8,6 +8,8 @@ public sealed class RestaurantCheckoutOptions : PayPalClientOptions
 
   public string Currency { get; set; } = "MXN";
   public string PayPalLocale { get; set; } = "es_MX";
+  /// <summary>LOGIN, GUEST_CHECKOUT o NO_PREFERENCE; vacio deja decidir a PayPal.</summary>
+  public string PayPalLandingPage { get; set; } = "GUEST_CHECKOUT";
   public string MerchantProfileKey { get; set; } = "shared-paypal-v1";
   public int QuoteTokenLifetimeMinutes { get; set; } = 10;
   public int ProcessorHeartbeatMaxAgeSeconds { get; set; } = 60;
@@ -38,6 +40,8 @@ public static class RestaurantCheckoutOptionsPolicy
       errors.Add("RestaurantCheckout:ProcessorHeartbeatMaxAgeSeconds debe estar entre 15 y 300.");
     if (string.IsNullOrWhiteSpace(options.MerchantProfileKey) || options.MerchantProfileKey.Length > 50)
       errors.Add("RestaurantCheckout:MerchantProfileKey es obligatorio y admite hasta 50 caracteres.");
+    if (!IsSupportedLandingPage(options.PayPalLandingPage))
+      errors.Add("RestaurantCheckout:PayPalLandingPage admite LOGIN, GUEST_CHECKOUT, NO_PREFERENCE o vacio.");
     if (string.IsNullOrWhiteSpace(options.TermsVersion) || string.IsNullOrWhiteSpace(options.PrivacyVersion))
       errors.Add("RestaurantCheckout requiere versiones vigentes de términos y privacidad.");
     foreach (var (key, profile) in options.HistoricalMerchantProfiles)
@@ -67,6 +71,15 @@ public static class RestaurantCheckoutOptionsPolicy
         errors.Add("RestaurantCheckout:PublicBaseUrl debe ser HTTPS en producción.");
     }
     return errors;
+  }
+
+  private static bool IsSupportedLandingPage(string? value)
+  {
+    var normalized = value?.Trim();
+    return string.IsNullOrEmpty(normalized)
+      || string.Equals(normalized, "LOGIN", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(normalized, "GUEST_CHECKOUT", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(normalized, "NO_PREFERENCE", StringComparison.OrdinalIgnoreCase);
   }
 }
 

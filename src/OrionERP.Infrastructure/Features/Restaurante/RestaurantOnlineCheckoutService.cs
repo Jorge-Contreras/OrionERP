@@ -336,7 +336,11 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
             ? "es-MX"
             : _options.PayPalLocale.Trim().Replace('_', '-'),
           ShippingPreference = "NO_SHIPPING",
-          UserAction = "PAY_NOW"
+          UserAction = "PAY_NOW",
+          // GUEST_CHECKOUT es el sucesor en Orders v2 del SOLUTIONTYPE=Sole de la API clasica:
+          // pide a PayPal abrir el formulario de tarjeta en vez de la pantalla de inicio de sesion.
+          // Si la cuenta no tiene habilitado el pago sin cuenta, PayPal lo ignora sin fallar.
+          LandingPage = _options.PayPalLandingPage
         },
         PurchaseUnits =
         [

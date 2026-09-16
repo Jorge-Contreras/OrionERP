@@ -661,7 +661,19 @@ public sealed class RestaurantPromotionService : IRestaurantPromotionService
     {
       return quote;
     }
-    var scope = await LoadScopeLabelsAsync(conn, tx, rfc, headline.PromotionId, ct);
+    // Las etiquetas solo adornan el motivo del rechazo. Si su lectura falla -por ejemplo
+    // porque a un principal publico le falta un permiso de catalogo- el cliente debe
+    // seguir viendo por que no se acepto su codigo, no un 500 que rompe el checkout.
+    IReadOnlyList<string> scope;
+    try
+    {
+      scope = await LoadScopeLabelsAsync(conn, tx, rfc, headline.PromotionId, ct);
+    }
+    catch (DbException)
+    {
+      return quote;
+    }
+
     if (scope.Count == 0)
     {
       return quote;

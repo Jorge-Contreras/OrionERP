@@ -260,6 +260,8 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260914_restaurant_online_ordering_tracking_ready_email_status.sql"));
     actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_public_material_category_permission.sql"));
+    actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_expand.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_company_controls.sql"));
@@ -706,6 +708,16 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Contains("brunos-main", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260916_restaurant_public_material_category_permission":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Contains("logistica", sql, StringComparison.Ordinal);
+          Assert.Contains("MaterialCategory", sql, StringComparison.Ordinal);
           Assert.Equal(
             ["Orion_Sandbox", "grupocarpio"],
             migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());

@@ -394,6 +394,15 @@
       "allowedDatabases": [
         "grupocarpio"
       ]
+    },
+    {
+      "id": "20260916_restaurant_public_material_category_permission",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_public_material_category_permission.sql",
+      "description": "Otorga al principal público de Restaurante la lectura de logistica.MaterialCategory, que el checkout necesita para explicar por qué rechaza un código de promoción por categoría.",
+      "allowedDatabases": [
+        "grupocarpio",
+        "Orion_CutoverValidation_20260908"
+      ]
     }
   ]
 }

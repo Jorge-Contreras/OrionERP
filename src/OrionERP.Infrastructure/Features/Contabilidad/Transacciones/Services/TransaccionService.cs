@@ -2626,9 +2626,7 @@ SELECT
     CAST(CASE WHEN EXISTS (
         SELECT 1 FROM dbo.Transaccion_Comprobante AS placeholder WITH (UPDLOCK, HOLDLOCK)
         WHERE placeholder.Transaccion_ID = 5505 AND placeholder.Comprobante_ID = @ComprobanteId
-    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists
-FROM dbo.Transaccion_Comprobante AS tc WITH (UPDLOCK, HOLDLOCK)
-WHERE tc.Comprobante_ID = @ComprobanteId;";
+    ) THEN 1 ELSE 0 END AS bit) AS PlaceholderExists;";
       var state = await conn.QuerySingleAsync<RegularCfdiLinkStateRow>(new CommandDefinition(
           stateSql,
           new

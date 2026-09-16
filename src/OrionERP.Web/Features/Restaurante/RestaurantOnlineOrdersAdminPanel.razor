@@ -1,3 +1,4 @@
+@using System.Globalization
 @using System.Text.Json
 @using System.Text.Json.Serialization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -112,8 +113,8 @@
                     @foreach (var interval in day.Intervals)
                     {
                       <div class="online-admin__interval">
-                        <label><span>Abre</span><input type="time" value="@interval.Opens" @onchange="args => interval.Opens = args.Value?.ToString() ?? interval.Opens" /></label>
-                        <label><span>Cierra</span><input type="time" value="@interval.Closes" @onchange="args => interval.Closes = args.Value?.ToString() ?? interval.Closes" /></label>
+                        <label><span>Abre</span><input type="time" value="@interval.Opens" @onchange="args => interval.Opens = NormalizeTime(args.Value?.ToString(), interval.Opens)" /></label>
+                        <label><span>Cierra</span><input type="time" value="@interval.Closes" @onchange="args => interval.Closes = NormalizeTime(args.Value?.ToString(), interval.Closes)" /></label>
                         <button type="button" title="Eliminar intervalo" aria-label="Eliminar intervalo de @day.Label" @onclick="() => RemoveInterval(day, interval)">×</button>
                       </div>
                     }
@@ -452,6 +453,19 @@
     if (day.Intervals.Count == 0) day.IsOpen = false;
   }
 
+  private static bool TryParseTime(string? value, out TimeOnly time)
+  {
+    time = default;
+    if (string.IsNullOrWhiteSpace(value)) return false;
+    var text = value.Trim();
+    return TimeOnly.TryParseExact(text, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time)
+      || TimeOnly.TryParseExact(text, "HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out time)
+      || TimeOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
+  }
+
+  private static string NormalizeTime(string? value, string fallback)
+    => TryParseTime(value, out var time) ? time.ToString("HH:mm") : fallback;
+
   private bool TrySerializeSchedule(out string? json, out string? error)
   {
     var result = new Dictionary<string, List<ScheduleIntervalEditor>>(StringComparer.Ordinal);
@@ -470,14 +484,20 @@
       }
       foreach (var interval in day.Intervals)
       {
-        if (!TimeOnly.TryParseExact(interval.Opens, "HH:mm", out var opens)
-            || !TimeOnly.TryParseExact(interval.Closes, "HH:mm", out var closes)
-            || opens == closes)
+        if (!TryParseTime(interval.Opens, out var opens) || !TryParseTime(interval.Closes, out var closes))
+        {
+          json = null;
+          error = $"Captura la hora de apertura y cierre de {day.Label.ToLowerInvariant()} en formato HH:mm.";
+          return false;
+        }
+        if (opens == closes)
         {
           json = null;
           error = $"Revisa el horario de {day.Label.ToLowerInvariant()}; apertura y cierre deben ser horas distintas.";
           return false;
         }
+        interval.Opens = opens.ToString("HH:mm");
+        interval.Closes = closes.ToString("HH:mm");
       }
       result[day.Key] = day.Intervals;
     }
@@ -511,10 +531,13 @@
               || !TryReadProperty(interval, "closes", out var closes)) continue;
           var opensText = opens.GetString();
           var closesText = closes.GetString();
-          if (TimeOnly.TryParseExact(opensText, "HH:mm", out _)
-              && TimeOnly.TryParseExact(closesText, "HH:mm", out _))
+          if (TryParseTime(opensText, out var opensTime) && TryParseTime(closesText, out var closesTime))
           {
-            day.Intervals.Add(new ScheduleIntervalEditor { Opens = opensText!, Closes = closesText! });
+            day.Intervals.Add(new ScheduleIntervalEditor
+            {
+              Opens = opensTime.ToString("HH:mm"),
+              Closes = closesTime.ToString("HH:mm")
+            });
           }
         }
         day.IsOpen = day.Intervals.Count > 0;

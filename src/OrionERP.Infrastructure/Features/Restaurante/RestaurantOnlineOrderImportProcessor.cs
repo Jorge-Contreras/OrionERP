@@ -131,7 +131,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
         CustomerName = row.CustomerName,
         CustomerEmail = row.CustomerEmail,
         CustomerPhone = row.CustomerPhone,
-        ExternalReference = row.PayPalCaptureId,
+        ExternalReference = row.ProviderCaptureId,
         MemberId = row.MemberId,
         PointsToRedeem = 0,
         PromotionCode = snapshot.Request.PromotionCode,
@@ -145,8 +145,8 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
             PaymentMethod = "Platform",
             Amount = row.Total,
             TipAmount = 0,
-            IdempotencyKey = $"paypal-capture:{row.PayPalCaptureId}",
-            ExternalReference = row.PayPalCaptureId
+            IdempotencyKey = $"gateway-capture:{row.ProviderCaptureId}",
+            ExternalReference = row.ProviderCaptureId
           }
         ]
       }, "system:online-order-import", ct);
@@ -160,7 +160,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
           AND paymentInfo.PaymentMethod='Platform'
           AND paymentInfo.ExternalReference=@CaptureId;
         """,
-        new { row.Rfc, OrderId = order.OrderId, CaptureId = row.PayPalCaptureId },
+        new { row.Rfc, OrderId = order.OrderId, CaptureId = row.ProviderCaptureId },
         cancellationToken: ct));
       await connection.ExecuteAsync(new CommandDefinition(
         "restaurante.OnlineOrderImportComplete",
@@ -212,7 +212,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
         || snapshot.Total != row.Total
         || !string.Equals(snapshot.Currency, row.CurrencyCode, StringComparison.OrdinalIgnoreCase)
         || !string.Equals(row.CurrencyCode, "MXN", StringComparison.OrdinalIgnoreCase)
-        || string.IsNullOrWhiteSpace(row.PayPalCaptureId))
+        || string.IsNullOrWhiteSpace(row.ProviderCaptureId))
       throw new OnlineOrderSnapshotIntegrityException();
   }
 
@@ -275,7 +275,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
             var cancellation = await orderService.CancelOrderAsync(
               row.Rfc,
               row.RestaurantOrderId.Value,
-              $"Reembolso PayPal completo: {row.Reason}",
+              $"Reembolso completo: {row.Reason}",
               row.AuthorizedBy,
               ct);
             if (!cancellation.Success)
@@ -308,7 +308,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
           """
           UPDATE restaurante.PaymentGatewayRefund
           SET FailureCode='LOCAL_REFUND_FAILED',
-              FailureMessage=N'PayPal confirmó el reembolso, pero OrionERP aún no pudo registrarlo localmente.',
+              FailureMessage=N'El proveedor confirmó el reembolso, pero OrionERP aún no pudo registrarlo localmente.',
               UpdatedAtUtc=SYSUTCDATETIME()
           WHERE Id=@Id AND [Status]='Completed' AND LocalRefundId IS NULL;
           """,
@@ -339,7 +339,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
     };
 
   private static string PosIdempotencyKey(ImportRow row)
-    => $"online:{row.MerchantProfileKey}:{row.PayPalCaptureId}";
+    => $"online:{row.MerchantProfileKey}:{row.ProviderCaptureId}";
 
   private static bool IsDeterministicFulfillmentFailure(Exception exception)
     => exception is RestaurantOrderBusinessRejectionException or OnlineOrderSnapshotIntegrityException;
@@ -374,7 +374,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
     public decimal Total { get; set; }
     public string CurrencyCode { get; set; } = string.Empty;
     public string MerchantProfileKey { get; set; } = string.Empty;
-    public string PayPalCaptureId { get; set; } = string.Empty;
+    public string ProviderCaptureId { get; set; } = string.Empty;
     public int ImportAttempts { get; set; }
   }
 

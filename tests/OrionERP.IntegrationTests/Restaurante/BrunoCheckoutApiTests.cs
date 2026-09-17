@@ -34,21 +34,24 @@ public sealed class BrunoCheckoutApiTests
       .ToArray();
 
     AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/quote");
-    AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/paypal-orders");
-    AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/paypal-orders/{orderId}/capture");
+    AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/intents");
+    AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/charge");
+    AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/charge/confirm");
     AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/status/{trackingToken}");
-    var webhook = AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/paypal-webhook");
+    var webhook = AssertAnonymousRoute(endpoints, "/api/restaurant/checkout/clip-webhook");
     var webhookAntiforgery = Assert.IsAssignableFrom<IAntiforgeryMetadata>(
       webhook.Metadata.GetMetadata<IAntiforgeryMetadata>());
     Assert.False(webhookAntiforgery.RequiresValidation);
     var webhookSizeLimit = Assert.IsAssignableFrom<IRequestSizeLimitMetadata>(
       webhook.Metadata.GetMetadata<IRequestSizeLimitMetadata>());
-    Assert.Equal(1_048_576, webhookSizeLimit.MaxRequestBodySize);
+    // El aviso de Clip son tres campos cortos; cualquier cuerpo mayor no es legitimo.
+    Assert.Equal(4_096, webhookSizeLimit.MaxRequestBodySize);
     foreach (var route in new[]
     {
       "/api/restaurant/checkout/quote",
-      "/api/restaurant/checkout/paypal-orders",
-      "/api/restaurant/checkout/paypal-orders/{orderId}/capture"
+      "/api/restaurant/checkout/intents",
+      "/api/restaurant/checkout/charge",
+      "/api/restaurant/checkout/charge/confirm"
     })
     {
       var browserPost = endpoints.Single(endpoint =>
@@ -121,14 +124,13 @@ public sealed class BrunoCheckoutApiTests
   {
     var checkout = new FakeCheckoutService
     {
-      CreateResult = new RestaurantOnlinePayPalOrderResult
+      BeginResult = new RestaurantOnlineCheckoutBeginResult
       {
         Succeeded = true,
-        Code = "paypal_order_exists",
-        Message = "La orden de pago ya existe.",
-        PayPalOrderId = "PAYPAL-EXISTING",
+        Code = "checkout_exists",
+        Message = "El intento de pago ya existe.",
         TrackingToken = "TRACK-EXISTING",
-        CheckoutStatus = RestaurantOnlineCheckoutStatuses.PayPalCreated,
+        CheckoutStatus = RestaurantOnlineCheckoutStatuses.Quoted,
         WasExisting = true
       }
     };
@@ -136,23 +138,23 @@ public sealed class BrunoCheckoutApiTests
     using var client = await CreateAntiforgeryClientAsync(app);
 
     var response = await client.PostAsJsonAsync(
-      "/api/restaurant/checkout/paypal-orders",
-      CreateOrderRequest());
-    var result = await response.Content.ReadFromJsonAsync<RestaurantOnlinePayPalOrderResult>();
+      "/api/restaurant/checkout/intents",
+      BeginRequest());
+    var result = await response.Content.ReadFromJsonAsync<RestaurantOnlineCheckoutBeginResult>();
 
     response.EnsureSuccessStatusCode();
     Assert.NotNull(result);
     Assert.True(result.WasExisting);
-    Assert.Equal("PAYPAL-EXISTING", result.PayPalOrderId);
     Assert.Equal("TRACK-EXISTING", result.TrackingToken);
-    Assert.Equal(RestaurantOnlineCheckoutStatuses.PayPalCreated, result.CheckoutStatus);
+    Assert.Equal(RestaurantOnlineCheckoutStatuses.Quoted, result.CheckoutStatus);
   }
 
   [Theory]
-  [InlineData(RestaurantOnlineCheckoutStatuses.CapturePending, "capture_pending", false, true)]
+  [InlineData(RestaurantOnlineCheckoutStatuses.ChargeUnknown, "charge_pending", false, true)]
+  [InlineData(RestaurantOnlineCheckoutStatuses.Authenticating3ds, "three_ds_pending", false, true)]
   [InlineData(RestaurantOnlineCheckoutStatuses.PaymentDenied, "payment_denied", false, false)]
   [InlineData(RestaurantOnlineCheckoutStatuses.Refunded, "refunded", true, false)]
-  public async Task Capture_pending_denied_and_refunded_states_remain_successful_durable_responses(
+  public async Task Unresolved_denied_and_refunded_charges_remain_successful_durable_responses(
     string checkoutStatus,
     string code,
     bool paymentCaptured,
@@ -160,7 +162,7 @@ public sealed class BrunoCheckoutApiTests
   {
     var checkout = new FakeCheckoutService
     {
-      CaptureResult = new RestaurantOnlinePayPalCaptureResult
+      ChargeResult = new RestaurantOnlineChargeResult
       {
         Succeeded = true,
         Code = code,
@@ -175,9 +177,9 @@ public sealed class BrunoCheckoutApiTests
     using var client = await CreateAntiforgeryClientAsync(app);
 
     var response = await client.PostAsJsonAsync(
-      "/api/restaurant/checkout/paypal-orders/PAYPAL-17/capture",
-      CaptureRequest());
-    var result = await response.Content.ReadFromJsonAsync<RestaurantOnlinePayPalCaptureResult>();
+      "/api/restaurant/checkout/charge",
+      ChargeRequest());
+    var result = await response.Content.ReadFromJsonAsync<RestaurantOnlineChargeResult>();
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     Assert.NotNull(result);
@@ -188,72 +190,33 @@ public sealed class BrunoCheckoutApiTests
   }
 
   [Fact]
-  public async Task Valid_foreign_paypal_webhook_is_acknowledged_without_a_checkout_match()
+  public async Task Valid_foreign_clip_notification_is_acknowledged_without_a_checkout_match()
   {
+    // Clip no firma sus avisos, asi que uno ajeno no se puede distinguir por
+    // criptografia: se acepta, no empata con ningun checkout y cuesta una
+    // consulta. Reintentarlo no lo volveria nuestro.
     var checkout = new FakeCheckoutService
     {
-      WebhookResult = new RestaurantPayPalWebhookResult(true, false, "WH-FOREIGN")
+      WebhookResult = new RestaurantClipWebhookResult(true, false, "PAY-FOREIGN")
     };
     await using var app = await CreateAppAsync(checkout);
-    using var request = new HttpRequestMessage(HttpMethod.Post, "/api/restaurant/checkout/paypal-webhook")
-    {
-      Content = new StringContent("{\"id\":\"WH-FOREIGN\",\"event_type\":\"PAYMENT.CAPTURE.COMPLETED\"}", Encoding.UTF8, "application/json")
-    };
-    AddWebhookHeaders(request);
+    using var request = WebhookRequest(new StringContent(
+      ClipNotification("PAY-FOREIGN"), Encoding.UTF8, "application/json"));
 
     var response = await app.GetTestClient().SendAsync(request);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     Assert.NotNull(checkout.LastWebhookRequest);
-    Assert.Contains("WH-FOREIGN", checkout.LastWebhookRequest.RawBody, StringComparison.Ordinal);
-    Assert.Equal("transmission-17", checkout.LastWebhookRequest.TransmissionId);
+    Assert.Contains("PAY-FOREIGN", checkout.LastWebhookRequest.RawBody, StringComparison.Ordinal);
     Assert.False(checkout.WebhookResult.Matched);
-  }
-
-  [Fact]
-  public async Task Webhook_missing_signature_header_is_rejected_before_checkout_service()
-  {
-    var checkout = new FakeCheckoutService();
-    await using var app = await CreateAppAsync(checkout);
-    using var request = WebhookRequest(
-      new StringContent("{\"id\":\"WH-17\",\"event_type\":\"PAYMENT.CAPTURE.COMPLETED\"}", Encoding.UTF8, "application/json"),
-      omittedHeader: "PAYPAL-TRANSMISSION-SIG");
-
-    var response = await app.GetTestClient().SendAsync(request);
-
-    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    Assert.Equal(0, checkout.WebhookCallCount);
-  }
-
-  [Theory]
-  [InlineData("PAYPAL-TRANSMISSION-ID", 257)]
-  [InlineData("PAYPAL-TRANSMISSION-TIME", 65)]
-  [InlineData("PAYPAL-CERT-URL", 2_049)]
-  [InlineData("PAYPAL-AUTH-ALGO", 129)]
-  [InlineData("PAYPAL-TRANSMISSION-SIG", 8_193)]
-  public async Task Oversized_webhook_signature_header_is_rejected_before_checkout_service(
-    string headerName,
-    int length)
-  {
-    var checkout = new FakeCheckoutService();
-    await using var app = await CreateAppAsync(checkout);
-    using var request = WebhookRequest(
-      new StringContent("{\"id\":\"WH-17\",\"event_type\":\"PAYMENT.CAPTURE.COMPLETED\"}", Encoding.UTF8, "application/json"));
-    request.Headers.Remove(headerName);
-    Assert.True(request.Headers.TryAddWithoutValidation(headerName, new string('x', length)));
-
-    var response = await app.GetTestClient().SendAsync(request);
-
-    Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    Assert.Equal(0, checkout.WebhookCallCount);
   }
 
   [Theory]
   [InlineData("{")]
   [InlineData("[]")]
-  [InlineData("{\"id\":17,\"event_type\":\"PAYMENT.CAPTURE.COMPLETED\"}")]
-  [InlineData("{\"id\":\"WH-17\"}")]
-  [InlineData("{\"id\":\"WH-17\",\"event_type\":17}")]
+  [InlineData("{\"id\":17,\"event_type\":\"UPDATE\"}")]
+  [InlineData("{\"id\":\"PAY-17\"}")]
+  [InlineData("{\"id\":\"PAY-17\",\"event_type\":17}")]
   public async Task Malformed_webhook_shape_is_rejected_before_checkout_service(string payload)
   {
     var checkout = new FakeCheckoutService();
@@ -275,8 +238,8 @@ public sealed class BrunoCheckoutApiTests
     await using var app = await CreateAppAsync(checkout);
     var payload = JsonSerializer.Serialize(new Dictionary<string, string>
     {
-      ["id"] = propertyName == "id" ? new string('I', 101) : "WH-17",
-      ["event_type"] = propertyName == "event_type" ? new string('E', 101) : "PAYMENT.CAPTURE.COMPLETED"
+      ["id"] = propertyName == "id" ? new string('I', 65) : "PAY-17",
+      ["event_type"] = propertyName == "event_type" ? new string('E', 31) : "UPDATE"
     });
     using var request = WebhookRequest(new StringContent(payload, Encoding.UTF8, "application/json"));
 
@@ -304,7 +267,7 @@ public sealed class BrunoCheckoutApiTests
   {
     var checkout = new FakeCheckoutService();
     await using var app = await CreateAppAsync(checkout);
-    using var request = WebhookRequest(new UnknownLengthByteContent(new byte[1_048_577]));
+    using var request = WebhookRequest(new UnknownLengthByteContent(new byte[4_097]));
 
     var response = await app.GetTestClient().SendAsync(request);
 
@@ -347,32 +310,16 @@ public sealed class BrunoCheckoutApiTests
     return app;
   }
 
-  private static HttpRequestMessage WebhookRequest(HttpContent content, string? omittedHeader = null)
-  {
-    var request = new HttpRequestMessage(HttpMethod.Post, "/api/restaurant/checkout/paypal-webhook")
-    {
-      Content = content
-    };
-    AddWebhookHeaders(request, omittedHeader);
-    return request;
-  }
+  private static HttpRequestMessage WebhookRequest(HttpContent content)
+    => new(HttpMethod.Post, "/api/restaurant/checkout/clip-webhook") { Content = content };
 
-  private static void AddWebhookHeaders(HttpRequestMessage request, string? omittedHeader = null)
-  {
-    var headers = new Dictionary<string, string>
+  private static string ClipNotification(string paymentId)
+    => JsonSerializer.Serialize(new Dictionary<string, string>
     {
-      ["PAYPAL-TRANSMISSION-ID"] = "transmission-17",
-      ["PAYPAL-TRANSMISSION-TIME"] = "2026-09-14T18:00:00Z",
-      ["PAYPAL-CERT-URL"] = "https://api.paypal.com/cert.pem",
-      ["PAYPAL-AUTH-ALGO"] = "SHA256withRSA",
-      ["PAYPAL-TRANSMISSION-SIG"] = "verified-signature"
-    };
-    foreach (var (name, value) in headers)
-    {
-      if (!string.Equals(name, omittedHeader, StringComparison.Ordinal))
-        request.Headers.TryAddWithoutValidation(name, value);
-    }
-  }
+      ["id"] = paymentId,
+      ["origin"] = "payments-api",
+      ["event_type"] = "UPDATE"
+    });
 
   private static async Task<HttpClient> CreateAntiforgeryClientAsync(
     WebApplication app,
@@ -414,7 +361,7 @@ public sealed class BrunoCheckoutApiTests
       ]
     };
 
-  private static RestaurantOnlinePayPalOrderCreateRequest CreateOrderRequest()
+  private static RestaurantOnlineCheckoutBeginRequest BeginRequest()
     => new()
     {
       QuoteToken = "QUOTE-17",
@@ -427,12 +374,13 @@ public sealed class BrunoCheckoutApiTests
       PrivacyVersion = "2026-09-14"
     };
 
-  private static RestaurantOnlinePayPalCaptureRequest CaptureRequest()
+  private static RestaurantOnlineChargeRequest ChargeRequest()
     => new()
     {
       QuoteToken = "QUOTE-17",
       ClientAttemptId = Guid.Parse("2943A3F8-64C4-445B-9B81-AF20B47DF279"),
-      TrackingToken = "TRACK-17"
+      TrackingToken = "TRACK-17",
+      CardTokenId = "CARD-TOKEN-17"
     };
 
   private sealed class FakeWebsiteContext : IPublicWebsiteInstanceContext
@@ -511,19 +459,19 @@ public sealed class BrunoCheckoutApiTests
     public int QuoteCallCount { get; private set; }
     public Guid? LastMemberId { get; private set; }
     public PublicSiteBinding? LastBinding { get; private set; }
-    public RestaurantPayPalWebhookRequest? LastWebhookRequest { get; private set; }
+    public RestaurantClipWebhookRequest? LastWebhookRequest { get; private set; }
     public int WebhookCallCount { get; private set; }
+    public RestaurantOnlineChargeRequest? LastChargeRequest { get; private set; }
 
-    public RestaurantOnlinePayPalOrderResult CreateResult { get; init; } = new()
+    public RestaurantOnlineCheckoutBeginResult BeginResult { get; init; } = new()
     {
       Succeeded = true,
-      Code = "paypal_order_created",
-      PayPalOrderId = "PAYPAL-17",
+      Code = "checkout_ready",
       TrackingToken = "TRACK-17",
-      CheckoutStatus = RestaurantOnlineCheckoutStatuses.PayPalCreated
+      CheckoutStatus = RestaurantOnlineCheckoutStatuses.Quoted
     };
 
-    public RestaurantOnlinePayPalCaptureResult CaptureResult { get; init; } = new()
+    public RestaurantOnlineChargeResult ChargeResult { get; init; } = new()
     {
       Succeeded = true,
       Code = "payment_received",
@@ -533,7 +481,17 @@ public sealed class BrunoCheckoutApiTests
       IsPending = true
     };
 
-    public RestaurantPayPalWebhookResult WebhookResult { get; init; } = new(true, true, "WH-17");
+    public RestaurantOnlineChargeResult ConfirmResult { get; init; } = new()
+    {
+      Succeeded = true,
+      Code = "payment_received",
+      CheckoutStatus = RestaurantOnlineCheckoutStatuses.Captured,
+      TrackingToken = "TRACK-17",
+      PaymentCaptured = true,
+      IsPending = true
+    };
+
+    public RestaurantClipWebhookResult WebhookResult { get; init; } = new(true, true, "PAY-17");
 
     public Task<RestaurantOnlineOrderingConfigurationDto> GetConfigurationAsync(
       PublicSiteBinding binding,
@@ -558,25 +516,35 @@ public sealed class BrunoCheckoutApiTests
       });
     }
 
-    public Task<RestaurantOnlinePayPalOrderResult> CreatePayPalOrderAsync(
+    public Task<RestaurantOnlineCheckoutBeginResult> BeginCheckoutAsync(
       PublicSiteBinding binding,
-      RestaurantOnlinePayPalOrderCreateRequest request,
+      RestaurantOnlineCheckoutBeginRequest request,
       Guid? memberId,
       CancellationToken ct = default)
     {
       Record(binding, memberId);
-      return Task.FromResult(CreateResult);
+      return Task.FromResult(BeginResult);
     }
 
-    public Task<RestaurantOnlinePayPalCaptureResult> CapturePayPalOrderAsync(
+    public Task<RestaurantOnlineChargeResult> ChargeAsync(
       PublicSiteBinding binding,
-      string payPalOrderId,
-      RestaurantOnlinePayPalCaptureRequest request,
+      RestaurantOnlineChargeRequest request,
       Guid? memberId,
       CancellationToken ct = default)
     {
       Record(binding, memberId);
-      return Task.FromResult(CaptureResult);
+      LastChargeRequest = request;
+      return Task.FromResult(ChargeResult);
+    }
+
+    public Task<RestaurantOnlineChargeResult> ConfirmChargeAsync(
+      PublicSiteBinding binding,
+      RestaurantOnlineChargeConfirmRequest request,
+      Guid? memberId,
+      CancellationToken ct = default)
+    {
+      Record(binding, memberId);
+      return Task.FromResult(ConfirmResult);
     }
 
     public Task<RestaurantOnlineCheckoutStatusDto?> GetStatusAsync(
@@ -588,9 +556,9 @@ public sealed class BrunoCheckoutApiTests
         CheckoutStatus = RestaurantOnlineCheckoutStatuses.Captured
       });
 
-    public Task<RestaurantPayPalWebhookResult> ProcessPayPalWebhookAsync(
+    public Task<RestaurantClipWebhookResult> ProcessClipWebhookAsync(
       PublicSiteBinding binding,
-      RestaurantPayPalWebhookRequest request,
+      RestaurantClipWebhookRequest request,
       CancellationToken ct = default)
     {
       LastBinding = binding;

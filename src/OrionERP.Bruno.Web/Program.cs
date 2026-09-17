@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using OrionERP.Application.Common;
-using OrionERP.Application.Features.Payments.PayPal;
+using OrionERP.Application.Features.Payments.Clip;
 using OrionERP.Application.Features.Platform;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Bruno.Web;
@@ -23,7 +23,7 @@ using OrionERP.Bruno.Web.Services;
 using OrionERP.Infrastructure.Auth;
 using OrionERP.Infrastructure.Features.Cfdi.DescargaMasiva.Dapper;
 using OrionERP.Infrastructure.Features.Mail;
-using OrionERP.Infrastructure.Features.Payments.PayPal;
+using OrionERP.Infrastructure.Features.Payments.Clip;
 using OrionERP.Infrastructure.Features.Platform;
 using OrionERP.Infrastructure.Features.Restaurante;
 
@@ -223,12 +223,12 @@ builder.Services
     options => RestaurantCheckoutOptionsPolicy.Validate(options, builder.Environment.IsProduction()).Count == 0,
     "RestaurantCheckout contiene una configuración inválida para el ambiente actual.")
   .ValidateOnStart();
-builder.Services.AddHttpClient<IPayPalOrdersClient, PayPalOrdersClient<RestaurantCheckoutOptions>>(client =>
-  client.Timeout = TimeSpan.FromSeconds(60));
-builder.Services.AddHttpClient("RestaurantPayPalHistorical", client =>
-  client.Timeout = TimeSpan.FromSeconds(60));
-builder.Services.AddScoped<IRestaurantPayPalClientResolver, RestaurantPayPalClientResolver>();
-builder.Services.AddScoped<IPayPalRecoveryProcessor, RestaurantPayPalRecoveryProcessor>();
+// El timeout tiene que caber holgadamente dentro de la ventana que
+// OnlineCheckoutChargeBegin reserva antes de que la recuperación pueda tomar el
+// cargo, porque POST /payments no se reintenta nunca.
+builder.Services.AddHttpClient<IClipPaymentsClient, ClipPaymentsClient<RestaurantCheckoutOptions>>(client =>
+  client.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.AddScoped<IPaymentRecoveryProcessor, RestaurantPaymentRecoveryProcessor>();
 builder.Services.AddScoped<IOnlineRestaurantOrderEmailSender, OnlineRestaurantOrderEmailSender>();
 builder.Services.AddScoped<IOnlineRestaurantOrderNotificationQueue, OnlineRestaurantOrderNotificationQueue>();
 builder.Services.AddHostedService<OnlineRestaurantOrderNotificationWorker>();
@@ -335,10 +335,14 @@ app.Use(async (context, next) =>
   context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)";
   context.Response.Headers["Content-Security-Policy"] =
     "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
-    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://www.paypal.com https://www.sandbox.paypal.com https://www.paypalobjects.com https://*.paypal.com https://*.paypalobjects.com; " +
-    "frame-src https://challenges.cloudflare.com https://www.paypal.com https://www.sandbox.paypal.com https://*.paypal.com https://*.paypalobjects.com; " +
-    "connect-src 'self' https://cloudflareinsights.com https://www.paypal.com https://www.sandbox.paypal.com https://api.paypal.com https://api-m.paypal.com https://api-m.sandbox.paypal.com https://*.paypal.com https://*.paypalobjects.com; " +
-    "base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://*.paypal.com;";
+    // h.online-metrix.net es la huella de dispositivo de ThreatMetrix que carga
+    // el script de prevención de fraudes de Clip. Sin ella el emisor evalúa el
+    // cargo a ciegas y sube la tasa de rechazo. La telemetría propia de Clip
+    // (Datadog RUM) se deja fuera a propósito: no participa en el cobro.
+    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://sdk.clip.mx https://tools.clip.mx https://h.online-metrix.net; " +
+    "frame-src https://challenges.cloudflare.com https://sdk.clip.mx https://elements.clip.mx https://3ds.payclip.com; " +
+    "connect-src 'self' https://cloudflareinsights.com https://sdk.clip.mx https://elements.clip.mx https://tools.clip.mx https://h.online-metrix.net https://api.payclip.com; " +
+    "base-uri 'self'; frame-ancestors 'none'; form-action 'self';";
   await next();
 });
 app.UseStaticFiles();
@@ -441,10 +445,11 @@ app.MapGet("/readyz", async (
       var heartbeatMaximumAge = TimeSpan.FromSeconds(options.ProcessorHeartbeatMaxAgeSeconds);
       var heartbeatIsFresh = online.ProcessorHeartbeatAtUtc.HasValue
         && DateTime.UtcNow - DateTime.SpecifyKind(online.ProcessorHeartbeatAtUtc.Value, DateTimeKind.Utc) <= heartbeatMaximumAge;
-      var checkoutIsReady = options.IsPayPalConfigured
-        && options.IsWebhookVerificationConfigured
-        && (!app.Environment.IsProduction() || options.UseLivePayPal)
-        && !string.IsNullOrWhiteSpace(online.PayPalClientId)
+      var checkoutIsReady = options.IsClipConfigured
+        && options.IsApiKeyEnvironmentConsistent
+        && options.IsWebhookConfigured
+        && (!app.Environment.IsProduction() || options.UseLiveClip)
+        && !string.IsNullOrWhiteSpace(online.ClipApiKey)
         && online.MaximumOrderAmount > 0
         && !string.IsNullOrWhiteSpace(online.OnlineHoursJson)
         && string.Equals(online.TermsVersion, presentation.TermsVersion, StringComparison.Ordinal)

@@ -5,8 +5,15 @@ namespace OrionERP.Application.Features.Restaurante;
 public static class RestaurantOnlineCheckoutStatuses
 {
   public const string Quoted = "Quoted";
-  public const string PayPalCreated = "PayPalCreated";
-  public const string CapturePending = "CapturePending";
+  /// <summary>Un cargo está en vuelo. Es exclusivo: nadie más puede cobrar este intento.</summary>
+  public const string ChargePending = "ChargePending";
+  /// <summary>Clip pidió 3DS y el cliente está autenticándose.</summary>
+  public const string Authenticating3ds = "Authenticating3ds";
+  /// <summary>
+  /// El cargo no dejó una respuesta utilizable. Sólo la recuperación lo resuelve,
+  /// consultando: repetir el cargo cobraría dos veces.
+  /// </summary>
+  public const string ChargeUnknown = "ChargeUnknown";
   public const string Captured = "Captured";
   public const string PosCreated = "PosCreated";
   public const string RequoteRequired = "RequoteRequired";
@@ -21,6 +28,8 @@ public static class RestaurantOnlineCheckoutStatuses
 
 public static class RestaurantPaymentGatewayProviders
 {
+  public const string Clip = "Clip";
+  /// <summary>Sólo para filas históricas de sitios que cobraron con este proveedor.</summary>
   public const string PayPal = "PayPal";
 }
 
@@ -38,8 +47,9 @@ public sealed class RestaurantOnlineOrderingConfigurationDto
   public decimal MaximumOrderAmount { get; set; } = 2500m;
   public string OnlineHoursJson { get; set; } = "{}";
   public string Currency { get; set; } = "MXN";
-  public string PayPalClientId { get; set; } = string.Empty;
-  public string PayPalLocale { get; set; } = "es_MX";
+  /// <summary>Clave pública del SDK de Clip. No es secreta: el navegador la necesita para tokenizar.</summary>
+  public string ClipApiKey { get; set; } = string.Empty;
+  public string ClipLocale { get; set; } = "es";
   public string TermsVersion { get; set; } = string.Empty;
   public string PrivacyVersion { get; set; } = string.Empty;
   public string AllergenDisclaimer { get; set; } = string.Empty;
@@ -106,7 +116,12 @@ public sealed class RestaurantOnlineQuoteLineDto
   public IReadOnlyList<string> ComboSelections { get; set; } = Array.Empty<string>();
 }
 
-public sealed class RestaurantOnlinePayPalOrderCreateRequest
+/// <summary>
+/// Reserva el intento de cobro. No hay llamada a Clip en este paso: el pago no
+/// existe hasta el cargo, así que lo único que se fija aquí es a quién pertenece
+/// el intento y qué cotización acepta.
+/// </summary>
+public sealed class RestaurantOnlineCheckoutBeginRequest
 {
   [Required] public string QuoteToken { get; set; } = string.Empty;
   public Guid ClientAttemptId { get; set; }
@@ -118,28 +133,37 @@ public sealed class RestaurantOnlinePayPalOrderCreateRequest
   [Required, StringLength(30)] public string PrivacyVersion { get; set; } = string.Empty;
 }
 
-public sealed class RestaurantOnlinePayPalOrderResult
+public sealed class RestaurantOnlineCheckoutBeginResult
 {
   public bool Succeeded { get; set; }
   public string Code { get; set; } = string.Empty;
   public string Message { get; set; } = string.Empty;
-  public string? PayPalOrderId { get; set; }
   public string? TrackingToken { get; set; }
   public string CheckoutStatus { get; set; } = RestaurantOnlineCheckoutStatuses.Quoted;
   public bool WasExisting { get; set; }
 
-  public static RestaurantOnlinePayPalOrderResult Fail(string code, string message)
+  public static RestaurantOnlineCheckoutBeginResult Fail(string code, string message)
     => new() { Code = code, Message = message };
 }
 
-public sealed class RestaurantOnlinePayPalCaptureRequest
+public sealed class RestaurantOnlineChargeRequest
 {
   [Required] public string QuoteToken { get; set; } = string.Empty;
   public Guid ClientAttemptId { get; set; }
   [Required] public string TrackingToken { get; set; } = string.Empty;
+  /// <summary>Token del SDK de Clip. De un solo uso y con 15 minutos de vigencia.</summary>
+  [Required, StringLength(100)] public string CardTokenId { get; set; } = string.Empty;
 }
 
-public sealed class RestaurantOnlinePayPalCaptureResult
+/// <summary>Cierre del cargo después de que el cliente completó la autenticación 3DS.</summary>
+public sealed class RestaurantOnlineChargeConfirmRequest
+{
+  public Guid ClientAttemptId { get; set; }
+  [Required] public string TrackingToken { get; set; } = string.Empty;
+  [Required, StringLength(64)] public string PaymentId { get; set; } = string.Empty;
+}
+
+public sealed class RestaurantOnlineChargeResult
 {
   public bool Succeeded { get; set; }
   public string Code { get; set; } = string.Empty;
@@ -149,8 +173,10 @@ public sealed class RestaurantOnlinePayPalCaptureResult
   public int? OrderFolio { get; set; }
   public bool PaymentCaptured { get; set; }
   public bool IsPending { get; set; }
+  /// <summary>URL que el navegador debe abrir en un iframe para autenticar con 3DS.</summary>
+  public string? ThreeDSecureUrl { get; set; }
 
-  public static RestaurantOnlinePayPalCaptureResult Fail(string code, string message)
+  public static RestaurantOnlineChargeResult Fail(string code, string message)
     => new() { Code = code, Message = message };
 }
 
@@ -169,17 +195,16 @@ public sealed class RestaurantOnlineCheckoutStatusDto
   public string? ReadyNotificationStatus { get; set; }
 }
 
-public sealed class RestaurantPayPalWebhookRequest
+/// <summary>
+/// Aviso de Clip. Llega sin firma y con un cuerpo mínimo, así que no se toma
+/// nada de él como verdad: sólo el identificador, para ir a consultar el pago.
+/// </summary>
+public sealed class RestaurantClipWebhookRequest
 {
   [Required] public string RawBody { get; set; } = string.Empty;
-  [Required] public string TransmissionId { get; set; } = string.Empty;
-  [Required] public string TransmissionTime { get; set; } = string.Empty;
-  [Required] public string CertificateUrl { get; set; } = string.Empty;
-  [Required] public string AuthenticationAlgorithm { get; set; } = string.Empty;
-  [Required] public string TransmissionSignature { get; set; } = string.Empty;
 }
 
-public sealed record RestaurantPayPalWebhookResult(bool Accepted, bool Matched, string? EventId = null);
+public sealed record RestaurantClipWebhookResult(bool Accepted, bool Matched, string? PaymentId = null);
 
 public sealed class RestaurantOnlineOrderingAdminDto
 {
@@ -216,7 +241,8 @@ public sealed class RestaurantOnlineOrderingAdminSaveRequest
   [StringLength(300)] public string? PauseMessage { get; set; }
   public bool AllowGuestCheckout { get; set; } = true;
   public bool PickupEnabled { get; set; } = true;
-  [Range(typeof(decimal), "0.01", "999999999")] public decimal MaximumOrderAmount { get; set; } = 2500m;
+  /// <summary>El tope de Clip por transacción en línea es $10,000 MXN.</summary>
+  [Range(typeof(decimal), "0.01", "10000")] public decimal MaximumOrderAmount { get; set; } = 2500m;
   [Required] public string OnlineHoursJson { get; set; } = "{}";
   [Required, StringLength(30)] public string TermsVersion { get; set; } = string.Empty;
   [Required, StringLength(30)] public string PrivacyVersion { get; set; } = string.Empty;
@@ -239,8 +265,8 @@ public sealed class RestaurantOnlineRecoveryDto
 {
   public Guid CheckoutAttemptId { get; set; }
   public string CheckoutStatus { get; set; } = string.Empty;
-  public string? PayPalOrderId { get; set; }
-  public string? PayPalCaptureId { get; set; }
+  public string? ProviderOrderId { get; set; }
+  public string? ProviderCaptureId { get; set; }
   public int? OrderFolio { get; set; }
   public decimal Total { get; set; }
   public string Currency { get; set; } = "MXN";

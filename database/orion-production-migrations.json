@@ -403,6 +403,15 @@
         "grupocarpio",
         "Orion_CutoverValidation_20260908"
       ]
+    },
+    {
+      "id": "20260916_restaurant_online_ordering_clip",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_online_ordering_clip.sql",
+      "description": "Reemplaza el cobro con PayPal por Clip en el checkout de Restaurante: columnas neutrales de proveedor, ciclo de cargo con derecho exclusivo (Clip no acepta llave de idempotencia), estados de 3DS y desenlace desconocido, y perfil publico v11.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
     }
   ]
 }

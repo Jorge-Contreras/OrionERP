@@ -17,17 +17,31 @@ public interface IOnlineRestaurantQuoteService
 
 public interface IOnlineRestaurantCheckoutService : IOnlineRestaurantQuoteService
 {
-
-  Task<RestaurantOnlinePayPalOrderResult> CreatePayPalOrderAsync(
+  /// <summary>
+  /// Reserva el intento contra la cotización vigente. No toca a Clip: el pago no
+  /// existe hasta el cargo.
+  /// </summary>
+  Task<RestaurantOnlineCheckoutBeginResult> BeginCheckoutAsync(
     PublicSiteBinding binding,
-    RestaurantOnlinePayPalOrderCreateRequest request,
+    RestaurantOnlineCheckoutBeginRequest request,
     Guid? memberId,
     CancellationToken ct = default);
 
-  Task<RestaurantOnlinePayPalCaptureResult> CapturePayPalOrderAsync(
+  /// <summary>
+  /// Cobra el token de tarjeta. Es el punto de no retorno: la base garantiza que
+  /// sólo un cargo puede estar en vuelo por intento, y una llamada sin respuesta
+  /// utilizable deja el intento en <c>ChargeUnknown</c> en vez de reintentarse.
+  /// </summary>
+  Task<RestaurantOnlineChargeResult> ChargeAsync(
     PublicSiteBinding binding,
-    string payPalOrderId,
-    RestaurantOnlinePayPalCaptureRequest request,
+    RestaurantOnlineChargeRequest request,
+    Guid? memberId,
+    CancellationToken ct = default);
+
+  /// <summary>Cierra el cargo consultando el pago después de la autenticación 3DS.</summary>
+  Task<RestaurantOnlineChargeResult> ConfirmChargeAsync(
+    PublicSiteBinding binding,
+    RestaurantOnlineChargeConfirmRequest request,
     Guid? memberId,
     CancellationToken ct = default);
 
@@ -36,9 +50,9 @@ public interface IOnlineRestaurantCheckoutService : IOnlineRestaurantQuoteServic
     string trackingToken,
     CancellationToken ct = default);
 
-  Task<RestaurantPayPalWebhookResult> ProcessPayPalWebhookAsync(
+  Task<RestaurantClipWebhookResult> ProcessClipWebhookAsync(
     PublicSiteBinding binding,
-    RestaurantPayPalWebhookRequest request,
+    RestaurantClipWebhookRequest request,
     CancellationToken ct = default);
 }
 
@@ -60,7 +74,7 @@ public interface IOnlineOrderImportProcessor
   Task RecordHeartbeatAsync(CancellationToken ct = default);
 }
 
-public interface IPayPalRecoveryProcessor
+public interface IPaymentRecoveryProcessor
 {
   Task<int> ProcessPendingAsync(int batchSize = 10, CancellationToken ct = default);
 }

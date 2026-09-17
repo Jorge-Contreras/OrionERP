@@ -15,14 +15,13 @@ namespace OrionERP.Bruno.Web.Features.Ordering;
 public static class RestaurantCheckoutApi
 {
   private const int MaximumBrowserRequestBodyBytes = 262_144;
-  private const int MaximumWebhookBodyBytes = 1_048_576;
-  private const int MaximumTransmissionIdLength = 256;
-  private const int MaximumTransmissionTimeLength = 64;
-  private const int MaximumCertificateUrlLength = 2_048;
-  private const int MaximumAuthenticationAlgorithmLength = 128;
-  private const int MaximumTransmissionSignatureLength = 8_192;
-  private const int MaximumProviderEventIdLength = 100;
-  private const int MaximumProviderEventTypeLength = 100;
+  /// <summary>
+  /// El aviso de Clip es un objeto de tres campos cortos. Cualquier cosa mayor
+  /// no es un aviso legítimo.
+  /// </summary>
+  private const int MaximumWebhookBodyBytes = 4_096;
+  private const int MaximumProviderEventIdLength = 64;
+  private const int MaximumProviderEventTypeLength = 30;
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true);
@@ -36,12 +35,14 @@ public static class RestaurantCheckoutApi
 
     group.MapPost("/quote", QuoteAsync)
       .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
-    group.MapPost("/paypal-orders", CreatePayPalOrderAsync)
+    group.MapPost("/intents", BeginCheckoutAsync)
       .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
-    group.MapPost("/paypal-orders/{orderId}/capture", CapturePayPalOrderAsync)
+    group.MapPost("/charge", ChargeAsync)
+      .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
+    group.MapPost("/charge/confirm", ConfirmChargeAsync)
       .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
     group.MapGet("/status/{trackingToken}", GetStatusAsync);
-    group.MapPost("/paypal-webhook", ProcessPayPalWebhookAsync)
+    group.MapPost("/clip-webhook", ProcessClipWebhookAsync)
       .DisableAntiforgery()
       .WithMetadata(new RequestSizeLimitAttribute(MaximumWebhookBodyBytes))
       .RequireRateLimiting("webhook");
@@ -66,8 +67,8 @@ public static class RestaurantCheckoutApi
     return MapResult(result.Succeeded, result.Code, result.Message, result);
   }
 
-  private static async Task<IResult> CreatePayPalOrderAsync(
-    RestaurantOnlinePayPalOrderCreateRequest request,
+  private static async Task<IResult> BeginCheckoutAsync(
+    RestaurantOnlineCheckoutBeginRequest request,
     HttpContext context,
     IAntiforgery antiforgery,
     IPublicWebsiteInstanceContext website,
@@ -79,13 +80,12 @@ public static class RestaurantCheckoutApi
       return InvalidAntiforgery();
     var binding = await website.ResolveRequiredAsync(ct);
     var memberId = await ResolveMemberIdAsync(context.User, binding, membership, ct);
-    var result = await checkout.CreatePayPalOrderAsync(binding, request, memberId, ct);
+    var result = await checkout.BeginCheckoutAsync(binding, request, memberId, ct);
     return MapResult(result.Succeeded, result.Code, result.Message, result);
   }
 
-  private static async Task<IResult> CapturePayPalOrderAsync(
-    string orderId,
-    RestaurantOnlinePayPalCaptureRequest request,
+  private static async Task<IResult> ChargeAsync(
+    RestaurantOnlineChargeRequest request,
     HttpContext context,
     IAntiforgery antiforgery,
     IPublicWebsiteInstanceContext website,
@@ -95,12 +95,26 @@ public static class RestaurantCheckoutApi
   {
     if (!await HasValidAntiforgeryAsync(antiforgery, context))
       return InvalidAntiforgery();
-    if (string.IsNullOrWhiteSpace(orderId))
-      return Problem("invalid_paypal_order", "La orden de PayPal es obligatoria.", StatusCodes.Status400BadRequest);
-
     var binding = await website.ResolveRequiredAsync(ct);
     var memberId = await ResolveMemberIdAsync(context.User, binding, membership, ct);
-    var result = await checkout.CapturePayPalOrderAsync(binding, orderId.Trim(), request, memberId, ct);
+    var result = await checkout.ChargeAsync(binding, request, memberId, ct);
+    return MapResult(result.Succeeded, result.Code, result.Message, result);
+  }
+
+  private static async Task<IResult> ConfirmChargeAsync(
+    RestaurantOnlineChargeConfirmRequest request,
+    HttpContext context,
+    IAntiforgery antiforgery,
+    IPublicWebsiteInstanceContext website,
+    IRestaurantMembershipService membership,
+    IOnlineRestaurantCheckoutService checkout,
+    CancellationToken ct)
+  {
+    if (!await HasValidAntiforgeryAsync(antiforgery, context))
+      return InvalidAntiforgery();
+    var binding = await website.ResolveRequiredAsync(ct);
+    var memberId = await ResolveMemberIdAsync(context.User, binding, membership, ct);
+    var result = await checkout.ConfirmChargeAsync(binding, request, memberId, ct);
     return MapResult(result.Succeeded, result.Code, result.Message, result);
   }
 
@@ -118,7 +132,13 @@ public static class RestaurantCheckoutApi
     return result is null ? Results.NotFound() : Results.Ok(result);
   }
 
-  private static async Task<IResult> ProcessPayPalWebhookAsync(
+  /// <summary>
+  /// Clip no firma sus avisos, así que aquí no hay nada que verificar
+  /// criptográficamente: el cuerpo sólo se acepta por su forma y el estado real
+  /// se consulta después contra la API de Clip. Un aviso falso cuesta una
+  /// consulta y no puede mover dinero ni estado.
+  /// </summary>
+  private static async Task<IResult> ProcessClipWebhookAsync(
     HttpRequest request,
     IPublicWebsiteInstanceContext website,
     IOnlineRestaurantCheckoutService checkout,
@@ -130,24 +150,17 @@ public static class RestaurantCheckoutApi
     var body = await ReadWebhookBodyAsync(request.Body, request.ContentLength, ct);
     if (body.IsTooLarge)
       return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-    if (body.IsInvalid || string.IsNullOrWhiteSpace(body.Value))
-      return Results.BadRequest();
-
-    var webhookRequest = new RestaurantPayPalWebhookRequest
-    {
-      RawBody = body.Value,
-      TransmissionId = Header(request, "PAYPAL-TRANSMISSION-ID"),
-      TransmissionTime = Header(request, "PAYPAL-TRANSMISSION-TIME"),
-      CertificateUrl = Header(request, "PAYPAL-CERT-URL"),
-      AuthenticationAlgorithm = Header(request, "PAYPAL-AUTH-ALGO"),
-      TransmissionSignature = Header(request, "PAYPAL-TRANSMISSION-SIG")
-    };
-    if (!HasRequiredWebhookHeaders(webhookRequest) || !HasValidWebhookShape(body.Value))
+    if (body.IsInvalid || string.IsNullOrWhiteSpace(body.Value) || !HasValidWebhookShape(body.Value))
       return Results.BadRequest();
 
     var binding = await website.ResolveRequiredAsync(ct);
-    var result = await checkout.ProcessPayPalWebhookAsync(binding, webhookRequest, ct);
+    var result = await checkout.ProcessClipWebhookAsync(
+      binding,
+      new RestaurantClipWebhookRequest { RawBody = body.Value },
+      ct);
 
+    // Un aviso de un pago que no es nuestro se acepta y se descarta: reintentarlo
+    // no lo volvería nuestro.
     return result.Accepted ? Results.Ok() : Results.BadRequest();
   }
 
@@ -163,7 +176,7 @@ public static class RestaurantCheckoutApi
       ? (int)Math.Min(contentLength.Value, MaximumWebhookBodyBytes)
       : 0;
     using var buffered = new MemoryStream(initialCapacity);
-    var rented = ArrayPool<byte>.Shared.Rent(16 * 1024);
+    var rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
     try
     {
       while (true)
@@ -195,26 +208,16 @@ public static class RestaurantCheckoutApi
     }
   }
 
-  private static bool HasRequiredWebhookHeaders(RestaurantPayPalWebhookRequest request)
-    => IsBoundedHeader(request.TransmissionId, MaximumTransmissionIdLength)
-      && IsBoundedHeader(request.TransmissionTime, MaximumTransmissionTimeLength)
-      && IsBoundedHeader(request.CertificateUrl, MaximumCertificateUrlLength)
-      && IsBoundedHeader(request.AuthenticationAlgorithm, MaximumAuthenticationAlgorithmLength)
-      && IsBoundedHeader(request.TransmissionSignature, MaximumTransmissionSignatureLength);
-
-  private static bool IsBoundedHeader(string value, int maximumLength)
-    => !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength;
-
   private static bool HasValidWebhookShape(string rawBody)
   {
     try
     {
-      using var document = JsonDocument.Parse(rawBody, new JsonDocumentOptions { MaxDepth = 64 });
+      using var document = JsonDocument.Parse(rawBody, new JsonDocumentOptions { MaxDepth = 16 });
       var root = document.RootElement;
       return root.ValueKind == JsonValueKind.Object
-        && root.TryGetProperty("id", out var eventId)
-        && eventId.ValueKind == JsonValueKind.String
-        && IsBoundedJsonString(eventId, MaximumProviderEventIdLength)
+        && root.TryGetProperty("id", out var paymentId)
+        && paymentId.ValueKind == JsonValueKind.String
+        && IsBoundedJsonString(paymentId, MaximumProviderEventIdLength)
         && root.TryGetProperty("event_type", out var eventType)
         && eventType.ValueKind == JsonValueKind.String
         && IsBoundedJsonString(eventType, MaximumProviderEventTypeLength);
@@ -287,18 +290,16 @@ public static class RestaurantCheckoutApi
 
   private static int StatusFor(string? code) => code?.Trim().ToLowerInvariant() switch
   {
-    "ordering_disabled" or "ordering_paused" or "ordering_closed" or "processor_unavailable" or "paypal_not_configured"
+    "ordering_disabled" or "ordering_paused" or "ordering_closed" or "processor_unavailable" or "clip_not_configured"
       => StatusCodes.Status503ServiceUnavailable,
     "quote_changed" or "quote_expired" or "requote_required" or "not_available" or "sold_out" or "maximum_exceeded"
       => StatusCodes.Status409Conflict,
-    "paypal_auth_failed" or "paypal_create_failed" or "paypal_capture_failed" or "paypal_order_validation_failed"
-      => StatusCodes.Status502BadGateway,
+    // Un cargo ya en vuelo no es un error del cliente: es el estado correcto y no
+    // debe invitar a reintentar.
+    "charge_in_flight" => StatusCodes.Status409Conflict,
     "not_found" => StatusCodes.Status404NotFound,
     _ => StatusCodes.Status400BadRequest
   };
-
-  private static string Header(HttpRequest request, string name)
-    => request.Headers[name].ToString().Trim();
 
   private sealed record WebhookBodyReadResult(string Value, bool IsTooLarge, bool IsInvalid)
   {

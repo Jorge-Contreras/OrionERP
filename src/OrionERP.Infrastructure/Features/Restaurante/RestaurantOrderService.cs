@@ -2315,7 +2315,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             AND attemptInfo.Rfc=@Rfc
             AND attemptInfo.SiteId=@SiteId
             AND attemptInfo.[State] IN ('Captured','CapturedNeedsOrder')
-            AND attemptInfo.PayPalCaptureId=@CaptureId
+            AND attemptInfo.ProviderCaptureId=@CaptureId
             AND attemptInfo.RestaurantOrderId IS NULL
         ) THEN 1 ELSE 0 END AS bit);
         """, new

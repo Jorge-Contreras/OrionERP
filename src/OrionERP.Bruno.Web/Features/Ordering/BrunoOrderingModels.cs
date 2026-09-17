@@ -48,11 +48,13 @@ public sealed class BrunoCartComboSelection
   };
 }
 
-public sealed class BrunoPayPalButtonOptions
+public sealed class BrunoClipCardOptions
 {
-  public string ClientId { get; set; } = string.Empty;
+  /// <summary>Clave pública del SDK. No autoriza cobros por sí sola.</summary>
+  public string ApiKey { get; set; } = string.Empty;
   public string Currency { get; set; } = "MXN";
-  public string Locale { get; set; } = "es_MX";
+  public string Locale { get; set; } = "es";
+  public string Theme { get; set; } = "light";
   public string QuoteToken { get; set; } = string.Empty;
   public string QuoteFingerprint { get; set; } = string.Empty;
   public Guid ClientAttemptId { get; set; }
@@ -67,7 +69,6 @@ public sealed class BrunoPayPalButtonOptions
 public sealed class BrunoPendingCheckout
 {
   public Guid ClientAttemptId { get; set; }
-  public string OrderId { get; set; } = string.Empty;
   public string TrackingToken { get; set; } = string.Empty;
   public DateTimeOffset SavedAtUtc { get; set; }
 }

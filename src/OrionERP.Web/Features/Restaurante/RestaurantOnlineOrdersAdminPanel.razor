@@ -12,7 +12,7 @@
 <section class="online-admin" aria-labelledby="online-admin-title">
   <header class="online-admin__header">
     <div>
-      <span>Canal Web · PayPal</span>
+      <span>Canal Web · Clip</span>
       <h2 id="online-admin-title">Pedidos en línea</h2>
       <p>Controla la venta para recoger sin alterar los horarios ni la operación del punto de venta.</p>
     </div>
@@ -168,7 +168,7 @@
           <header><div><span>Protección de lanzamiento</span><h3>@(configuration.IsReady ? "Listo para activar" : "Activación bloqueada")</h3></div><span class="oi @(configuration.IsReady ? "oi-circle-check" : "oi-warning")" aria-hidden="true"></span></header>
           @if (configuration.ReadinessBlockers.Count == 0)
           {
-            <p>PayPal Live, webhook, horario, tope, catálogo, documentos legales y procesador están validados.</p>
+            <p>Credenciales Live de Clip, URL de avisos, horario, tope, catálogo, documentos legales y procesador están validados.</p>
           }
           else
           {
@@ -188,7 +188,7 @@
         </article>
 
         <article class="online-admin__card online-admin__settlement">
-          <header><div><span>Conciliación PayPal</span><h3>Liquidación por perfil</h3></div></header>
+          <header><div><span>Conciliación Clip</span><h3>Liquidación por perfil</h3></div></header>
           @if (configuration.PaymentSummaries.Count == 0)
           {
             <p class="online-admin__empty">Aún no hay capturas conciliadas para este sitio público.</p>
@@ -203,16 +203,16 @@
                   <dl>
                     <div><dt>Bruto</dt><dd>@summary.GrossAmount.ToString("C")</dd></div>
                     <div><dt>Comisiones</dt><dd>@summary.FeeAmount.ToString("C")</dd></div>
-                    <div><dt>Neto PayPal</dt><dd>@summary.NetAmount.ToString("C")</dd></div>
+                    <div><dt>Neto</dt><dd>@summary.NetAmount.ToString("C")</dd></div>
                     <div><dt>Reembolsos al cliente</dt><dd>@summary.RefundedAmount.ToString("C")</dd></div>
                     <div><dt>Bruto conciliado</dt><dd>@summary.RefundGrossAmount.ToString("C")</dd></div>
                     <div><dt>Comisión devuelta</dt><dd>@summary.RefundFeeAmount.ToString("C")</dd></div>
-                    <div><dt>Débito neto PayPal</dt><dd>@summary.RefundNetAmount.ToString("C")</dd></div>
+                    <div><dt>Débito neto</dt><dd>@summary.RefundNetAmount.ToString("C")</dd></div>
                     <div><dt>Neto después de reembolsos</dt><dd>@(summary.NetAfterRefunds?.ToString("C") ?? "Pendiente")</dd></div>
                   </dl>
                   @if (summary.UnreconciledRefundCount > 0)
                   {
-                    <small class="online-admin__settlement-warning">@summary.UnreconciledRefundCount reembolso(s) aún no tienen desglose financiero de PayPal.</small>
+                    <small class="online-admin__settlement-warning">@summary.UnreconciledRefundCount reembolso(s) todavía sin confirmar con Clip.</small>
                   }
                   <small>@configuration.PublicSiteKey · @summary.Rfc</small>
                 </article>
@@ -241,15 +241,15 @@
                   {
                     <small>@item.LastErrorMessage</small>
                   }
-                  @if (!string.IsNullOrWhiteSpace(item.PayPalCaptureId))
+                  @if (!string.IsNullOrWhiteSpace(item.ProviderCaptureId))
                   {
-                    <code>PayPal @ShortProviderId(item.PayPalCaptureId)</code>
+                    <code>Clip @ShortProviderId(item.ProviderCaptureId)</code>
                   }
                 </article>
               }
             </div>
           }
-          <p class="online-admin__hint">Desactivar o pausar pedidos no detiene esta cola. Los reembolsos se confirman con PayPal antes de reflejarse localmente.</p>
+          <p class="online-admin__hint">Desactivar o pausar pedidos no detiene esta cola. Los reembolsos se confirman con Clip antes de reflejarse localmente.</p>
         </article>
       </aside>
     </div>
@@ -577,7 +577,9 @@
   {
     RestaurantOnlineCheckoutStatuses.Captured => "Pago capturado",
     RestaurantOnlineCheckoutStatuses.CapturedNeedsOrder => "Falta crear orden",
-    RestaurantOnlineCheckoutStatuses.CapturePending => "Captura pendiente",
+    RestaurantOnlineCheckoutStatuses.ChargePending => "Cobro en curso",
+    RestaurantOnlineCheckoutStatuses.Authenticating3ds => "Verificando con el banco",
+    RestaurantOnlineCheckoutStatuses.ChargeUnknown => "Cobro sin confirmar",
     RestaurantOnlineCheckoutStatuses.RefundRequested => "Reembolso solicitado",
     RestaurantOnlineCheckoutStatuses.RefundPending => "Reembolso pendiente",
     RestaurantOnlineCheckoutStatuses.Failed => "Requiere atención",

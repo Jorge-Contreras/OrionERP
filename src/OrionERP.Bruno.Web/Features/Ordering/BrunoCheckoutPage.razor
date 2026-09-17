@@ -81,7 +81,7 @@
         </section>
 
         <section class="checkout-panel" aria-labelledby="payment-title">
-          <header><span>2</span><div><h2 id="payment-title">Pago seguro</h2><p>PayPal captura el pago de inmediato. No recibimos los datos completos de tu instrumento de pago.</p></div></header>
+          <header><span>2</span><div><h2 id="payment-title">Pago seguro</h2><p>Los datos de tu tarjeta se capturan directamente en un formulario de Clip. Este sitio nunca los recibe.</p></div></header>
           <label class="legal-check">
             <input type="checkbox" disabled="@paymentReady" @bind="legalAccepted" />
             <span>Acepto los <a href="/terminos" target="_blank" rel="noopener">términos de pedidos</a> y confirmo que leí el <a href="/privacidad" target="_blank" rel="noopener">aviso de privacidad</a>.</span>
@@ -91,14 +91,20 @@
           @if (!paymentReady)
           {
             <button class="button button--accent checkout-continue" type="button" disabled="@(isQuoting || !configuration.CanAcceptOrders)" @onclick="PreparePaymentAsync">
-              @(isQuoting ? "Confirmando precio…" : "Continuar con PayPal")
+              @(isQuoting ? "Confirmando precio…" : "Continuar al pago")
             </button>
           }
           else
           {
             <div class="payment-locked"><span>Datos confirmados para esta cotización.</span>@if (string.IsNullOrWhiteSpace(recoveryTrackingToken)) { <button type="button" @onclick="EditDetailsAsync">Editar</button> } else { <a href="/pedido/@Uri.EscapeDataString(recoveryTrackingToken)">Ver intento actual</a> }</div>
-            <div id="bruno-paypal-buttons" class="paypal-buttons" aria-live="polite"></div>
-            @if (paymentInProgress) { <p class="payment-progress" role="status">Estamos comunicándonos con PayPal. No cierres esta página ni intentes pagar otra vez.</p> }
+            <div id="bruno-card-form" class="card-form" aria-live="polite"></div>
+            <button class="button button--accent checkout-pay" type="button" disabled="@(!cardFormMounted || paymentInProgress)" @onclick="PayAsync">
+              @(paymentInProgress ? "Procesando…" : $"Pagar {quote?.Total ?? 0:C2} MXN")
+            </button>
+            @if (paymentInProgress)
+            {
+              <p class="payment-progress" role="status">Estamos procesando tu pago. No cierres esta página ni intentes pagar otra vez.</p>
+            }
           }
         </section>
       </div>
@@ -140,12 +146,11 @@
   private readonly List<BrunoCartLine> cart = [];
   private RestaurantOnlineOrderingConfigurationDto? configuration;
   private RestaurantOnlineQuoteResult? quote;
-  private DotNetObjectReference<BrunoCheckoutPage>? dotNetReference;
   private bool isLoading = true;
   private bool cartLoaded;
   private bool isQuoting;
   private bool paymentReady;
-  private bool payPalRendered;
+  private bool cardFormMounted;
   private bool paymentInProgress;
   private bool isAuthenticated;
   private bool isMemberConnected;
@@ -216,37 +221,43 @@
       return;
     }
 
-    if (paymentReady && !payPalRendered && quote is not null && configuration is not null)
+    if (paymentReady && !cardFormMounted && quote is not null && configuration is not null)
     {
-      payPalRendered = true;
-      dotNetReference ??= DotNetObjectReference.Create(this);
+      cardFormMounted = true;
       try
       {
-        var rendered = await Js.InvokeAsync<bool>("brunoOrdering.renderPayPalButtons", "bruno-paypal-buttons", new BrunoPayPalButtonOptions
+        var mounted = await Js.InvokeAsync<bool>("brunoOrdering.mountCardForm", "bruno-card-form", BuildCardOptions());
+        if (!mounted)
         {
-          ClientId = configuration.PayPalClientId,
-          Currency = configuration.Currency,
-          Locale = configuration.PayPalLocale,
-          QuoteToken = quote.QuoteToken ?? string.Empty,
-          QuoteFingerprint = quote.Fingerprint ?? string.Empty,
-          ClientAttemptId = clientAttemptId,
-          CustomerName = customerName.Trim(),
-          CustomerEmail = customerEmail.Trim(),
-          CustomerPhone = customerPhone.Trim(),
-          TermsAccepted = legalAccepted,
-          TermsVersion = configuration.TermsVersion,
-          PrivacyVersion = configuration.PrivacyVersion
-        }, dotNetReference);
-        if (!rendered) payPalRendered = false;
+          cardFormMounted = false;
+          errorMessage = "No pudimos cargar el formulario de pago. Actualiza la página e inténtalo de nuevo.";
+        }
+        StateHasChanged();
       }
       catch (Exception ex)
       {
-        payPalRendered = false;
-        errorMessage = FriendlyInteropError(ex, "No pudimos cargar PayPal.");
+        cardFormMounted = false;
+        errorMessage = FriendlyInteropError(ex, "No pudimos cargar el formulario de pago.");
         StateHasChanged();
       }
     }
   }
+
+  private BrunoClipCardOptions BuildCardOptions() => new()
+  {
+    ApiKey = configuration!.ClipApiKey,
+    Currency = configuration.Currency,
+    Locale = configuration.ClipLocale,
+    QuoteToken = quote!.QuoteToken ?? string.Empty,
+    QuoteFingerprint = quote.Fingerprint ?? string.Empty,
+    ClientAttemptId = clientAttemptId,
+    CustomerName = customerName.Trim(),
+    CustomerEmail = customerEmail.Trim(),
+    CustomerPhone = customerPhone.Trim(),
+    TermsAccepted = legalAccepted,
+    TermsVersion = configuration.TermsVersion,
+    PrivacyVersion = configuration.PrivacyVersion
+  };
 
   private async Task RefreshQuoteAsync()
   {
@@ -298,7 +309,7 @@
 
     clientAttemptId = Guid.NewGuid();
     paymentReady = true;
-    payPalRendered = false;
+    cardFormMounted = false;
     paymentInProgress = false;
   }
 
@@ -317,7 +328,7 @@
       return configuration?.UnavailableReason ?? "Los pedidos no están disponibles en este momento.";
     if (configuration.AllowGuestCheckout != true && !isMemberConnected)
       return $"Inicia sesión en {MembershipName} para completar el pedido.";
-    if (string.IsNullOrWhiteSpace(configuration.PayPalClientId))
+    if (string.IsNullOrWhiteSpace(configuration.ClipApiKey))
       return "El pago en línea no está disponible en este momento.";
     return null;
   }
@@ -330,86 +341,63 @@
       return;
     }
     paymentReady = false;
-    payPalRendered = false;
+    cardFormMounted = false;
     paymentInProgress = false;
-    try { await Js.InvokeVoidAsync("brunoOrdering.clearPayPalButtons", "bruno-paypal-buttons"); }
+    try { await Js.InvokeVoidAsync("brunoOrdering.clearCardForm", "bruno-card-form"); }
     catch { }
   }
 
-  [JSInvokable]
-  public Task OnPaymentStarted()
+  /// <summary>
+  /// El resultado del cobro llega como dato de una sola llamada: si el interop
+  /// lanzara, Blazor Server reemplazaría el texto y el cliente vería un mensaje
+  /// genérico en vez de la razón real del banco.
+  /// </summary>
+  private async Task PayAsync()
   {
+    if (paymentInProgress || quote is null || configuration is null) return;
     paymentInProgress = true;
     errorMessage = null;
     StateHasChanged();
-    return Task.CompletedTask;
-  }
 
-  [JSInvokable]
-  public Task OnPayPalOrderCreated(string payPalOrderId, string trackingToken)
-  {
-    recoveryTrackingToken = trackingToken;
-    paymentInProgress = true;
-    StateHasChanged();
-    return Task.CompletedTask;
-  }
+    RestaurantOnlineChargeResult? result = null;
+    try
+    {
+      var json = await Js.InvokeAsync<JsonElement>("brunoOrdering.payWithCard", BuildCardOptions());
+      result = JsonSerializer.Deserialize<RestaurantOnlineChargeResult>(json.GetRawText(), WebJson);
+    }
+    catch (Exception ex)
+    {
+      errorMessage = FriendlyInteropError(ex, "No pudimos completar el pago. Revisa el estado de tu pedido antes de intentar otra vez.");
+    }
 
-  [JSInvokable]
-  public async Task OnPaymentCompleted(string json)
-  {
-    RestaurantOnlinePayPalCaptureResult? result = null;
-    try { result = JsonSerializer.Deserialize<RestaurantOnlinePayPalCaptureResult>(json, WebJson); }
-    catch { }
+    if (!string.IsNullOrWhiteSpace(result?.TrackingToken))
+      recoveryTrackingToken = result.TrackingToken;
 
-    var tracking = result?.TrackingToken ?? recoveryTrackingToken;
-    if (result?.PaymentCaptured == true || result?.IsPending == true ||
-        string.Equals(result?.CheckoutStatus, RestaurantOnlineCheckoutStatuses.Captured, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(result?.CheckoutStatus, RestaurantOnlineCheckoutStatuses.PosCreated, StringComparison.OrdinalIgnoreCase))
+    // Un cobro aceptado, pendiente o en verificación ya no debe conservar el
+    // carrito: el pedido vive del lado del servidor a partir de aquí.
+    if (result?.PaymentCaptured == true || result?.IsPending == true)
     {
       try { await Js.InvokeVoidAsync("brunoOrdering.clearCart", Website.Instance.PublicSiteKey); }
       catch { }
     }
 
-    if (!string.IsNullOrWhiteSpace(tracking))
+    if ((result?.PaymentCaptured == true || result?.IsPending == true)
+        && !string.IsNullOrWhiteSpace(recoveryTrackingToken))
     {
-      Navigation.NavigateTo($"/pedido/{Uri.EscapeDataString(tracking)}");
+      try { await Js.InvokeVoidAsync("brunoOrdering.clearCardForm", "bruno-card-form"); }
+      catch { }
+      Navigation.NavigateTo($"/pedido/{Uri.EscapeDataString(recoveryTrackingToken)}");
       return;
     }
 
     paymentInProgress = false;
-    errorMessage = result?.Message ?? $"PayPal respondió, pero no pudimos recuperar el seguimiento. Contacta a {Presentation.ShortName} antes de intentar pagar otra vez.";
-    StateHasChanged();
-  }
-
-  [JSInvokable]
-  public Task OnPaymentCancelled(string cancelledAttemptId)
-  {
-    if (!Guid.TryParse(cancelledAttemptId, out var cancelledAttempt) || cancelledAttempt != clientAttemptId)
-    {
-      return Task.CompletedTask;
-    }
-    paymentInProgress = false;
-    recoveryTrackingToken = null;
-    errorMessage = "Cancelaste la ventana de PayPal. No se realizó un nuevo cobro.";
-    StateHasChanged();
-    return Task.CompletedTask;
-  }
-
-  [JSInvokable]
-  public Task OnPaymentFailed(string message, string payPalOrderId, string trackingToken)
-  {
-    paymentInProgress = false;
-    if (!string.IsNullOrWhiteSpace(trackingToken))
-    {
-      recoveryTrackingToken = trackingToken;
-      errorMessage = "Ya existe un intento de pago. Consulta su estado antes de volver a pagar.";
-    }
+    // Un rechazo del banco deja el intento libre para otra tarjeta, así que el
+    // formulario se remonta en vez de mandar al cliente al seguimiento.
+    if (result is not null && !string.IsNullOrWhiteSpace(result.Message))
+      errorMessage = result.Message;
     else
-    {
-      errorMessage = string.IsNullOrWhiteSpace(message) ? "No pudimos completar el pago con PayPal." : message;
-    }
+      errorMessage ??= "No pudimos completar el pago. Intenta con otra tarjeta.";
     StateHasChanged();
-    return Task.CompletedTask;
   }
 
   private static string FriendlyInteropError(Exception exception, string fallback)
@@ -427,8 +415,7 @@
 
   public async ValueTask DisposeAsync()
   {
-    try { await Js.InvokeVoidAsync("brunoOrdering.clearPayPalButtons", "bruno-paypal-buttons"); }
+    try { await Js.InvokeVoidAsync("brunoOrdering.clearCardForm", "bruno-card-form"); }
     catch { }
-    dotNetReference?.Dispose();
   }
 }

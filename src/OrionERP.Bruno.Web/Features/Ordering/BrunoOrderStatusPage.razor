@@ -97,14 +97,14 @@
     : PaymentStepComplete ? "Pago recibido"
     : "Confirmando tu pago";
   private string StatusMessage => !string.IsNullOrWhiteSpace(status?.Message) ? status.Message
-    : IsRefundState ? "El importe se enviará al medio de pago original. El tiempo de acreditación depende de PayPal y tu institución financiera."
+    : IsRefundState ? "El importe se enviará al medio de pago original. El tiempo de acreditación depende de Clip y tu institución financiera."
     : NeedsRequote ? "No hicimos el cobro. Algún precio, promoción o disponibilidad cambió; revisa la nueva cotización para continuar."
     : ReadyStepComplete ? (IsReadyEmailSent ? "Te enviamos un correo. Presenta tu número de pedido al recogerlo en el restaurante." : "Presenta tu número de pedido al recogerlo en el restaurante.")
     : OrderStepComplete ? "Te enviaremos un correo cuando esté listo. No necesitas mantener esta página abierta."
     : PaymentStepComplete ? "Recibimos tu pago y estamos terminando de confirmar el pedido. No vuelvas a pagar."
-    : "PayPal todavía está confirmando la operación.";
+    : "Todavía estamos confirmando la operación con el banco.";
   private string HeroClass => IsRefundState ? "is-refund" : IsFailureState || NeedsRequote ? "is-error" : ReadyStepComplete ? "is-ready" : "is-progress";
-  private string PaymentStepText => PaymentStepComplete ? "Recibido" : IsFailureState ? "No confirmado" : "Confirmando con PayPal";
+  private string PaymentStepText => PaymentStepComplete ? "Recibido" : IsFailureState ? "No confirmado" : "Confirmando el cobro";
   private string OrderStepText => OrderStepComplete ? "Pedido creado" : PaymentStepComplete ? "En proceso, no vuelvas a pagar" : "Pendiente";
   private string PreparationStepText => PreparationStepComplete ? "En cocina" : OrderStepComplete ? "Se enviará a cocina" : "Pendiente";
   private string ReadyStepText => !ReadyStepComplete ? "Te avisaremos por correo"

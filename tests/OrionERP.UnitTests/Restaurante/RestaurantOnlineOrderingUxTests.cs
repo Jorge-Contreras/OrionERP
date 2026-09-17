@@ -55,7 +55,7 @@ public sealed class RestaurantOnlineOrderingUxTests
     Assert.Contains("Puedes comprar como invitado", page, StringComparison.Ordinal);
     Assert.Contains("El canje de puntos sigue disponible solamente en el restaurante", page, StringComparison.Ordinal);
     Assert.DoesNotContain("PointsToRedeem", page, StringComparison.Ordinal);
-    Assert.Contains("PayPal captura el pago de inmediato", page, StringComparison.Ordinal);
+    Assert.Contains("se capturan directamente en un formulario de Clip", page, StringComparison.Ordinal);
     Assert.Contains("no mostramos un tiempo estimado", page, StringComparison.OrdinalIgnoreCase);
     Assert.Contains("X-CSRF-TOKEN", script, StringComparison.Ordinal);
     Assert.Contains("credentials: 'same-origin'", script, StringComparison.Ordinal);
@@ -100,25 +100,32 @@ public sealed class RestaurantOnlineOrderingUxTests
   }
 
   [Fact]
-  public void PayPal_cancel_discards_only_the_unapproved_attempt_and_unlocks_checkout_recovery()
+  public void Closing_the_bank_verification_never_offers_another_card()
   {
     var checkout = Read("src/OrionERP.Bruno.Web/Features/Ordering/BrunoCheckoutPage.razor");
     var script = Read("src/OrionERP.Bruno.Web/wwwroot/js/brunos-ordering.js");
-    var cancelStart = script.IndexOf("async onCancel()", StringComparison.Ordinal);
-    var errorStart = script.IndexOf("async onError(error)", cancelStart, StringComparison.Ordinal);
+    var service = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOnlineCheckoutService.cs");
 
-    Assert.True(cancelStart >= 0 && errorStart > cancelStart, "PayPal cancellation handler could not be isolated.");
-    var cancel = script[cancelStart..errorStart];
-    Assert.Contains("clearPendingCheckoutAttempt(options.clientAttemptId)", cancel, StringComparison.Ordinal);
-    Assert.Contains("OnPaymentCancelled", cancel, StringComparison.Ordinal);
-    Assert.Contains("options.clientAttemptId", cancel, StringComparison.Ordinal);
-    Assert.Contains("String(current.clientAttemptId) === String(attemptId)", script, StringComparison.Ordinal);
+    // Cerrar el iframe del 3DS no cancela nada: el cargo sigue vivo en Clip.
+    // Decirle al cliente que no se cobro seria mentira y lo llevaria a pagar dos veces.
+    var threeDs = script[script.IndexOf("const runThreeDsAsync", StringComparison.Ordinal)..];
+    Assert.Contains("event.origin !== expectedOrigin", threeDs, StringComparison.Ordinal);
+    Assert.Contains("outcome: 'dismissed'", threeDs, StringComparison.Ordinal);
+    Assert.DoesNotContain("No se realizó un nuevo cobro", script, StringComparison.Ordinal);
 
-    var callbackStart = checkout.IndexOf("public Task OnPaymentCancelled(string cancelledAttemptId)", StringComparison.Ordinal);
-    var callbackEnd = checkout.IndexOf("[JSInvokable]", callbackStart + 1, StringComparison.Ordinal);
-    Assert.True(callbackStart >= 0 && callbackEnd > callbackStart, "Checkout cancellation callback could not be isolated.");
-    Assert.Contains("cancelledAttempt != clientAttemptId", checkout[callbackStart..callbackEnd], StringComparison.Ordinal);
-    Assert.Contains("recoveryTrackingToken = null", checkout[callbackStart..callbackEnd], StringComparison.Ordinal);
+    var pay = script[script.IndexOf("async payWithCard(options)", StringComparison.Ordinal)..];
+    var dismissed = pay.IndexOf("verification.outcome !== 'completed'", StringComparison.Ordinal);
+    Assert.True(dismissed >= 0, "The abandoned-verification branch could not be isolated.");
+    Assert.Contains("isPending: true", pay[dismissed..], StringComparison.Ordinal);
+    Assert.Contains("No vuelvas a pagar", pay[dismissed..], StringComparison.Ordinal);
+
+    // Un cargo en vuelo o en 3DS nunca vuelve a la pantalla de pago.
+    var existing = service[service.IndexOf(
+      "private static RestaurantOnlineChargeResult? ExistingChargeResult(", StringComparison.Ordinal)..];
+    Assert.Contains("RestaurantOnlineCheckoutStatuses.ChargePending", existing, StringComparison.Ordinal);
+    Assert.Contains("RestaurantOnlineCheckoutStatuses.Authenticating3ds", existing, StringComparison.Ordinal);
+    Assert.Contains("RestaurantOnlineCheckoutStatuses.ChargeUnknown", existing, StringComparison.Ordinal);
+    Assert.Contains("/pedido/", checkout, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -129,12 +136,16 @@ public sealed class RestaurantOnlineOrderingUxTests
 
     Assert.Equal("Sandbox", checkout.GetProperty("Environment").GetString());
     Assert.Equal("MXN", checkout.GetProperty("Currency").GetString());
-    Assert.Equal("es_MX", checkout.GetProperty("PayPalLocale").GetString());
-    Assert.Equal("shared-paypal-v1", checkout.GetProperty("MerchantProfileKey").GetString());
-    Assert.Equal(string.Empty, checkout.GetProperty("PayPalClientId").GetString());
-    Assert.Equal(string.Empty, checkout.GetProperty("PayPalClientSecret").GetString());
-    Assert.Equal(string.Empty, checkout.GetProperty("PayPalWebhookId").GetString());
+    Assert.Equal("es", checkout.GetProperty("ClipLocale").GetString());
+    Assert.Equal("clip-v1", checkout.GetProperty("MerchantProfileKey").GetString());
+    Assert.Equal(string.Empty, checkout.GetProperty("ClipApiKey").GetString());
+    Assert.Equal(string.Empty, checkout.GetProperty("ClipApiSecret").GetString());
     Assert.Equal(10, checkout.GetProperty("QuoteTokenLifetimeMinutes").GetInt32());
+    // Los pagos diferidos no se pueden reembolsar por API (AI1806).
+    Assert.Equal(1, checkout.GetProperty("Installments").GetInt32());
+    Assert.False(checkout.TryGetProperty("PayPalClientId", out _));
+    Assert.False(checkout.TryGetProperty("ClipAuthScheme", out _));
+    Assert.False(checkout.TryGetProperty("PayPalWebhookId", out _));
   }
 
   [Fact]
@@ -145,11 +156,21 @@ public sealed class RestaurantOnlineOrderingUxTests
 
     Assert.Contains("antiforgery.ValidateRequestAsync(context)", api, StringComparison.Ordinal);
     Assert.Contains("DisableAntiforgery()", api, StringComparison.Ordinal);
-    Assert.Contains("PAYPAL-TRANSMISSION-SIG", api, StringComparison.Ordinal);
     Assert.Contains("RequireRateLimiting(\"checkout\")", api, StringComparison.Ordinal);
     Assert.Contains("RequireRateLimiting(\"webhook\")", api, StringComparison.Ordinal);
-    Assert.Contains("PayPalOrdersClient<RestaurantCheckoutOptions>", program, StringComparison.Ordinal);
-    Assert.Contains("https://*.paypal.com", program, StringComparison.Ordinal);
+    // El aviso de Clip no va firmado: no hay encabezado que verificar, y el
+    // cuerpo se acota a su forma porque son tres campos cortos.
+    Assert.DoesNotContain("TRANSMISSION", api, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("MaximumWebhookBodyBytes = 4_096", api, StringComparison.Ordinal);
+    Assert.Contains("ClipPaymentsClient<RestaurantCheckoutOptions>", program, StringComparison.Ordinal);
+    Assert.Contains("https://sdk.clip.mx", program, StringComparison.Ordinal);
+    Assert.Contains("https://3ds.payclip.com", program, StringComparison.Ordinal);
+    // Descubierto probando en sandbox: el SDK sirve el formulario desde
+    // elements.clip.mx y carga su script de prevención de fraudes desde
+    // tools.clip.mx. Sin estos dos orígenes el formulario no dibuja nada.
+    Assert.Contains("https://elements.clip.mx", program, StringComparison.Ordinal);
+    Assert.Contains("https://tools.clip.mx", program, StringComparison.Ordinal);
+    Assert.DoesNotContain("paypal.com", program, StringComparison.OrdinalIgnoreCase);
   }
 
   [Fact]
@@ -169,9 +190,8 @@ public sealed class RestaurantOnlineOrderingUxTests
     Assert.Contains("Te mandaremos otro correo cuando esté listo", notifications, StringComparison.Ordinal);
     Assert.Contains("AddHostedService<OnlineRestaurantOrderNotificationWorker>", program, StringComparison.Ordinal);
     Assert.Contains("AddHostedService<OnlineRestaurantPaymentRecoveryWorker>", program, StringComparison.Ordinal);
-    Assert.Contains("RestaurantPayPalClientResolver", program, StringComparison.Ordinal);
-    Assert.Contains("RestaurantPayPalHistorical", program, StringComparison.Ordinal);
-    Assert.Contains("IPayPalRecoveryProcessor", notifications, StringComparison.Ordinal);
+    Assert.Contains("IPaymentRecoveryProcessor, RestaurantPaymentRecoveryProcessor", program, StringComparison.Ordinal);
+    Assert.Contains("IPaymentRecoveryProcessor", notifications, StringComparison.Ordinal);
     Assert.Contains("OnlineOrderNotificationProviderMessageSet", notifications, StringComparison.Ordinal);
     Assert.Contains("MicrosoftGraphMailMessageState.Missing", notifications, StringComparison.Ordinal);
     Assert.Contains("MicrosoftGraphMailMessageState.Draft", notifications, StringComparison.Ordinal);
@@ -187,41 +207,45 @@ public sealed class RestaurantOnlineOrderingUxTests
   }
 
   [Fact]
-  public void Capture_retry_returns_durable_pending_before_quote_expiry_or_repricing()
+  public void Charge_retry_returns_durable_pending_before_quote_expiry_or_repricing()
   {
     var service = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOnlineCheckoutService.cs");
-    var captureStart = service.IndexOf(
-      "public async Task<RestaurantOnlinePayPalCaptureResult> CapturePayPalOrderAsync(",
+    var chargeStart = service.IndexOf(
+      "public async Task<RestaurantOnlineChargeResult> ChargeAsync(",
       StringComparison.Ordinal);
-    var captureEnd = service.IndexOf(
-      "public async Task<RestaurantOnlineCheckoutStatusDto?> GetStatusAsync(",
-      captureStart + 1,
+    var chargeEnd = service.IndexOf(
+      "public async Task<RestaurantOnlineChargeResult> ConfirmChargeAsync(",
+      chargeStart + 1,
       StringComparison.Ordinal);
-    Assert.True(captureStart >= 0 && captureEnd > captureStart, "CapturePayPalOrderAsync could not be isolated.");
+    Assert.True(chargeStart >= 0 && chargeEnd > chargeStart, "ChargeAsync could not be isolated.");
 
-    var capture = service[captureStart..captureEnd];
-    var attemptLoad = capture.IndexOf("attempt = await GetAttemptAsync", StringComparison.Ordinal);
-    var durableResult = capture.IndexOf("var terminal = ExistingCaptureResult", StringComparison.Ordinal);
-    var quoteRead = capture.IndexOf("if (!TryReadQuote", StringComparison.Ordinal);
-    var reprice = capture.IndexOf("var current = await QuoteAsync", StringComparison.Ordinal);
+    var charge = service[chargeStart..chargeEnd];
+    var attemptLoad = charge.IndexOf("attempt = await GetAttemptAsync", StringComparison.Ordinal);
+    var durableResult = charge.IndexOf("var terminal = ExistingChargeResult", StringComparison.Ordinal);
+    var quoteRead = charge.IndexOf("if (!TryReadQuote", StringComparison.Ordinal);
+    var reprice = charge.IndexOf("var current = await QuoteAsync", StringComparison.Ordinal);
+    var exclusive = charge.IndexOf("await BeginChargeAsync", StringComparison.Ordinal);
+    var providerCall = charge.IndexOf("_clip.CreatePaymentAsync", StringComparison.Ordinal);
 
-    Assert.True(attemptLoad >= 0, "Capture must load the durable checkout attempt first.");
-    Assert.True(durableResult > attemptLoad, "Capture must derive retries from the durable attempt.");
-    Assert.True(quoteRead > durableResult, "Durable capture states must be returned before quote expiry is evaluated.");
-    Assert.True(reprice > quoteRead, "A new capture may reprice only after validating its quote.");
+    Assert.True(attemptLoad >= 0, "A charge must load the durable checkout attempt first.");
+    Assert.True(durableResult > attemptLoad, "A charge must derive retries from the durable attempt.");
+    Assert.True(quoteRead > durableResult, "Durable charge states must be returned before quote expiry is evaluated.");
+    Assert.True(reprice > quoteRead, "A new charge may reprice only after validating its quote.");
+    // El derecho exclusivo lo concede la base y es lo unico que sustituye a la
+    // llave de idempotencia que Clip no ofrece en POST /payments.
+    Assert.True(exclusive > reprice, "The exclusive charge must be granted after repricing.");
+    Assert.True(providerCall > exclusive, "Clip may only be called once the exclusive charge is held.");
 
-    var resultStart = service.IndexOf(
-      "private static RestaurantOnlinePayPalCaptureResult? ExistingCaptureResult(",
+    var existingStart = service.IndexOf(
+      "private static RestaurantOnlineChargeResult? ExistingChargeResult(",
       StringComparison.Ordinal);
-    var resultEnd = service.IndexOf("private static void ValidateProviderOrder(", resultStart + 1, StringComparison.Ordinal);
-    Assert.True(resultStart >= 0 && resultEnd > resultStart, "ExistingCaptureResult could not be isolated.");
+    var existingEnd = service.IndexOf("private static bool IsAttemptCreateRevalidationFailure(", existingStart + 1, StringComparison.Ordinal);
+    Assert.True(existingStart >= 0 && existingEnd > existingStart, "ExistingChargeResult could not be isolated.");
 
-    var existingResult = service[resultStart..resultEnd];
-    Assert.Contains("attempt.State == RestaurantOnlineCheckoutStatuses.CapturePending", existingResult, StringComparison.Ordinal);
-    Assert.Contains("Code = \"capture_pending\"", existingResult, StringComparison.Ordinal);
-    Assert.Contains("TrackingToken = trackingToken", existingResult, StringComparison.Ordinal);
-    Assert.Contains("PaymentCaptured = false", existingResult, StringComparison.Ordinal);
-    Assert.Contains("IsPending = true", existingResult, StringComparison.Ordinal);
+    var existingResult = service[existingStart..existingEnd];
+    Assert.Contains("PendingChargeResult(trackingToken, attempt.State)", existingResult, StringComparison.Ordinal);
+    // Quoted y PaymentDenied son los unicos estados que admiten otra tarjeta.
+    Assert.Contains("return null;", existingResult, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -229,79 +253,140 @@ public sealed class RestaurantOnlineOrderingUxTests
   {
     var service = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOnlineCheckoutService.cs");
     var createStart = service.IndexOf(
-      "public async Task<RestaurantOnlinePayPalOrderResult> CreatePayPalOrderAsync(",
+      "public async Task<RestaurantOnlineCheckoutBeginResult> BeginCheckoutAsync(",
       StringComparison.Ordinal);
     var createEnd = service.IndexOf(
-      "public async Task<RestaurantOnlinePayPalCaptureResult> CapturePayPalOrderAsync(",
+      "public async Task<RestaurantOnlineChargeResult> ChargeAsync(",
       createStart + 1,
       StringComparison.Ordinal);
-    Assert.True(createStart >= 0 && createEnd > createStart, "CreatePayPalOrderAsync could not be isolated.");
+    Assert.True(createStart >= 0 && createEnd > createStart, "BeginCheckoutAsync could not be isolated.");
 
     var create = service[createStart..createEnd];
     Assert.Contains("when (IsAttemptCreateRevalidationFailure(exception))", create, StringComparison.Ordinal);
     Assert.Contains("var refreshedBootstrap = await LoadBootstrapAsync", create, StringComparison.Ordinal);
     Assert.Contains("EvaluateAvailability(binding, refreshedBootstrap)", create, StringComparison.Ordinal);
     Assert.Contains("\"requote_required\"", create, StringComparison.Ordinal);
+    // Reservar el intento no toca a Clip: el pago no existe hasta el cargo.
+    Assert.DoesNotContain("_clip.", create, StringComparison.Ordinal);
     Assert.Contains("exception.Number is 53624 or 53628", service, StringComparison.Ordinal);
     Assert.DoesNotContain("exception.Number is 53624 or 53628 or", service, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void PayPal_recovery_reloads_a_concurrent_state_winner_and_still_finishes_its_lease()
+  public void Charge_recovery_resolves_by_lookup_and_never_repeats_a_charge()
   {
-    var recovery = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPayPalRecoveryProcessor.cs");
-    var stateStart = recovery.IndexOf("private async Task SetAttemptStateAsync(", StringComparison.Ordinal);
-    var stateEnd = recovery.IndexOf("private async Task FinishRefundAsync(", stateStart + 1, StringComparison.Ordinal);
-    Assert.True(stateStart >= 0 && stateEnd > stateStart, "SetAttemptStateAsync could not be isolated.");
+    var recovery = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPaymentRecoveryProcessor.cs");
+    var client = Read("src/OrionERP.Infrastructure/Features/Payments/Clip/ClipPaymentsClient.cs");
 
-    var stateUpdate = recovery[stateStart..stateEnd];
-    Assert.Contains("exception.Number == 53652", stateUpdate, StringComparison.Ordinal);
-    Assert.Contains("restaurante.OnlineCheckoutAttemptGet", stateUpdate, StringComparison.Ordinal);
-    Assert.Contains("string.Equals(current.State, row.State", stateUpdate, StringComparison.Ordinal);
+    // La invariante central de toda la migracion: Clip no acepta llave de
+    // idempotencia en POST /payments, asi que la recuperacion jamas cobra.
+    Assert.DoesNotContain("CreatePaymentAsync", recovery, StringComparison.Ordinal);
+    Assert.Contains("_clip.GetPaymentAsync", recovery, StringComparison.Ordinal);
 
-    var voidedUpdate = recovery.IndexOf("PAYPAL_ORDER_VOIDED", StringComparison.Ordinal);
-    var voidedFinish = recovery.IndexOf("await FinishRecoveryAsync", voidedUpdate, StringComparison.Ordinal);
-    Assert.True(voidedUpdate >= 0 && voidedFinish > voidedUpdate,
-      "A superseded VOIDED transition must still release its recovery lease.");
+    // Un cargo que no dejo identificador solo se encuentra barriendo la ventana:
+    // GET /payments no filtra por external_reference.
+    var sweep = recovery[recovery.IndexOf("private async Task<ClipPaymentResult?> FindPaymentAsync", StringComparison.Ordinal)..];
+    Assert.Contains("_clip.ListPaymentsAsync", sweep, StringComparison.Ordinal);
+    Assert.Contains("ClipExternalReference.TryParse", sweep, StringComparison.Ordinal);
+
+    // Un desenlace desconocido en el cobro se marca como tal, nunca como transitorio.
+    Assert.Contains("treatFailureAsUnknown: true", client, StringComparison.Ordinal);
+    Assert.Contains("isOutcomeUnknown: treatFailureAsUnknown", client, StringComparison.Ordinal);
+
+    // Toda rama libera su concesion, incluida la que declara el cargo perdido.
+    var missing = recovery[recovery.IndexOf("private async Task HandleMissingPaymentAsync", StringComparison.Ordinal)..];
+    Assert.Contains("CLIP_CHARGE_NOT_FOUND", missing, StringComparison.Ordinal);
+    Assert.Contains("ChargeReconciliationWindowMinutes", missing, StringComparison.Ordinal);
+    Assert.Contains("await FinishRecoveryAsync", missing, StringComparison.Ordinal);
+
+    // Un pago ajeno o con importe distinto nunca se acepta como cobro del pedido.
+    Assert.Contains("private static bool BelongsToAttempt", recovery, StringComparison.Ordinal);
+    Assert.Contains("payment.Amount == row.Total", recovery, StringComparison.Ordinal);
+    Assert.Contains("CLIP_PAYMENT_MISMATCH", recovery, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void Refund_recovery_requires_the_expected_capture_and_preserves_provider_id_on_mismatch()
+  public void Refund_recovery_checks_what_is_already_refunded_before_asking_again()
   {
-    var recovery = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPayPalRecoveryProcessor.cs");
+    var recovery = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPaymentRecoveryProcessor.cs");
     var refundStart = recovery.IndexOf("private async Task ProcessRefundAsync(", StringComparison.Ordinal);
-    var refundEnd = recovery.IndexOf("private async Task FinishRecoveryAsync(", refundStart + 1, StringComparison.Ordinal);
+    var refundEnd = recovery.IndexOf("private async Task FinishRefundFromProviderAsync(", refundStart + 1, StringComparison.Ordinal);
     Assert.True(refundStart >= 0 && refundEnd > refundStart, "ProcessRefundAsync could not be isolated.");
 
     var refund = recovery[refundStart..refundEnd];
-    Assert.Contains("string.Equals(refund.CaptureId, row.ProviderCaptureId", recovery, StringComparison.Ordinal);
-    Assert.Contains("!string.IsNullOrWhiteSpace(refund?.RefundId)", refund, StringComparison.Ordinal);
-    Assert.Contains("providerRefundId: acceptedRefundId", refund, StringComparison.Ordinal);
-    Assert.Contains("PAYPAL_REFUND_MISMATCH", refund, StringComparison.Ordinal);
+    // La llave de idempotencia de Clip vive un minuto, asi que no protege entre
+    // reintentos; lo que protege es mirar cuanto lleva reembolsado el pago.
+    var lookup = refund.IndexOf("_clip.GetPaymentAsync", StringComparison.Ordinal);
+    var request = refund.IndexOf("_clip.RefundPaymentAsync", StringComparison.Ordinal);
+    Assert.True(lookup >= 0 && request > lookup,
+      "The payment's refunded amount must be read before asking Clip for another refund.");
+    Assert.Contains("CLIP_REFUND_ALREADY_SETTLED", refund, StringComparison.Ordinal);
+    Assert.Contains("CLIP_REFUND_EXCEEDS_PAYMENT", refund, StringComparison.Ordinal);
+    Assert.Contains("exception.IsOutcomeUnknown", refund, StringComparison.Ordinal);
+
+    // Clip no entrega desglose de comision, asi que un reembolso completado se
+    // liquida a valor nominal: sale el monto integro y no se registra comision.
+    // Las columnas son todo-o-nada, asi que solo se escriben al completarse.
+    var finish = recovery[recovery.IndexOf("private async Task FinishRefundAsync(", StringComparison.Ordinal)..];
+    Assert.Contains("var isSettled = string.Equals(outcome, \"Completed\"", finish, StringComparison.Ordinal);
+    Assert.Contains("ProviderGrossAmount = isSettled ? row.Amount : (decimal?)null", finish, StringComparison.Ordinal);
+    Assert.Contains("ProviderFeeAmount = isSettled ? 0m : (decimal?)null", finish, StringComparison.Ordinal);
+    Assert.Contains("ReconciledAtUtc = isSettled ?", finish, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void Refund_webhooks_get_provider_truth_then_bind_atomically_or_remain_alertable()
+  public void Notifications_are_verified_by_lookup_and_external_refunds_stay_alertable()
   {
-    var recovery = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPayPalRecoveryProcessor.cs");
-    var eventStart = recovery.IndexOf("private async Task ProcessRefundEventAsync(", StringComparison.Ordinal);
-    var eventEnd = recovery.IndexOf("private async Task ProcessRefundAsync(", eventStart + 1, StringComparison.Ordinal);
-    Assert.True(eventStart >= 0 && eventEnd > eventStart, "ProcessRefundEventAsync could not be isolated.");
+    var service = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantOnlineCheckoutService.cs");
+    var recovery = Read("src/OrionERP.Infrastructure/Features/Restaurante/RestaurantPaymentRecoveryProcessor.cs");
 
-    var refundEvent = recovery[eventStart..eventEnd];
-    var providerGet = refundEvent.IndexOf("GetRefundAsync", StringComparison.Ordinal);
-    var atomicBind = refundEvent.IndexOf("restaurante.PaymentGatewayRefundEventBind", StringComparison.Ordinal);
-    Assert.True(providerGet >= 0 && atomicBind > providerGet,
-      "A refund webhook must retrieve provider truth before binding a local refund.");
-    Assert.Contains("ProviderCaptureId = refund.CaptureId", refundEvent, StringComparison.Ordinal);
-    Assert.Contains("Amount = refund.Amount.Value", refundEvent, StringComparison.Ordinal);
-    Assert.Contains("CurrencyCode = refund.Amount.Currency", refundEvent, StringComparison.Ordinal);
-    Assert.Contains("\"Failed\"", refundEvent, StringComparison.Ordinal);
-    Assert.Contains("PAYPAL_REFUND_EVENT_", refundEvent, StringComparison.Ordinal);
+    // El aviso de Clip llega sin firma: nada de su cuerpo se toma como verdad,
+    // solo el identificador para ir a consultar el pago.
+    var webhook = service[service.IndexOf("public async Task<RestaurantClipWebhookResult> ProcessClipWebhookAsync(", StringComparison.Ordinal)..];
+    Assert.Contains("TryParseClipNotification", webhook, StringComparison.Ordinal);
+    Assert.Contains("PaymentGatewayEventRecord", webhook, StringComparison.Ordinal);
+    Assert.DoesNotContain("GetPaymentAsync", webhook[..webhook.IndexOf("private ", StringComparison.Ordinal)], StringComparison.Ordinal);
+    // El mismo pago avisa varias veces con distinto event_type; el par evita que
+    // una transicion posterior se descarte como duplicado.
+    Assert.Contains("$\"{notification.Id}:{notification.EventType}\"", webhook, StringComparison.Ordinal);
 
-    Assert.Contains("IsCaptureRefundOrReversalEvent", recovery, StringComparison.Ordinal);
-    Assert.Contains("PAYPAL_CAPTURE_REFUND_REQUIRES_RECONCILIATION", recovery, StringComparison.Ordinal);
-    Assert.DoesNotContain("refundStatus ? \"Processed\"", recovery, StringComparison.Ordinal);
+    // Un reembolso hecho fuera del panel, por ejemplo desde la app de Clip, no
+    // se puede aplicar solo: se marca para revision en vez de ignorarse.
+    Assert.Contains("CLIP_EXTERNAL_REFUND_REQUIRES_RECONCILIATION", recovery, StringComparison.Ordinal);
+    Assert.Contains("payment.AmountRefunded > 0 && !IsRefundState(row.State)", recovery, StringComparison.Ordinal);
+    Assert.Contains("ManualReviewRetryDelay", recovery, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void No_restaurant_code_still_reads_the_renamed_provider_columns()
+  {
+    // La migración a Clip renombró PayPal*Id a Provider*Id. Validar sólo los
+    // procedimientos de la base no basta: el SQL embebido en C# y las clases que
+    // Dapper materializa también nombran columnas, y ahí el fallo es silencioso
+    // —la propiedad queda en null— hasta que el pedido ya se cobró. Eso llegó a
+    // rechazar y reembolsar un pedido pagado en la prueba de sandbox.
+    var raiz = Path.GetFullPath(Path.Combine(
+      AppContext.BaseDirectory, "../../../../../", "src"));
+    var renombradas = new[] { "PayPalOrderId", "PayPalCaptureId", "PayPalCreateRequestId" };
+
+    var ofensores = Directory
+      .EnumerateFiles(raiz, "*.cs", SearchOption.AllDirectories)
+      .Concat(Directory.EnumerateFiles(raiz, "*.razor", SearchOption.AllDirectories))
+      .Where(ruta => !ruta.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+      // Bonhomía conserva su propio flujo PayPal y sus columnas no se renombraron.
+      .Where(ruta => !ruta.Contains("Bonhomia", StringComparison.OrdinalIgnoreCase)
+        && !ruta.Contains("Hospitality", StringComparison.OrdinalIgnoreCase)
+        && !ruta.Contains("Reservaciones", StringComparison.OrdinalIgnoreCase))
+      .Select(ruta => (Ruta: ruta, Texto: File.ReadAllText(ruta)))
+      .Where(archivo => renombradas.Any(columna =>
+        archivo.Texto.Contains(columna, StringComparison.Ordinal)))
+      .Select(archivo => Path.GetFileName(archivo.Ruta))
+      .OrderBy(nombre => nombre, StringComparer.Ordinal)
+      .ToArray();
+
+    Assert.True(
+      ofensores.Length == 0,
+      $"Estos archivos siguen nombrando columnas renombradas: {string.Join(", ", ofensores)}");
   }
 
   private static string Read(string relativePath)

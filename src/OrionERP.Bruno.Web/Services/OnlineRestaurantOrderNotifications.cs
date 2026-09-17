@@ -323,7 +323,7 @@ internal sealed class OnlineRestaurantPaymentRecoveryWorker : BackgroundService
       try
       {
         await using var scope = _scopeFactory.CreateAsyncScope();
-        var recovery = scope.ServiceProvider.GetRequiredService<IPayPalRecoveryProcessor>();
+        var recovery = scope.ServiceProvider.GetRequiredService<IPaymentRecoveryProcessor>();
         var processed = await recovery.ProcessPendingAsync(10, stoppingToken);
         failureDelay = TimeSpan.FromSeconds(5);
         if (processed == 0) await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);

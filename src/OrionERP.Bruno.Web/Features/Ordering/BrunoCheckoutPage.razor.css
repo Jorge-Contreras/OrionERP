@@ -51,7 +51,11 @@
 .payment-locked { display:flex; justify-content:space-between; gap:1rem; margin:1rem 0; color:var(--text-muted); font-size:.8rem; }
 .payment-locked button { border:0; background:transparent; color:var(--ember-soft); font-weight:750; cursor:pointer; }
 .payment-locked a { color:var(--ember-soft); font-weight:750; }
-.paypal-buttons { min-height:2.7rem; }
+.card-form { min-height:12rem; margin:.4rem 0 1rem; }
+/* El SDK de Clip inserta su propio iframe; sin altura declarada el panel salta
+   al montarlo y el boton de pagar se mueve bajo el cursor. */
+.card-form iframe { width:100%; border:0; display:block; }
+.checkout-pay { width:100%; }
 .payment-progress { margin:.8rem 0 0; padding:.7rem; border-radius:.6rem; background:#ffffff08; color:var(--text-muted); font-size:.78rem; line-height:1.5; }
 .order-summary { position:sticky; top:calc(var(--header-h) + 1rem); overflow:hidden; }
 .order-summary > header { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1.15rem 1.2rem; border-bottom:1px solid var(--line); }

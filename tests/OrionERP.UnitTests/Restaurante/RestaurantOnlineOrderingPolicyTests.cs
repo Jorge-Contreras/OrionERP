@@ -1,4 +1,4 @@
-using OrionERP.Application.Features.Payments.PayPal;
+using OrionERP.Application.Features.Payments.Clip;
 using OrionERP.Application.Features.Restaurante;
 using OrionERP.Infrastructure.Features.Restaurante;
 using System.Reflection;
@@ -355,20 +355,40 @@ public sealed class RestaurantOnlineOrderingPolicyTests
   }
 
   [Fact]
-  public void RestaurantCheckoutProductionValidation_RequiresLiveWebhookAndHttps()
+  public void RestaurantCheckoutCredentials_ChargeWithTheKeyAloneAndTrackTheRefundSecretApart()
+  {
+    // Verificado contra el sandbox el 2026-09-17: la API de pagos acepta la clave
+    // sola como Bearer. Los endpoints de reembolso respondieron 401 con Bearer y
+    // con Basic, así que el secreto se conserva y se declara aparte mientras se
+    // confirma con Clip; no puede bloquear el arranque de un sitio que sí cobra.
+    var options = new RestaurantCheckoutOptions
+    {
+      Currency = "MXN",
+      ClipApiKey = "test_3f51aaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      PublicBaseUrl = "https://brunosgarden.com"
+    };
+
+    Assert.True(options.IsClipConfigured);
+    Assert.False(options.AreRefundsConfigured);
+    Assert.Empty(RestaurantCheckoutOptionsPolicy.Validate(options, production: false));
+
+    options.ClipApiSecret = "secreto-de-prueba";
+    Assert.True(options.AreRefundsConfigured);
+  }
+
+  [Fact]
+  public void RestaurantCheckoutProductionValidation_RequiresLiveCredentialsAndHttps()
   {
     var invalid = new RestaurantCheckoutOptions
     {
       Environment = "Sandbox",
       Currency = "MXN",
-      PayPalClientId = "client",
-      PayPalClientSecret = "secret",
+      ClipApiKey = "test_3f51aaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       PublicBaseUrl = "http://brunosgarden.com"
     };
     var errors = RestaurantCheckoutOptionsPolicy.Validate(invalid, production: true);
 
     Assert.Contains(errors, item => item.Contains("Live", StringComparison.OrdinalIgnoreCase));
-    Assert.Contains(errors, item => item.Contains("Webhook", StringComparison.OrdinalIgnoreCase));
     Assert.Contains(errors, item => item.Contains("HTTPS", StringComparison.OrdinalIgnoreCase));
   }
 
@@ -376,84 +396,111 @@ public sealed class RestaurantOnlineOrderingPolicyTests
   public void RestaurantCheckoutProductionValidation_LetsTheSiteStartBeforeTheLiveProfileIsInstalled()
   {
     // Online ordering ships disabled. On 2026-09-14 the first production publish crashed
-    // Bruno's whole website at startup because no PayPal settings existed yet.
-    var withoutPayPal = new RestaurantCheckoutOptions
+    // Bruno's whole website at startup because no payment settings existed yet.
+    var withoutClip = new RestaurantCheckoutOptions
     {
       Environment = "Sandbox",
       Currency = "MXN",
       PublicBaseUrl = "https://brunosgarden.com"
     };
 
-    Assert.Empty(RestaurantCheckoutOptionsPolicy.Validate(withoutPayPal, production: true));
-
-    var partialLiveProfile = new RestaurantCheckoutOptions
-    {
-      Environment = "Live",
-      Currency = "MXN",
-      PayPalClientId = "client",
-      PublicBaseUrl = "https://brunosgarden.com"
-    };
-    var errors = RestaurantCheckoutOptionsPolicy.Validate(partialLiveProfile, production: true);
-    Assert.Contains(errors, item => item.Contains("credenciales", StringComparison.OrdinalIgnoreCase));
-    Assert.Contains(errors, item => item.Contains("Webhook", StringComparison.OrdinalIgnoreCase));
-  }
-
-  [Fact]
-  public void PayPalRequestIds_AreDeterministicAndProviderBounded()
-  {
-    var source = "brunos-capture-17b37f34d9cc45aeb45ff350d2ca7750";
-    var first = PayPalRequestId.From(source);
-
-    Assert.Equal(first, PayPalRequestId.From(source));
-    Assert.Equal(PayPalRequestId.MaximumLength, first.Length);
-    Assert.NotEqual(first, PayPalRequestId.From(source + "-different"));
-  }
-
-  [Fact]
-  public void PayPalMetadata_IsStableAndScopedToTheVerifiedPublicSite()
-  {
-    var checkoutAttemptId = Guid.Parse("17b37f34-d9cc-45ae-b45f-f350d2ca7750");
-    var fingerprint = new string('a', 64);
-
-    Assert.Equal(
-      "online:brunos-main:17b37f34d9cc45aeb45ff350d2ca7750",
-      RestaurantPayPalMetadataPolicy.ReferenceId("brunos-main", checkoutAttemptId));
-    Assert.Equal(
-      "BRUNOS-MAIN-17b37f34d9cc45aeb45ff350d2ca7750",
-      RestaurantPayPalMetadataPolicy.InvoiceId("brunos-main", checkoutAttemptId));
-    Assert.Equal(
-      $"brunos-main:{fingerprint.ToUpperInvariant()}",
-      RestaurantPayPalMetadataPolicy.CustomId("brunos-main", fingerprint));
-
-    var firstRequestId = RestaurantPayPalMetadataPolicy.RequestId("brunos-main", "capture", checkoutAttemptId);
-    Assert.Equal(firstRequestId, RestaurantPayPalMetadataPolicy.RequestId("brunos-main", "capture", checkoutAttemptId));
-    Assert.Equal(PayPalRequestId.MaximumLength, firstRequestId.Length);
-    Assert.NotEqual(
-      firstRequestId,
-      RestaurantPayPalMetadataPolicy.RequestId("another-site", "capture", checkoutAttemptId));
-    Assert.NotEqual(
-      firstRequestId,
-      RestaurantPayPalMetadataPolicy.RequestId("brunos-main", "create", checkoutAttemptId));
+    Assert.Empty(RestaurantCheckoutOptionsPolicy.Validate(withoutClip, production: true));
   }
 
   [Theory]
-  [InlineData("unsafe site")]
-  [InlineData("site/with/slashes")]
-  public void PayPalMetadata_RejectsUnsafePublicSiteKeys(string publicSiteKey)
+  // Una clave de prueba en produccion no cobraria nada y el pedido se perderia
+  // en silencio; una productiva en sandbox cobraria de verdad. El prefijo de
+  // Clip permite atrapar ambos casos antes de arrancar.
+  [InlineData("Live", "test_3f51aaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
+  [InlineData("Sandbox", "3f51aaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
+  public void RestaurantCheckoutValidation_RejectsAnApiKeyFromTheWrongEnvironment(
+    string environment,
+    string apiKey)
   {
-    Assert.Throws<ArgumentException>(() =>
-      RestaurantPayPalMetadataPolicy.ReferenceId(publicSiteKey, Guid.NewGuid()));
+    var options = new RestaurantCheckoutOptions
+    {
+      Environment = environment,
+      Currency = "MXN",
+      ClipApiKey = apiKey,
+      PublicBaseUrl = "https://brunosgarden.com"
+    };
+
+    Assert.False(options.IsApiKeyEnvironmentConsistent);
+    Assert.Contains(
+      RestaurantCheckoutOptionsPolicy.Validate(options, production: false),
+      item => item.Contains("test_", StringComparison.Ordinal));
   }
 
   [Fact]
-  public void PayPalMetadata_RejectsOversizedKeysAndNonSha256Fingerprints()
+  public void RestaurantCheckoutWebhook_IsDerivedFromTheHttpsPublicAddress()
   {
-    Assert.Throws<ArgumentException>(() =>
-      RestaurantPayPalMetadataPolicy.ReferenceId(new string('a', 49), Guid.NewGuid()));
-    Assert.Throws<ArgumentException>(() =>
-      RestaurantPayPalMetadataPolicy.CustomId("brunos-main", "not-a-sha256-fingerprint"));
-    Assert.Throws<ArgumentException>(() =>
-      RestaurantPayPalMetadataPolicy.ReferenceId("brunos-main", Guid.Empty));
+    // Clip no da de alta webhooks ni entrega un identificador que validar: la URL
+    // viaja en el cuerpo de cada pago, asi que lo unico necesario para recibir
+    // avisos es una direccion publica HTTPS.
+    var ready = new RestaurantCheckoutOptions { PublicBaseUrl = "https://brunosgarden.com" };
+    Assert.True(ready.IsWebhookConfigured);
+    Assert.Equal(
+      "https://brunosgarden.com/api/restaurant/checkout/clip-webhook",
+      ready.WebhookUrl);
+
+    Assert.False(new RestaurantCheckoutOptions { PublicBaseUrl = "http://brunosgarden.com" }.IsWebhookConfigured);
+    Assert.False(new RestaurantCheckoutOptions { PublicBaseUrl = null }.IsWebhookConfigured);
+  }
+
+  [Fact]
+  public void RestaurantCheckoutValidation_RejectsInstallmentsThatCannotBeRefunded()
+  {
+    // Clip no reembolsa por API los pagos diferidos (AI1806), asi que un valor
+    // fuera de la lista dejaria al panel sin forma de devolver el dinero.
+    var options = new RestaurantCheckoutOptions
+    {
+      Currency = "MXN",
+      Installments = 4,
+      PublicBaseUrl = "https://brunosgarden.com"
+    };
+
+    Assert.Contains(
+      RestaurantCheckoutOptionsPolicy.Validate(options, production: false),
+      item => item.Contains("Installments", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public void ClipExternalReference_RoundTripsTheCheckoutAttemptWithinClipsLimit()
+  {
+    // Es el unico hilo que liga un cargo con su pedido cuando la respuesta se
+    // pierde, porque GET /payments solo filtra por fecha.
+    var checkoutAttemptId = Guid.NewGuid();
+    var reference = ClipExternalReference.From(checkoutAttemptId);
+
+    Assert.Equal(ClipExternalReference.MaximumLength, reference.Length);
+    Assert.True(ClipExternalReference.TryParse(reference, out var parsed));
+    Assert.Equal(checkoutAttemptId, parsed);
+
+    Assert.Throws<ArgumentException>(() => ClipExternalReference.From(Guid.Empty));
+    Assert.False(ClipExternalReference.TryParse("no-es-un-guid", out _));
+    Assert.False(ClipExternalReference.TryParse(null, out _));
+    Assert.False(ClipExternalReference.TryParse(checkoutAttemptId.ToString("N"), out _));
+  }
+
+  [Theory]
+  [InlineData("RE-ISS01", "fondos")]
+  [InlineData("RE-ISS07", "vencida")]
+  [InlineData("RE-3DS01", "verificación")]
+  public void ClipStatusMessages_ExplainWhatTheCardHolderCanDo(string statusCode, string expected)
+  {
+    // Un "pago rechazado" generico hace que la gente reintente con la misma
+    // tarjeta; decir que faltan fondos o que vencio, no.
+    Assert.Contains(expected, ClipStatusMessages.ForCode(statusCode), StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public void ClipStatusMessages_FallBackWithoutInventingAReason()
+  {
+    var fallback = ClipStatusMessages.ForCode("CODIGO-NUEVO-DE-CLIP");
+    Assert.False(string.IsNullOrWhiteSpace(fallback));
+    Assert.DoesNotContain("fondos", fallback, StringComparison.OrdinalIgnoreCase);
+    Assert.True(ClipStatusMessages.AllowsAnotherCard("RE-ISS01"));
+    Assert.False(ClipStatusMessages.AllowsAnotherCard("RE-ERI05"));
   }
 
   private static RestaurantOnlineQuoteSnapshot Quote()

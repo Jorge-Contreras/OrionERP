@@ -1,33 +1,67 @@
-using OrionERP.Application.Features.Payments.PayPal;
+using OrionERP.Application.Features.Payments.Clip;
 
 namespace OrionERP.Application.Features.Restaurante;
 
-public sealed class RestaurantCheckoutOptions : PayPalClientOptions
+public sealed class RestaurantCheckoutOptions : ClipClientOptions
 {
   public const string SectionName = "RestaurantCheckout";
 
+  /// <summary>Ruta relativa del endpoint que recibe los avisos de Clip.</summary>
+  public const string WebhookPath = "/api/restaurant/checkout/clip-webhook";
+
   public string Currency { get; set; } = "MXN";
-  public string PayPalLocale { get; set; } = "es_MX";
-  /// <summary>LOGIN, GUEST_CHECKOUT o NO_PREFERENCE; vacio deja decidir a PayPal.</summary>
-  public string PayPalLandingPage { get; set; } = "GUEST_CHECKOUT";
-  public string MerchantProfileKey { get; set; } = "shared-paypal-v1";
+
+  /// <summary>Idioma del formulario de tarjeta del SDK: <c>es</c> o <c>en</c>.</summary>
+  public string ClipLocale { get; set; } = "es";
+
+  public string MerchantProfileKey { get; set; } = "clip-v1";
   public int QuoteTokenLifetimeMinutes { get; set; } = 10;
   public int ProcessorHeartbeatMaxAgeSeconds { get; set; } = 60;
   public string? PublicBaseUrl { get; set; }
   public string TermsVersion { get; set; } = "online-orders-v1";
   public string PrivacyVersion { get; set; } = "online-orders-v1";
+
   /// <summary>
-  /// Private, keyed credential profiles retained only for refunds of captures
-  /// made before the active merchant account changed.
+  /// Minutos que un cargo puede quedarse sin resolver antes de que la
+  /// recuperación lo declare perdido. Tiene que cubrir con holgura el tiempo de
+  /// vida del card token (15 min) para no cerrar un cargo que aún podía aparecer.
   /// </summary>
-  public Dictionary<string, PayPalClientOptions> HistoricalMerchantProfiles { get; set; }
-    = new(StringComparer.Ordinal);
+  public int ChargeReconciliationWindowMinutes { get; set; } = 30;
+
+  /// <summary>
+  /// Pagos diferidos. Clip no reembolsa por API los pagos a MSI/MCI, así que el
+  /// valor 1 (sin diferir) es el único que conserva la operación de reembolso.
+  /// </summary>
+  public int Installments { get; set; } = 1;
+
   public string AllergenDisclaimer { get; set; }
     = "Las notas están sujetas a disponibilidad y no eliminan el riesgo de contaminación cruzada.";
+
+  /// <summary>
+  /// Destino absoluto de los avisos de Clip. Se manda en el cuerpo de cada pago,
+  /// no se da de alta en ningún panel, así que sólo depende de la URL pública.
+  /// </summary>
+  public string? WebhookUrl
+    => Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var baseUri)
+        && baseUri.Scheme == Uri.UriSchemeHttps
+      ? new Uri(baseUri, WebhookPath).ToString()
+      : null;
+
+  /// <summary>
+  /// Clip no requiere dar de alta un webhook ni entrega un identificador que
+  /// validar, así que lo único que hace falta para recibir avisos es una URL
+  /// pública HTTPS a la cual mandarlos.
+  /// </summary>
+  public bool IsWebhookConfigured => WebhookUrl is not null;
 }
 
 public static class RestaurantCheckoutOptionsPolicy
 {
+  /// <summary>Tope de Clip por transacción en línea, ya con identidad verificada.</summary>
+  public const decimal MaximumOnlineTransactionAmount = 10_000m;
+
+  private static readonly int[] SupportedInstallments = [1, 3, 6, 9, 12, 18, 24];
+
   public static IReadOnlyList<string> Validate(RestaurantCheckoutOptions options, bool production)
   {
     ArgumentNullException.ThrowIfNull(options);
@@ -38,33 +72,39 @@ public static class RestaurantCheckoutOptionsPolicy
       errors.Add("RestaurantCheckout:QuoteTokenLifetimeMinutes debe estar entre 5 y 30.");
     if (options.ProcessorHeartbeatMaxAgeSeconds is < 15 or > 300)
       errors.Add("RestaurantCheckout:ProcessorHeartbeatMaxAgeSeconds debe estar entre 15 y 300.");
+    if (options.ChargeReconciliationWindowMinutes is < 20 or > 240)
+      errors.Add("RestaurantCheckout:ChargeReconciliationWindowMinutes debe estar entre 20 y 240.");
     if (string.IsNullOrWhiteSpace(options.MerchantProfileKey) || options.MerchantProfileKey.Length > 50)
       errors.Add("RestaurantCheckout:MerchantProfileKey es obligatorio y admite hasta 50 caracteres.");
-    if (!IsSupportedLandingPage(options.PayPalLandingPage))
-      errors.Add("RestaurantCheckout:PayPalLandingPage admite LOGIN, GUEST_CHECKOUT, NO_PREFERENCE o vacio.");
+    if (!IsSupportedLocale(options.ClipLocale))
+      errors.Add("RestaurantCheckout:ClipLocale admite es o en.");
+    if (!SupportedInstallments.Contains(options.Installments))
+      errors.Add("RestaurantCheckout:Installments admite 1, 3, 6, 9, 12, 18 o 24.");
     if (string.IsNullOrWhiteSpace(options.TermsVersion) || string.IsNullOrWhiteSpace(options.PrivacyVersion))
       errors.Add("RestaurantCheckout requiere versiones vigentes de términos y privacidad.");
-    foreach (var (key, profile) in options.HistoricalMerchantProfiles)
+
+    // Una clave de prueba en produccion no cobra y una productiva en sandbox si
+    // cobra, asi que el prefijo se valida en cuanto hay clave, sin importar el
+    // ambiente del proceso.
+    if (!string.IsNullOrWhiteSpace(options.ClipApiKey) && !options.IsApiKeyEnvironmentConsistent)
     {
-      if (string.IsNullOrWhiteSpace(key) || key.Length > 80 || !profile.IsPayPalConfigured)
-        errors.Add("Cada perfil PayPal histórico requiere una clave y credenciales privadas completas.");
+      errors.Add(options.UseLiveClip
+        ? "RestaurantCheckout:ClipApiKey de produccion no debe tener el prefijo test_."
+        : "RestaurantCheckout:ClipApiKey de sandbox debe tener el prefijo test_.");
     }
+
     if (production)
     {
-      // Online ordering ships disabled. Until the private Live PayPal profile is installed the
-      // public site must still start; checkout stays closed through the runtime readiness gates.
-      // Once any PayPal setting is present, the whole Live profile has to be complete.
-      var hasPayPalSettings = !string.IsNullOrWhiteSpace(options.PayPalClientId)
-        || !string.IsNullOrWhiteSpace(options.PayPalClientSecret)
-        || !string.IsNullOrWhiteSpace(options.PayPalWebhookId);
-      if (hasPayPalSettings)
+      // La venta en linea se publica apagada. Mientras no se instale el perfil
+      // Live de Clip el sitio publico tiene que arrancar igual; el cobro queda
+      // cerrado por las compuertas de readiness en tiempo de ejecucion. En
+      // cuanto aparece cualquier dato de Clip, el perfil completo es obligatorio.
+      if (!string.IsNullOrWhiteSpace(options.ClipApiKey) || !string.IsNullOrWhiteSpace(options.ClipApiSecret))
       {
-        if (!options.UseLivePayPal)
+        if (!options.UseLiveClip)
           errors.Add("La venta en producción requiere RestaurantCheckout:Environment=Live.");
-        if (!options.IsPayPalConfigured)
-          errors.Add("La venta en producción requiere credenciales PayPal de RestaurantCheckout.");
-        if (!options.IsWebhookVerificationConfigured)
-          errors.Add("La venta en producción requiere RestaurantCheckout:PayPalWebhookId.");
+        if (!options.IsClipConfigured)
+          errors.Add("La venta en producción requiere credenciales Clip de RestaurantCheckout.");
       }
       if (!Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicUri)
           || publicUri.Scheme != Uri.UriSchemeHttps)
@@ -73,17 +113,11 @@ public static class RestaurantCheckoutOptionsPolicy
     return errors;
   }
 
-  private static bool IsSupportedLandingPage(string? value)
+  private static bool IsSupportedLocale(string? value)
   {
     var normalized = value?.Trim();
-    return string.IsNullOrEmpty(normalized)
-      || string.Equals(normalized, "LOGIN", StringComparison.OrdinalIgnoreCase)
-      || string.Equals(normalized, "GUEST_CHECKOUT", StringComparison.OrdinalIgnoreCase)
-      || string.Equals(normalized, "NO_PREFERENCE", StringComparison.OrdinalIgnoreCase);
+    return string.Equals(normalized, "es", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(normalized, "en", StringComparison.OrdinalIgnoreCase);
   }
-}
 
-public interface IRestaurantPayPalClientResolver
-{
-  IPayPalOrdersClient Resolve(string merchantProfileKey);
 }

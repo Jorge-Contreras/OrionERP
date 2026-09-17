@@ -262,6 +262,8 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_public_material_category_permission.sql"));
     actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_online_ordering_clip.sql"));
+    actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_expand.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_company_controls.sql"));
@@ -708,6 +710,24 @@ public sealed class DatabaseMigrationManifestTests
           Assert.Contains("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Contains("brunos-main", sql, StringComparison.OrdinalIgnoreCase);
           Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260916_restaurant_online_ordering_clip":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          // El derecho exclusivo a cobrar es lo que sustituye a la llave de
+          // idempotencia que Clip no ofrece en POST /payments.
+          Assert.Contains("OnlineCheckoutChargeBegin", sql, StringComparison.Ordinal);
+          Assert.Contains("OnlineCheckoutChargeResult", sql, StringComparison.Ordinal);
+          Assert.Contains("ChargeUnknown", sql, StringComparison.Ordinal);
+          Assert.Contains("Authenticating3ds", sql, StringComparison.Ordinal);
+          Assert.Contains("ProviderOrderId", sql, StringComparison.Ordinal);
+          // Los cinco procedimientos del ciclo de PayPal tienen que quedar fuera.
+          Assert.Contains("DROP PROCEDURE restaurante.OnlineCheckoutCaptureAuthorize", sql, StringComparison.Ordinal);
+          Assert.Contains("DROP PROCEDURE restaurante.PayPalRecoveryClaim", sql, StringComparison.Ordinal);
           Assert.Equal(
             ["Orion_Sandbox", "grupocarpio"],
             migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());

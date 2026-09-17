@@ -27,6 +27,16 @@ public partial class MaterialesPage : ComponentBase, IDisposable
   [Inject] private ICurrentCompanyContext RfcState { get; set; } = default!;
   [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
 
+  /// <summary>
+  /// Enlace profundo a una ficha: <c>/logistica/materiales?material=123</c>. Lo usan los faltantes
+  /// del punto de venta para llevar a quien opera del síntoma al maestro del material.
+  /// </summary>
+  [SupplyParameterFromQuery(Name = "material")]
+  public int? MaterialQueryId { get; set; }
+
+  private int? _appliedMaterialQueryId;
+  private bool _isInitialized;
+
   protected MaterialFilter Filter { get; set; } = new();
   protected MaterialCatalogDto Catalog { get; set; } = new();
   protected List<MaterialListItemDto> Materials { get; set; } = [];
@@ -202,6 +212,36 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     await LoadCatalogAsync();
     NuevoMaterial();
     await BuscarAsync();
+    _isInitialized = true;
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    // Blazor ejecuta esto después de OnInitializedAsync y otra vez cuando cambia la consulta, así
+    // que un segundo enlace a otro material mientras la página sigue montada también se atiende.
+    if (!_isInitialized || MaterialQueryId == _appliedMaterialQueryId)
+    {
+      return;
+    }
+
+    _appliedMaterialQueryId = MaterialQueryId;
+    if (MaterialQueryId is not > 0)
+    {
+      return;
+    }
+
+    await SeleccionarMaterialAsync(MaterialQueryId.Value);
+
+    // La ficha abre aunque el material no venga en la primera página del catálogo, pero entonces la
+    // lista de la izquierda no lo resalta y parece que el enlace no hizo nada. Se busca por su
+    // código para traerlo a la vista.
+    if (SelectedMaterialId == MaterialQueryId
+        && !string.IsNullOrWhiteSpace(CurrentMaterialCode)
+        && Materials.TrueForAll(item => item.Id != MaterialQueryId))
+    {
+      SetSearchText(CurrentMaterialCode);
+      await BuscarAsync();
+    }
   }
 
   protected async Task BuscarAsync()
@@ -1440,6 +1480,13 @@ public partial class MaterialesPage : ComponentBase, IDisposable
     => string.IsNullOrWhiteSpace(location.LocationName)
       ? location.LocationCode
       : location.LocationName;
+
+  /// <summary>
+  /// Enlace profundo al inventario de esa ubicación. Quien revisa dónde vive un material suele
+  /// querer ver el resto de lo que hay ahí, no volver a buscarla en el selector.
+  /// </summary>
+  protected static string GetLocationPageHref(int locationId)
+    => $"/logistica/ubicaciones?ubicacion={locationId}";
 
   protected string GetStockLocationPath(MaterialStockLocationDto location)
   {

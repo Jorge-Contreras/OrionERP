@@ -935,9 +935,19 @@
                                     <header class="materiales-stock-header">
                                         <div class="materiales-stock-identity">
                                             <span class="materiales-stock-path">@GetStockLocationPath(location)</span>
-                                            <h3>@GetStockLocationTitle(location)</h3>
+                                            <h3>
+                                                <a class="materiales-stock-link"
+                                                   href="@GetLocationPageHref(location.LocationId)"
+                                                   title="@($"Abrir {GetStockLocationTitle(location)} en Logística › Ubicaciones")">
+                                                    <span>@GetStockLocationTitle(location)</span>
+                                                    <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                                                </a>
+                                            </h3>
                                             <div class="materiales-stock-tags">
-                                                <span class="materiales-result-code">@location.LocationCode</span>
+                                                @if (!string.IsNullOrWhiteSpace(location.LocationCode))
+                                                {
+                                                    <span class="materiales-result-code">@location.LocationCode</span>
+                                                }
                                                 <span class="materiales-chip">@GetLocationTypeLabel(location.LocationType)</span>
                                                 @if (!location.IsLocationActive)
                                                 {

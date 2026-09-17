@@ -70,9 +70,10 @@ public sealed class PurchaseOrderPdfDocumentFactory : IPurchaseOrderPdfDocumentF
           NoPhotoFallback,
           Safe(line.MaterialCode),
           Safe(line.MaterialDescription),
-          string.IsNullOrWhiteSpace(allocation.LocationCode)
-            ? Safe(allocation.LocationName)
-            : $"{allocation.LocationCode} · {Safe(allocation.LocationName)}",
+          // El nombre encabeza y el código lo acompaña; quien recibe la mercancía busca el nombre.
+          string.IsNullOrWhiteSpace(allocation.LocationName) || string.IsNullOrWhiteSpace(allocation.LocationCode)
+            ? Safe(string.IsNullOrWhiteSpace(allocation.LocationName) ? allocation.LocationCode : allocation.LocationName)
+            : $"{allocation.LocationName.Trim()} · {allocation.LocationCode.Trim()}",
           FormatPurchaseQuantity(allocation.PlannedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(allocation.ReceivedQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture),
           FormatPurchaseQuantity(allocation.RemainingQuantity, line.PurchaseQuantity, line.BaseUnitName, line.PurchaseUnitName, culture))))

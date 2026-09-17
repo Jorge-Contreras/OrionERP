@@ -1803,8 +1803,15 @@ public sealed class MaterialService : IMaterialService
         CONVERT(nvarchar(100), balance.Id) AS ReferenceKey,
         balance.UpdatedAt AS SortDate,
         CAST(CONCAT(
-          COALESCE(NULLIF(locationInfo.LocationCode, ''), CONCAT('Ubicación #', balance.LocationId)),
-          CASE WHEN NULLIF(locationInfo.LocationName, '') IS NULL THEN '' ELSE CONCAT(' · ', locationInfo.LocationName) END,
+          -- El nombre de la ubicación encabeza y el código la acompaña: así se lee en la ficha.
+          COALESCE(
+            NULLIF(locationInfo.LocationName, ''),
+            NULLIF(locationInfo.LocationCode, ''),
+            CONCAT('Ubicación #', balance.LocationId)),
+          CASE
+            WHEN NULLIF(locationInfo.LocationName, '') IS NULL OR NULLIF(locationInfo.LocationCode, '') IS NULL THEN ''
+            ELSE CONCAT(' · ', locationInfo.LocationCode)
+          END,
           ' · Existencia: ', CONVERT(varchar(40), CAST(balance.Quantity AS decimal(18,4))),
           ' · Reservada: ', CONVERT(varchar(40), CAST(ISNULL(balance.ReservedQuantity, 0) AS decimal(18,4))),
           CASE WHEN ISNULL(balance.IsRemoved, 0) = 1 THEN ' · Retirado' ELSE ' · Activo' END

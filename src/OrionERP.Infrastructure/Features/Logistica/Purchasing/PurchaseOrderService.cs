@@ -2286,9 +2286,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
       ? "la ubicación seleccionada"
       : location.LocationName.Trim();
     var locationCode = NullIfWhiteSpace(location.LocationCode);
+    // El nombre primero: es lo que quien compra reconoce; el código sólo desambigua.
     var locationLabel = locationCode is null
       ? locationName
-      : $"{locationCode} ({locationName})";
+      : $"{locationName} ({locationCode})";
 
     return $"La cantidad planeada para {material.Description} en {locationLabel} debe ser múltiplo de {BuildPurchaseMultipleRequirementText(material, purchaseQuantity, purchaseIncrement)}.";
   }

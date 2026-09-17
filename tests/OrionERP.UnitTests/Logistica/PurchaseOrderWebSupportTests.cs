@@ -206,11 +206,13 @@ public class PurchaseOrderWebSupportTests
       ]
     });
 
+    // El nombre de la ubicación encabeza la etiqueta, así que el reparto también se ordena por él:
+    // quien recibe la mercancía recorre el almacén por nombre, no por código.
     Assert.Equal(
       [
-        ("LOC-007 · Cocina", "MAT-A"),
-        ("LOC-007 · Cocina", "MAT-B"),
-        ("LOC-009 · Bar", "MAT-B")
+        ("Bar · LOC-009", "MAT-B"),
+        ("Cocina · LOC-007", "MAT-A"),
+        ("Cocina · LOC-007", "MAT-B")
       ],
       model.Allocations.Select(item => (item.LocationName, item.MaterialCode)).ToArray());
   }

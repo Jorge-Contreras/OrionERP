@@ -143,14 +143,14 @@ public sealed class ClipPaymentsClient<TOptions> : IClipPaymentsClient
     CancellationToken ct = default)
   {
     ArgumentNullException.ThrowIfNull(request);
-    EnsureConfigured("refund_payment");
+    EnsureRefundsConfigured("refund_payment");
     var paymentId = RequireProviderId(request.PaymentId, nameof(request));
     if (request.Amount <= 0 || decimal.Round(request.Amount, 2) != request.Amount)
       throw new ArgumentException("El monto a reembolsar debe ser positivo y con dos decimales.", nameof(request));
     if (string.IsNullOrWhiteSpace(request.Reason))
       throw new ArgumentException("El motivo del reembolso es obligatorio.", nameof(request));
 
-    using var message = CreateAuthorizedRequest(HttpMethod.Post, "/refunds");
+    using var message = CreateAuthorizedRequest(HttpMethod.Post, "/refunds", useBasicAuth: true);
     if (!string.IsNullOrWhiteSpace(idempotencyKey))
     {
       // La llave de Clip solo vive un minuto, asi que protege reintentos
@@ -173,33 +173,64 @@ public sealed class ClipPaymentsClient<TOptions> : IClipPaymentsClient
     CancellationToken ct = default)
   {
     var normalized = RequireProviderId(refundId, nameof(refundId));
-    EnsureConfigured("get_refund");
+    EnsureRefundsConfigured("get_refund");
     using var message = CreateAuthorizedRequest(
       HttpMethod.Get,
-      $"/refunds/{Uri.EscapeDataString(normalized)}");
+      $"/refunds/{Uri.EscapeDataString(normalized)}",
+      useBasicAuth: true);
     var root = await SendForJsonAsync(message, "get_refund", treatFailureAsUnknown: false, ct);
     return MapRefund(root, paymentId: null);
   }
 
   /// <summary>
-  /// La API de pagos acepta la clave tanto como <c>Bearer &lt;clave&gt;</c> como
-  /// <c>Basic base64(clave:secreto)</c> — ambos verificados contra el sandbox el
-  /// 2026-09-17—, así que se usa Bearer, que no necesita el secreto.
+  /// El esquema de autenticación depende del endpoint, y no es cosmético.
   /// <para>
-  /// Los endpoints de reembolso respondieron <c>401</c> con <b>los dos</b>
-  /// esquemas usando credenciales de prueba, pese a que la documentación lista
-  /// la API de reembolsos como compatible con sandbox. Queda por confirmar con
-  /// Clip si es permiso de la credencial o disponibilidad del ambiente; si
-  /// resulta que exigen Basic, aquí es donde se separa el esquema.
+  /// La API de pagos acepta los dos: <c>Bearer &lt;clave&gt;</c> y
+  /// <c>Basic base64(clave:secreto)</c>. La de reembolsos <b>sólo acepta
+  /// Basic</b>: con Bearer devuelve <c>401 Unauthorized</c> aun con credenciales
+  /// Live. Verificado contra producción el 2026-09-17 con una lectura inocua —
+  /// <c>GET /refunds/{id}</c> de un id inexistente devolvió 401 con Bearer y
+  /// <c>404 CL1301 "Payment not found"</c> con Basic, o sea que Basic sí pasa el
+  /// control de acceso y sólo falla por el recurso.
+  /// </para>
+  /// <para>
+  /// El sandbox despistó: ahí ambos esquemas daban 401 en reembolsos, lo que
+  /// hacía parecer que el problema eran las credenciales de prueba y no el
+  /// esquema. Un 401 no distingue entre "credencial sin permiso" y "esquema
+  /// equivocado"; hay que separarlos con una petición que pueda dar 404.
   /// </para>
   /// </summary>
-  private HttpRequestMessage CreateAuthorizedRequest(HttpMethod method, string relativeUrl)
+  private HttpRequestMessage CreateAuthorizedRequest(
+    HttpMethod method,
+    string relativeUrl,
+    bool useBasicAuth = false)
   {
     var message = new HttpRequestMessage(method, new Uri(_options.ClipBaseUri, relativeUrl));
-    message.Headers.Authorization =
-      new AuthenticationHeaderValue("Bearer", _options.ClipApiKey.Trim());
+    message.Headers.Authorization = useBasicAuth
+      ? new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
+          Encoding.UTF8.GetBytes($"{_options.ClipApiKey.Trim()}:{_options.ClipApiSecret.Trim()}")))
+      : new AuthenticationHeaderValue("Bearer", _options.ClipApiKey.Trim());
     message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     return message;
+  }
+
+  /// <summary>
+  /// Reembolsar necesita el secreto, no sólo la clave. Sin él, Basic saldría
+  /// malformado y Clip respondería 401, que es indistinguible de un problema de
+  /// permisos: mejor fallar aquí con una causa legible.
+  /// </summary>
+  private void EnsureRefundsConfigured(string operation)
+  {
+    EnsureConfigured(operation);
+    if (!_options.AreRefundsConfigured)
+    {
+      throw new ClipClientException(
+        operation,
+        "REFUNDS_NOT_CONFIGURED",
+        statusCode: null,
+        isTransient: false,
+        isOutcomeUnknown: false);
+    }
   }
 
   private void EnsureConfigured(string operation)

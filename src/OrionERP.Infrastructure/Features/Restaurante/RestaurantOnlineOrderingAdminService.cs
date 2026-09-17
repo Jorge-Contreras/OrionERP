@@ -206,14 +206,14 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
       return RestaurantCommandResult.Ok(
         !result.WasCreated
           ? "La solicitud de reembolso ya estaba registrada."
-          : "El reembolso quedó solicitado; el pago local cambiará sólo cuando PayPal lo confirme.");
+          : "El reembolso quedó solicitado; el pago local cambiará sólo cuando Clip lo confirme.");
     }
     catch (SqlException exception)
     {
       return RestaurantCommandResult.Fail(exception.Number switch
       {
         53768 => "Ya existe un reembolso pendiente para esta captura con otro importe o motivo.",
-        >= 53690 and <= 53720 => "No se pudo solicitar el reembolso: verifica el importe, el pago PayPal y la autorización de supervisor.",
+        >= 53690 and <= 53720 => "No se pudo solicitar el reembolso: verifica el importe, el pago Clip y la autorización de supervisor.",
         _ => "No fue posible registrar el reembolso en este momento."
       });
     }
@@ -285,8 +285,8 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
     if (!products.Any(product => product.IsOnlineEnabled && product.IsActive))
       blockers.Add("Habilita al menos un producto activo para venta en línea.");
     if (!string.Equals(row.GatewayEnvironment, row.RequiredGatewayEnvironment, StringComparison.OrdinalIgnoreCase))
-      blockers.Add($"PayPal debe estar en modo {row.RequiredGatewayEnvironment}.");
-    if (!row.GatewayCredentialsConfigured) blockers.Add("Faltan las credenciales privadas de PayPal para este sitio.");
+      blockers.Add($"Clip debe estar en modo {row.RequiredGatewayEnvironment}.");
+    if (!row.GatewayCredentialsConfigured) blockers.Add("Faltan las credenciales privadas de Clip para este sitio.");
     if (!row.GatewayWebhookConfigured) blockers.Add("Falta registrar el webhook independiente de este sitio.");
     if (!row.GatewayReadinessAtUtc.HasValue
         || now - Utc(row.GatewayReadinessAtUtc.Value) > TimeSpan.FromMinutes(5))
@@ -297,7 +297,7 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
     if (string.IsNullOrWhiteSpace(row.TermsVersion) || string.IsNullOrWhiteSpace(row.PrivacyVersion))
       blockers.Add("Publica las versiones vigentes de términos y privacidad.");
     if (string.IsNullOrWhiteSpace(row.ActiveMerchantProfileKey))
-      blockers.Add("Configura el perfil mercantil de PayPal.");
+      blockers.Add("Configura el perfil mercantil de Clip.");
     return blockers;
   }
 
@@ -341,7 +341,7 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
     53680 => "Escribe un mensaje para explicar la pausa a los clientes.",
     53684 => "Sólo pueden habilitarse productos activos del RFC seleccionado.",
     53685 => "La configuración cambió. Recarga la pantalla antes de guardar.",
-    53686 => "No se puede habilitar todavía: revisa horario, productos, PayPal, webhook y procesador.",
+    53686 => "No se puede habilitar todavía: revisa horario, productos, Clip, webhook y procesador.",
     _ => "No fue posible guardar la configuración de pedidos en línea."
   };
 

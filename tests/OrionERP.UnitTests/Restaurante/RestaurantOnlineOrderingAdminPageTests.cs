@@ -39,20 +39,20 @@ public sealed class RestaurantOnlineOrderingAdminPageTests
   }
 
   [Fact]
-  public void OperationalScreens_ShowAndFilterWebPayPalOrders()
+  public void OperationalScreens_ShowAndFilterWebClipOrders()
   {
     var orders = RepoFile.Read("src/OrionERP.Web/Features/Restaurante/RestaurantOrdersPage.razor");
     var kitchen = RepoFile.Read("src/OrionERP.Web/Features/Restaurante/RestaurantKitchenPage.razor");
 
     Assert.Contains("orders-source-filters", orders, StringComparison.Ordinal);
-    Assert.Contains("Web · PayPal", orders, StringComparison.Ordinal);
+    Assert.Contains("Web · Clip", orders, StringComparison.Ordinal);
     Assert.Contains("QuickPinService.VerifySupervisorPinAsync", orders, StringComparison.Ordinal);
     Assert.Contains("RequestedByUserName = requestedBy", orders, StringComparison.Ordinal);
     Assert.Contains("SupervisorUserName = verification.UserName!", orders, StringComparison.Ordinal);
     Assert.Contains("OnlineOrderingService.RequestRefundAsync", orders, StringComparison.Ordinal);
-    Assert.Contains("La solicitud se enviará primero a PayPal", orders, StringComparison.Ordinal);
+    Assert.Contains("La solicitud se enviará primero a Clip", orders, StringComparison.Ordinal);
     Assert.Contains("kds-source-filter", kitchen, StringComparison.Ordinal);
-    Assert.Contains("Web · PayPal", kitchen, StringComparison.Ordinal);
+    Assert.Contains("Web · Clip", kitchen, StringComparison.Ordinal);
   }
 
   [Fact]

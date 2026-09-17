@@ -418,7 +418,7 @@ public sealed class RestaurantPaymentRefundRequest
   [Required, StringLength(256)] public string SupervisorUserName { get; set; } = string.Empty;
   /// <summary>
   /// True for POS corrections, where the refunded amount is collected again by another method.
-  /// False for provider refunds (PayPal) that return the money to the customer for good.
+  /// False for gateway refunds that return the money to the customer for good.
   /// </summary>
   public bool ReopenBalance { get; set; } = true;
 }

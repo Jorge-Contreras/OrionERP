@@ -107,7 +107,7 @@
                   <div>
                     <span>@OrderTypeLabel(order.OrderType)</span>
                     <strong>@order.Folio.ToString("000")</strong>
-                    @if (IsWebOrder(order)) { <mark class="kds-source-badge"><span class="oi oi-globe" aria-hidden="true"></span> Web · PayPal</mark> }
+                    @if (IsWebOrder(order)) { <mark class="kds-source-badge"><span class="oi oi-globe" aria-hidden="true"></span> Web · Clip</mark> }
                     <span class="kds-ticket__section" style="--section-accent:@card.Section.Color"><i aria-hidden="true"></i>@card.Section.Name</span>
                     @if (!string.IsNullOrWhiteSpace(order.CustomerName)) { <b class="kds-customer">@order.CustomerName</b> }
                     @if (!string.IsNullOrWhiteSpace(order.TableName)) { <b>@order.TableName</b> }
@@ -456,7 +456,7 @@
   private int SourceCount(string source) => source == "All"
     ? board.Orders.Count
     : board.Orders.Count(order => string.Equals(order.SalesChannel, source, StringComparison.OrdinalIgnoreCase));
-  private static string SourceLabel(string source) => source switch { "All" => "Todas", "POS" => "Punto de venta", "Web" => "Web · PayPal", _ => source };
+  private static string SourceLabel(string source) => source switch { "All" => "Todas", "POS" => "Punto de venta", "Web" => "Web · Clip", _ => source };
   private static bool IsWebOrder(RestaurantOrderDto order) => string.Equals(order.SalesChannel, RestaurantSalesChannels.Web, StringComparison.OrdinalIgnoreCase);
   private static string ComboContext(RestaurantOrderLineDto line)
     => $"COMBO: {line.ParentProductName}{(string.IsNullOrWhiteSpace(line.ComboSlotName) ? string.Empty : $" · {line.ComboSlotName}")}";

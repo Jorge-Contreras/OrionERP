@@ -49,7 +49,7 @@
     {
       <article @key="order.Id" class="order-card @KitchenProgressClass(order)">
         <header>
-          <div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if(IsWebOrder(order)){<mark class="order-source-badge"><span class="oi oi-globe" aria-hidden="true"></span> Web · PayPal</mark>}@if(!string.IsNullOrWhiteSpace(order.CustomerName)){<em class="order-card__customer">@order.CustomerName</em>}</div>
+          <div><span>@TypeLabel(order.OrderType)</span><strong>@order.Folio.ToString("000")</strong>@if(IsWebOrder(order)){<mark class="order-source-badge"><span class="oi oi-globe" aria-hidden="true"></span> Web · Clip</mark>}@if(!string.IsNullOrWhiteSpace(order.CustomerName)){<em class="order-card__customer">@order.CustomerName</em>}</div>
           <b>@StatusLabel(order.Status)</b>
         </header>
         <div class="order-card__summary">
@@ -80,7 +80,7 @@
             <button type="button" class="order-log-button" @onclick="()=>OpenOrderLogAsync(order)">
               <span class="oi oi-list-rich" aria-hidden="true"></span> Bitácora
             </button>
-            @if(order.CashRegisterId.HasValue || IsWebOrder(order)){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">@(IsWebOrder(order) ? "Reembolso PayPal" : "Correcciones / CFDI")</button>}
+            @if(order.CashRegisterId.HasValue || IsWebOrder(order)){<button type="button" class="order-correction-button" @onclick="()=>OpenCorrectionsAsync(order)">@(IsWebOrder(order) ? "Reembolso Clip" : "Correcciones / CFDI")</button>}
             @if(order.Status=="Ready"&&order.OrderType=="Delivery"){<button type="button" @onclick='()=>SetStatusAsync(order,"Dispatched")'>Despachar</button>}
             else if(order.Status=="Ready"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Entregar</button>}
             else if(order.Status=="Dispatched"){<button type="button" @onclick='()=>SetStatusAsync(order,"Delivered")'>Confirmar entrega</button>}
@@ -137,8 +137,8 @@
         }
         else if(correctionMode=="Refund")
         {
-          <div class="order-correction__fields"><label>Pago<select @bind="selectedPaymentId"><option value="">Seleccionar…</option>@foreach(var payment in correctionPayments.Where(x=>x.RefundableAmount>0)){<option value="@payment.Id">@(IsWebCorrection && payment.PaymentMethod=="Platform" ? "PayPal" : PaymentMethodLabel(payment.PaymentMethod)) · @payment.RefundableAmount.ToString("C")</option>}</select></label><label>Importe a reembolsar<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label></div>
-          @if(IsWebCorrection){<p class="order-correction__warning">La solicitud se enviará primero a PayPal. La orden y el pago local sólo se marcarán reembolsados después de que PayPal confirme el resultado.</p>}
+          <div class="order-correction__fields"><label>Pago<select @bind="selectedPaymentId"><option value="">Seleccionar…</option>@foreach(var payment in correctionPayments.Where(x=>x.RefundableAmount>0)){<option value="@payment.Id">@(IsWebCorrection && payment.PaymentMethod=="Platform" ? "Clip" : PaymentMethodLabel(payment.PaymentMethod)) · @payment.RefundableAmount.ToString("C")</option>}</select></label><label>Importe a reembolsar<input type="number" min="0.01" step="0.01" @bind="correctionAmount" /></label></div>
+          @if(IsWebCorrection){<p class="order-correction__warning">La solicitud se enviará primero a Clip. La orden y el pago local sólo se marcarán reembolsados después de que Clip confirme el resultado.</p>}
         }
         else if(correctionMode=="Cancel")
         {
@@ -530,7 +530,7 @@
       {
         if (correctionMode != "Refund")
         {
-          Show("Las órdenes web sólo admiten solicitudes de reembolso PayPal desde esta pantalla.", true);
+          Show("Las órdenes web sólo admiten solicitudes de reembolso Clip desde esta pantalla.", true);
           return;
         }
         result = await OnlineOrderingService.RequestRefundAsync(new()
@@ -615,7 +615,7 @@
     (statusFilter == "Active" ? order.Status is not ("Completed" or "Cancelled") : order.Status == statusFilter)
     && (source == "All" || string.Equals(order.SalesChannel, source, StringComparison.OrdinalIgnoreCase)));
   private static string FilterLabel(string value) => value switch { "Active" => "Activas", "Ready" => "Listas", "Dispatched" => "Despachadas", "Delivered" => "Entregadas", "Completed" => "Completadas", "Cancelled" => "Canceladas", _ => value };
-  private static string SourceFilterLabel(string value) => value switch { "All" => "Todas", "POS" => "Punto de venta", "Web" => "Web · PayPal", _ => value };
+  private static string SourceFilterLabel(string value) => value switch { "All" => "Todas", "POS" => "Punto de venta", "Web" => "Web · Clip", _ => value };
   private static bool IsWebOrder(RestaurantOrderDto order) => string.Equals(order.SalesChannel, RestaurantSalesChannels.Web, StringComparison.OrdinalIgnoreCase);
   private static string TypeLabel(string value) => value switch { "Pickup" => "Recoger", "Table" => "Mesa", "Delivery" => "Domicilio", _ => value };
   private static string StatusLabel(string value) => value switch { "AwaitingPayment" => "Pendiente de pago", "Sent" => "Pendiente", "Preparing" => "Preparando", "Ready" => "Lista", "Dispatched" => "Despachada", "Delivered" => "Entregada", "Completed" => "Completada", "Cancelled" => "Cancelada", "Pending" => "Pendiente", _ => value };

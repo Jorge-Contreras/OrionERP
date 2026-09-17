@@ -13,7 +13,7 @@ public sealed class RestaurantOnlineOrderProcessingOptions
 }
 
 /// <summary>
-/// Keeps the durable PayPal-to-POS import moving independently from the public
+/// Keeps the durable gateway-to-POS import moving independently from the public
 /// ordering switch. Pausing sales must never strand a payment already captured.
 /// </summary>
 public sealed class RestaurantOnlineOrderImportWorker : BackgroundService

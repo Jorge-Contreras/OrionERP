@@ -609,7 +609,7 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       await RestaurantOrderEventWriter.AddAsync(
         conn, tx, rfc, request.SiteId, orderId,
         "OrderCreated", "Order", "Orden generada",
-        $"{OrderTypeLabel(orderType)} · {(salesChannel == RestaurantSalesChannels.Web ? "Web / PayPal · " : string.Empty)}{pricedLines.Count} partida(s) · Total {total:C}",
+        $"{OrderTypeLabel(orderType)} · {(salesChannel == RestaurantSalesChannels.Web ? "Web / Clip · " : string.Empty)}{pricedLines.Count} partida(s) · Total {total:C}",
         userName, ct, $"order:{orderId}:created");
 
       if (reservation.ReservationId.HasValue)

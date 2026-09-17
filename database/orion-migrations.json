@@ -195,7 +195,7 @@
     {
       "id": "20260909_calendar_owner_scope_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Reservaciones/ListaReservaciones/Sql/20260909_calendar_owner_scope_sandbox.sql",
-      "description": "El calendario de reservaciones acotado al arrendador de la sesi\u00f3n, exclusivamente en Orion_Sandbox.",
+      "description": "El calendario de reservaciones acotado al arrendador de la sesión, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ],
@@ -209,7 +209,7 @@
     {
       "id": "20260909_hospitality_legacy_mechanisms_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_legacy_mechanisms_sandbox.sql",
-      "description": "E7: asociaciones de arrendadores, mappings expl\u00edcitos de actividad, corrector auditable de pagos y reparaci\u00f3n/cuarentena local de Outlook, exclusivamente en Orion_Sandbox.",
+      "description": "E7: asociaciones de arrendadores, mappings explícitos de actividad, corrector auditable de pagos y reparación/cuarentena local de Outlook, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ],
@@ -223,7 +223,7 @@
     {
       "id": "20260909_hospitality_legacy_transaction_guards_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_legacy_transaction_guards_sandbox.sql",
-      "description": "E7: garantiza rollback de los dos mecanismos heredados ante evidencia inv\u00e1lida, exclusivamente en Orion_Sandbox.",
+      "description": "E7: garantiza rollback de los dos mecanismos heredados ante evidencia inválida, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ],
@@ -237,7 +237,7 @@
     {
       "id": "20260909_hospitality_payment_policy_switch_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_policy_switch_sandbox.sql",
-      "description": "E7: separa las transiciones de predicados RLS del corrector de pagos para validaci\u00f3n y restauraci\u00f3n transaccional, exclusivamente en Orion_Sandbox.",
+      "description": "E7: separa las transiciones de predicados RLS del corrector de pagos para validación y restauración transaccional, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ],
@@ -251,7 +251,7 @@
     {
       "id": "20260909_hospitality_payment_link_removal",
       "path": "src/OrionERP.Infrastructure/Features/Reservaciones/Sql/20260909_hospitality_payment_link_removal.sql",
-      "description": "E7: elimina exclusivamente los 288 v\u00ednculos OHM/BSU confirmados, en lotes auditados de hasta 25, sin cambiar las transacciones BSU.",
+      "description": "E7: elimina exclusivamente los 288 vínculos OHM/BSU confirmados, en lotes auditados de hasta 25, sin cambiar las transacciones BSU.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
@@ -259,7 +259,7 @@
     {
       "id": "20260909_accounting_rls_scope_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Contabilidad/Transacciones/Sql/20260909_accounting_rls_scope_sandbox.sql",
-      "description": "E8a: RLS fail-closed de Transacciones y Registro_Contable por CompanyId y RFC de sesi\u00f3n, exclusivamente en Orion_Sandbox.",
+      "description": "E8a: RLS fail-closed de Transacciones y Registro_Contable por CompanyId y RFC de sesión, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
@@ -267,7 +267,7 @@
     {
       "id": "20260909_inventory_core_rls_scope_sandbox",
       "path": "src/OrionERP.Infrastructure/Features/Logistica/Sql/20260909_inventory_core_rls_scope_sandbox.sql",
-      "description": "E8b: RLS fail-closed del n\u00facleo de ubicaciones, existencias y movimientos, exclusivamente en Orion_Sandbox.",
+      "description": "E8b: RLS fail-closed del núcleo de ubicaciones, existencias y movimientos, exclusivamente en Orion_Sandbox.",
       "allowedDatabases": [
         "Orion_Sandbox"
       ]
@@ -504,6 +504,15 @@
       "id": "20260916_restaurant_online_ordering_clip",
       "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_online_ordering_clip.sql",
       "description": "Reemplaza el cobro con PayPal por Clip en el checkout de Restaurante: columnas neutrales de proveedor, ciclo de cargo con derecho exclusivo (Clip no acepta llave de idempotencia), estados de 3DS y desenlace desconocido, y perfil publico v11.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260917_restaurant_clip_legacy_attempt_scope",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260917_restaurant_clip_legacy_attempt_scope.sql",
+      "description": "Cierra los intentos de la era PayPal que la migracion a Clip dejo abiertos: aquel script corrio sin contexto de sesion, RLS le oculto la tabla y sus UPDATE y su verificacion tocaron cero filas.",
       "allowedDatabases": [
         "Orion_Sandbox",
         "grupocarpio"

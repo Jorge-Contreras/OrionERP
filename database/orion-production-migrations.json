@@ -412,6 +412,15 @@
         "Orion_Sandbox",
         "grupocarpio"
       ]
+    },
+    {
+      "id": "20260917_restaurant_clip_legacy_attempt_scope",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260917_restaurant_clip_legacy_attempt_scope.sql",
+      "description": "Cierra los intentos de la era PayPal que la migracion a Clip dejo abiertos: aquel script corrio sin contexto de sesion, RLS le oculto la tabla y sus UPDATE y su verificacion tocaron cero filas.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
     }
   ]
 }

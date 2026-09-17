@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OrionERP.DatabaseMigrator;
@@ -263,6 +264,8 @@ public sealed class DatabaseMigrationManifestTests
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_public_material_category_permission.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260916_restaurant_online_ordering_clip.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260917_restaurant_clip_legacy_attempt_scope.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_expand.sql"));
     actual.Add(NormalizePath(
@@ -791,6 +794,20 @@ public sealed class DatabaseMigrationManifestTests
             ["Orion_Sandbox", "grupocarpio"],
             migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
           break;
+        case "20260917_restaurant_clip_legacy_attempt_scope":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          // El RFC va escrito a proposito: resolver el binding y fijar el contexto
+          // de sesion es justo lo que le falto a la migracion que esta corrige.
+          Assert.Contains("BRUNOS260707L26", sql, StringComparison.Ordinal);
+          Assert.Contains("sp_set_session_context", sql, StringComparison.Ordinal);
+          Assert.Contains("PROVIDER_MIGRATED", sql, StringComparison.Ordinal);
+          // Comparar lo visible contra el conteo fisico es lo que impide repetir
+          // una escritura a ciegas sobre una tabla que RLS muestra vacia.
+          Assert.Contains("sys.dm_db_partition_stats", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
         default:
           throw new Xunit.Sdk.XunitException($"La migración {migration.Id} no tiene política explícita de literales heredados.");
       }
@@ -801,6 +818,103 @@ public sealed class DatabaseMigrationManifestTests
       Assert.True(
         variables.SetEquals(allowedVariables),
         $"Variables SQLCMD inesperadas en {migration.Path}: {string.Join(", ", variables.Order())}");
+    }
+  }
+
+  // OnlineOrderingScopePolicy filtra estas tablas y su predicado solo devuelve
+  // filas cuando la sesion trae OrionRfc y OrionERP.CompanyId. El migrador abre
+  // su conexion sin contexto y su login no es sa, asi que un UPDATE de nivel
+  // superior sobre cualquiera de ellas toca cero filas y no falla: se aplica en
+  // silencio y hasta una comprobacion posterior lo confirma, porque cuenta sobre
+  // la misma tabla ciega.
+  private static readonly string[] TenantScopedOnlineOrderingTables =
+  [
+    "restaurante.OnlineCheckoutAttempt",
+    "restaurante.OnlineOrderingSettings",
+    "restaurante.OnlineOrderNotification",
+    "restaurante.OnlineOrderProduct",
+    "restaurante.PaymentGatewayEvent",
+    "restaurante.PaymentGatewayRefund",
+    "restaurante.PaymentGatewayTransaction"
+  ];
+
+  // 20260916_restaurant_online_ordering_clip cayo exactamente en esto: sus dos
+  // UPDATE y la post-condicion que debia vigilarlos corrieron ciegos y dejaron
+  // cinco intentos sin convertir en produccion. El script no se corrige porque su
+  // checksum ya quedo registrado en las bases donde se aplico y verify lo compara;
+  // el arreglo vive en 20260917_restaurant_clip_legacy_attempt_scope.
+  private static readonly HashSet<string> MigrationsExemptFromTenantContext =
+    new(["20260916_restaurant_online_ordering_clip"], StringComparer.Ordinal);
+
+  [Fact]
+  public void ManifestScripts_SetTenantContextBeforeWritingRowLevelSecuredTables()
+  {
+    var dml = new Regex(
+      @"\b(?:UPDATE|DELETE\s+FROM|INSERT(?:\s+INTO)?|MERGE(?:\s+INTO)?)\s+(?<table>"
+        + string.Join("|", TenantScopedOnlineOrderingTables.Select(Regex.Escape))
+        + @")\b",
+      RegexOptions.IgnoreCase);
+
+    foreach (var migration in Manifest.Migrations)
+    {
+      var sql = File.ReadAllText(Path.Combine(RepositoryRoot, migration.Path));
+      var written = dml.Matches(RemoveProcedureBodies(sql))
+        .Select(match => match.Groups["table"].Value)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+      if (written.Count == 0 || MigrationsExemptFromTenantContext.Contains(migration.Id))
+        continue;
+
+      Assert.True(
+        sql.Contains("sp_set_session_context", StringComparison.OrdinalIgnoreCase)
+          && sql.Contains("OrionRfc", StringComparison.OrdinalIgnoreCase),
+        $"{migration.Path} escribe en {string.Join(", ", written.Order())} fuera de un "
+          + "procedimiento sin fijar OrionRfc con sp_set_session_context: RLS lo dejaria "
+          + "en cero filas sin error.");
+    }
+  }
+
+  // Los cuerpos de procedimiento viajan dentro de EXEC(N'...') y se ejecutan mas
+  // tarde con el contexto que traiga la aplicacion. Lo demas que va en un
+  // EXEC(N'...') si corre durante la migracion, asi que cuenta como nivel superior.
+  private static string RemoveProcedureBodies(string sql)
+  {
+    const string opener = "EXEC(N'";
+    var result = new StringBuilder(sql.Length);
+    var index = 0;
+    while (true)
+    {
+      var start = sql.IndexOf(opener, index, StringComparison.Ordinal);
+      if (start < 0)
+      {
+        result.Append(sql, index, sql.Length - index);
+        return result.ToString();
+      }
+
+      result.Append(sql, index, start - index);
+      var bodyStart = start + opener.Length;
+      var cursor = bodyStart;
+      while (cursor < sql.Length)
+      {
+        if (sql[cursor] != '\'')
+        {
+          cursor++;
+          continue;
+        }
+
+        if (cursor + 1 < sql.Length && sql[cursor + 1] == '\'')
+        {
+          cursor += 2;
+          continue;
+        }
+
+        break;
+      }
+
+      var body = sql[bodyStart..cursor];
+      if (!Regex.IsMatch(body, @"^\s*CREATE\s+OR\s+ALTER\b", RegexOptions.IgnoreCase))
+        result.Append(body);
+
+      index = Math.Min(cursor + 1, sql.Length);
     }
   }
 

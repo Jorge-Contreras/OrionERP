@@ -1323,9 +1323,10 @@ public partial class ComprasPage : ComponentBase
       return null;
     }
 
-    var locationLabel = string.IsNullOrWhiteSpace(allocation.LocationCode)
-      ? allocation.LocationName
-      : allocation.LocationCode;
+    // El nombre de la ubicación es lo que quien compra reconoce; el código sólo lo sustituye.
+    var locationLabel = string.IsNullOrWhiteSpace(allocation.LocationName)
+      ? allocation.LocationCode
+      : allocation.LocationName;
 
     return $"{locationLabel}: ajusta la cantidad a múltiplos de {GetPurchaseIncrementRequirement(line)}.";
   }

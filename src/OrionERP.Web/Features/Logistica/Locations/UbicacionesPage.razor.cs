@@ -44,6 +44,17 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
   /// <summary>La suite es un filtro de Hospedaje; sin ese módulo no se ofrece.</summary>
   protected bool HasHospitality { get; private set; }
 
+  /// <summary>
+  /// Enlace profundo a una ubicación: <c>/logistica/ubicaciones?ubicacion=123</c>. Lo usa el panel
+  /// «Dónde está almacenado» de Materiales, y gana sobre la última selección recordada.
+  /// </summary>
+  [SupplyParameterFromQuery(Name = "ubicacion")]
+  public int? LocationQueryId { get; set; }
+
+  private int? _appliedLocationQueryId;
+  private bool _isInitialized;
+  private bool _hasRendered;
+
   protected StockFilter StockFilter { get; set; } = new() { IncludeZeroBalances = true };
   protected MaterialFilter MaterialPickerFilter { get; set; } = new() { Status = "ACTIVO" };
   protected MaterialCatalogDto MaterialCatalog { get; set; } = new();
@@ -139,7 +150,7 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
         {
           return string.IsNullOrWhiteSpace(selectedLocation.LocationCode)
             ? selectedLocation.LocationName
-            : $"{selectedLocation.LocationCode} · {selectedLocation.LocationName}";
+            : $"{selectedLocation.LocationName} · {selectedLocation.LocationCode}";
         }
       }
 
@@ -177,13 +188,65 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
     // restaurar una selección previa, así que una empresa sin habitaciones
     // nunca llegaba a consultar sus ubicaciones.
     await LoadLocationsForSelectedRoomAsync();
+    _isInitialized = true;
+  }
+
+  protected override async Task OnParametersSetAsync()
+  {
+    // Corre después de OnInitializedAsync y otra vez cuando cambia la consulta, así que un segundo
+    // enlace a otra ubicación con la página ya montada también se atiende.
+    if (!_isInitialized || LocationQueryId == _appliedLocationQueryId)
+    {
+      return;
+    }
+
+    _appliedLocationQueryId = LocationQueryId;
+
+    // Antes del primer render la página está prerenderizada y no hay interoperabilidad con JS, que
+    // es lo que usa recordar la selección. Ese primer caso lo atiende OnAfterRenderAsync.
+    if (LocationQueryId is > 0 && _hasRendered)
+    {
+      await AbrirUbicacionDeEnlaceAsync(LocationQueryId.Value);
+    }
+  }
+
+  /// <summary>
+  /// Abre la ubicación que pidió el enlace. La carga inicial trae todas las ubicaciones de la
+  /// empresa, así que basta seleccionarla; <see cref="SeleccionarUbicacionAsync"/> ajusta la suite
+  /// si la ubicación pertenece a otra.
+  /// </summary>
+  private async Task AbrirUbicacionDeEnlaceAsync(int locationId)
+  {
+    // Quien llega por enlace quiere esa ubicación, no la última que estuvo viendo.
+    _selectionRestoreAttempted = true;
+
+    if (!await CanDiscardLocationEditorAsync())
+    {
+      return;
+    }
+
+    await SeleccionarUbicacionAsync(
+      locationId,
+      openEditor: false,
+      loadInventory: IsInventoryMode,
+      rememberSelection: IsInventoryMode);
+
+    StateHasChanged();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (firstRender && !_selectionRestoreAttempted)
+    if (firstRender)
     {
-      await RestoreRememberedSelectionAsync();
+      _hasRendered = true;
+      if (LocationQueryId is > 0)
+      {
+        await AbrirUbicacionDeEnlaceAsync(LocationQueryId.Value);
+      }
+      else if (!_selectionRestoreAttempted)
+      {
+        await RestoreRememberedSelectionAsync();
+      }
     }
 
     if (!_focusMaterialPickerSearchPending || !ShowAddMaterialDialog || !SelectedLocationId.HasValue)
@@ -1483,11 +1546,16 @@ public partial class UbicacionesPage : ComponentBase, IDisposable
       _ => "Lista para inventario"
     };
 
+  /// <summary>
+  /// El nombre va primero: en el selector la gente busca «Clóset de blancos», no «LOC-000042».
+  /// </summary>
   protected static string GetLocationOptionLabel(LocationListItemDto item)
   {
-    var name = string.IsNullOrWhiteSpace(item.LocationCode)
-      ? item.LocationName
-      : $"{item.LocationCode} · {item.LocationName}";
+    var name = string.IsNullOrWhiteSpace(item.LocationName)
+      ? item.LocationCode
+      : string.IsNullOrWhiteSpace(item.LocationCode)
+        ? item.LocationName
+        : $"{item.LocationName} · {item.LocationCode}";
     return $"{name} · {GetLocationTypeLabel(item.LocationType)} · {item.MaterialCount} materiales";
   }
 

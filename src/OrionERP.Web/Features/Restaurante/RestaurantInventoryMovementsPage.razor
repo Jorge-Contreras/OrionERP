@@ -31,8 +31,8 @@
       <header><div><span>Entre ubicaciones</span><h2>Traspaso atómico</h2></div><span class="oi oi-transfer"></span></header>
       <div class="movement-fields">
         <label>Código<input @bind="transfer.TransferCode" /></label>
-        <label>Origen<select @bind="transfer.FromLocationId" @bind:after="ResetTransferLines"><option value="0">Seleccionar…</option>@foreach (var location in workspace.Locations) { <option value="@location.Id">@location.Code · @location.Name</option> }</select></label>
-        <label>Destino<select @bind="transfer.ToLocationId"><option value="0">Seleccionar…</option>@foreach (var location in workspace.Locations.Where(item => item.Id != transfer.FromLocationId)) { <option value="@location.Id">@location.Code · @location.Name</option> }</select></label>
+        <label>Origen<select @bind="transfer.FromLocationId" @bind:after="ResetTransferLines"><option value="0">Seleccionar…</option>@foreach (var location in workspace.Locations) { <option value="@location.Id">@location.Name · @location.Code</option> }</select></label>
+        <label>Destino<select @bind="transfer.ToLocationId"><option value="0">Seleccionar…</option>@foreach (var location in workspace.Locations.Where(item => item.Id != transfer.FromLocationId)) { <option value="@location.Id">@location.Name · @location.Code</option> }</select></label>
       </div>
       <label>Motivo<textarea @bind="transfer.Reason" rows="2"></textarea></label>
       <div class="movement-lines">
@@ -70,7 +70,7 @@
         @foreach (var line in adjustment.Lines)
         {
           <div class="movement-line movement-line--adjustment">
-            <select @bind="line.LocationId" @bind:after="() => ResetAdjustmentMaterial(line)"><option value="0">Ubicación…</option>@foreach (var location in workspace.Locations) { <option value="@location.Id">@location.Code · @location.Name</option> }</select>
+            <select @bind="line.LocationId" @bind:after="() => ResetAdjustmentMaterial(line)"><option value="0">Ubicación…</option>@foreach (var location in workspace.Locations) { <option value="@location.Id">@location.Name · @location.Code</option> }</select>
             <RestaurantMaterialPicker Options="@AdjustmentMaterialOptions(line.LocationId)"
                                       @bind-Value="line.MaterialId"
                                       Changed="@(_ => ResetAdjustmentLot(line))"

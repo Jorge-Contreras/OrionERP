@@ -2544,6 +2544,34 @@
   letter-spacing: -0.01em;
 }
 
+.materiales-stock-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(15, 23, 42, 0.28);
+}
+
+.materiales-stock-link:hover,
+.materiales-stock-link:focus-visible {
+  color: var(--materials-accent);
+  border-bottom-color: currentColor;
+}
+
+.materiales-stock-link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.materiales-stock-link .bi {
+  flex: none;
+  font-size: 0.72rem;
+  opacity: 0.55;
+}
+
 .materiales-stock-tags {
   display: flex;
   flex-wrap: wrap;

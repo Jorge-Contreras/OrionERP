@@ -1,3 +1,4 @@
+@using Microsoft.AspNetCore.Components.Authorization
 @using OrionERP.Application.Features.Logistica.PhysicalCounts
 @using OrionERP.Application.Features.Restaurante
 @inject IPhysicalCountService PhysicalCountService
@@ -84,7 +85,24 @@
                 </label>
                 <div class="alerts-item__body">
                   <div class="alerts-item__title">
-                    <strong title="@material.PredictedPosMessage">@material.Label</strong>
+                    @if (canOpenMaterialPage)
+                    {
+                      <a class="alerts-item__material"
+                         href="@MaterialPageHref(material)"
+                         title="@material.PredictedPosMessage"
+                         aria-label="@($"Abrir {MaterialTitle(material)} en Logística › Materiales")">
+                        <strong>@MaterialTitle(material)</strong>
+                        @if (HasCodeBesideName(material))
+                        {
+                          <span class="alerts-item__code">@material.MaterialCode</span>
+                        }
+                        <span class="oi oi-external-link" aria-hidden="true"></span>
+                      </a>
+                    }
+                    else
+                    {
+                      <strong title="@material.PredictedPosMessage">@material.Label</strong>
+                    }
                     <em class="alerts-badge @StatusClass(material.Status)">@StatusLabel(material.Status)</em>
                   </div>
                   <div class="alerts-item__figures">
@@ -190,6 +208,14 @@
   [Parameter] public EventCallback OnRefresh { get; set; }
   [Parameter] public EventCallback OnClose { get; set; }
 
+  [CascadingParameter] private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+  /// <summary>
+  /// El maestro de materiales pide Administrador o Logística. Caja suele no tenerlos, y mandarla a
+  /// una pantalla que le va a negar el paso es peor que no ofrecer el enlace.
+  /// </summary>
+  private bool canOpenMaterialPage;
+
   private readonly HashSet<int> selectedMaterialIds = [];
   private HashSet<int> uncountableMaterialIds = [];
   private Dictionary<string, PhysicalCountScopeConflictDto> conflictsByMaterialCode = new(StringComparer.OrdinalIgnoreCase);
@@ -205,6 +231,24 @@
   private string CreateButtonLabel => hasReviewedPlan
     ? $"Crear conteo con {CountableSelection().Count} material(es)"
     : $"Crear conteo con {selectedMaterialIds.Count} seleccionado(s)";
+
+  protected override async Task OnInitializedAsync()
+  {
+    if (AuthenticationStateTask is null) return;
+
+    var state = await AuthenticationStateTask;
+    canOpenMaterialPage = state.User.IsInRole("Administrador") || state.User.IsInRole("Logistica");
+  }
+
+  private static string MaterialPageHref(RestaurantSaleAlertMaterial material)
+    => $"/logistica/materiales?material={material.MaterialId}";
+
+  /// <summary>La descripción manda; el código sólo la sustituye cuando viene vacía.</summary>
+  private static string MaterialTitle(RestaurantSaleAlertMaterial material)
+    => string.IsNullOrWhiteSpace(material.MaterialName) ? material.MaterialCode : material.MaterialName;
+
+  private static bool HasCodeBesideName(RestaurantSaleAlertMaterial material)
+    => !string.IsNullOrWhiteSpace(material.MaterialCode) && !string.IsNullOrWhiteSpace(material.MaterialName);
 
   protected override void OnParametersSet()
   {

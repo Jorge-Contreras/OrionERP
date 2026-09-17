@@ -64,6 +64,26 @@ Wherever a person reads a `logistica.Material` — Compras, Ubicaciones, Conteos
 - Fall back to the code only when the description is empty.
 - Codes remain the right key for lookups, joins, sorting tie-breaks, and logs.
 
+## Location Display Hierarchy
+
+The same rule applies to `logistica.Location`: people read `LocationName` ("Clóset de blancos"), not
+`LocationCode` ("LOC-000042") and never the numeric `Id`. Wherever a location is shown — the
+Ubicaciones selector and cards, the Materiales stock panel, Compras allocations, Conteos, Restaurante
+transfer/waste/adjustment pickers, purchase-order PDFs, toasts, and validation messages — lead with
+the name.
+
+- Compose labels as `Name · Code`, never `Code · Name` or `Code (Name)`.
+- Fall back to the code, then to `Ubicación #{Id}`, only when the name is empty.
+- Codes and ids remain the right key for lookups, joins, sorting tie-breaks, and logs.
+
+## Cross-page Deep Links
+
+Screens that name a material or a location should let the reader open its master record:
+`/logistica/materiales?material={MaterialId}` and `/logistica/ubicaciones?ubicacion={LocationId}`.
+Both pages read the query string and select the record on arrival; a deep link wins over the
+selection each page remembers in `localStorage`. Gate the link when the reader may lack the target
+page's roles (`Administrador` or `Logistica`) and fall back to plain text.
+
 ## SQL Server Connection
 
 The application uses `ConnectionStrings:OrionDb` as the canonical database connection setting. For environment-based configuration, use `ASPNETCORE_ConnectionStrings__OrionDb`.

@@ -22,6 +22,50 @@
       <section class="workforce-card workforce-span-4"><div class="workforce-card__body"><div class="workforce-stat">@dashboard.PendingActions</div><div class="workforce-label">Decisiones pendientes</div></div></section>
       <section class="workforce-card workforce-span-4"><div class="workforce-card__body"><div class="workforce-stat">@dashboard.Days.Sum(x => x.OvertimeCandidateMinutes) min</div><div class="workforce-label">Tiempo extra candidato</div></div></section>
 
+      <section class="workforce-card workforce-span-5">
+        <div class="workforce-card__header"><div><h2>Equipo activo</h2><span class="workforce-label">Selecciona un colaborador para revisar sus ponches.</span></div><span class="workforce-status">@dashboard.Employees.Count personas</span></div>
+        <div class="workforce-team-tools">
+          <input class="form-control" type="search" placeholder="Buscar por nombre…" aria-label="Buscar colaborador" @bind="employeeSearch" @bind:event="oninput" />
+          <select class="form-select" aria-label="Filtrar colaboradores por estado" @bind="employeeStateFilter"><option value="ALL">Todos</option><option value="WORKING">En turno</option><option value="OUT">Fuera de turno</option></select>
+        </div>
+        <div class="table-responsive workforce-team-list"><table class="table table-hover workforce-table"><thead><tr><th>Colaborador</th><th>Estado actual</th><th>Último registro</th></tr></thead><tbody>
+          @if (!VisibleEmployees.Any()) { <tr><td colspan="3" class="workforce-empty">No hay colaboradores que coincidan con el filtro.</td></tr> }
+          @foreach (var item in VisibleEmployees)
+          {
+            <tr class="@(selectedEmployee?.EmployeeId == item.EmployeeId ? "workforce-selected-row" : null)">
+              <td><button class="workforce-employee-select" @onclick="() => SelectEmployee(item)"><strong>@item.EmployeeName</strong><span>@(string.IsNullOrWhiteSpace(item.Position) ? item.SiteName : $"{item.Position} · {item.SiteName}")</span></button></td>
+              <td><span class="workforce-status @(item.IsWorking ? "" : "workforce-status--muted")">@StateLabel(item.CurrentState)</span></td>
+              <td class="workforce-label">@(item.LastPunchAtUtc is null ? "Sin registro hoy" : item.LastPunchAtUtc.Value.ToLocalTime().ToString("HH:mm"))</td>
+            </tr>
+          }
+        </tbody></table></div>
+      </section>
+
+      <section class="workforce-card workforce-span-7">
+        @if (selectedEmployee is null)
+        {
+          <div class="workforce-card__header"><h2>Historial de ponches</h2></div>
+          <div class="workforce-empty-block">Selecciona un colaborador para ver su historial.</div>
+        }
+        else
+        {
+          <div class="workforce-card__header"><div><h2>Historial de ponches</h2><div class="workforce-history-person"><strong>@selectedEmployee.EmployeeName</strong><span>@(string.IsNullOrWhiteSpace(selectedEmployee.Position) ? selectedEmployee.SiteName : $"{selectedEmployee.Position} · {selectedEmployee.SiteName}")</span></div></div><span class="workforce-status @(selectedEmployee.IsWorking ? "" : "workforce-status--muted")">@StateLabel(selectedEmployee.CurrentState)</span></div>
+          <div class="workforce-history-summary">
+            <div><strong>@SelectedPunches.Count</strong><span>ponches en el rango</span></div>
+            <div><strong>@Hours(SelectedDays.Sum(x => x.WorkedMinutes))</strong><span>trabajadas</span></div>
+            <div><strong>@SelectedDays.Sum(x => x.LateMinutes) min</strong><span>retardo</span></div>
+            <div><strong>@SelectedDays.Sum(x => x.OvertimeCandidateMinutes) min</strong><span>extra candidata</span></div>
+          </div>
+          <div class="table-responsive"><table class="table table-hover workforce-table"><thead><tr><th>Fecha y hora</th><th>Movimiento</th><th>Origen</th><th>Sitio y ubicación</th></tr></thead><tbody>
+            @if (SelectedPunches.Count == 0) { <tr><td colspan="4" class="workforce-empty">No hay ponches de este colaborador en el rango elegido.</td></tr> }
+            @foreach (var item in SelectedPunches)
+            {
+              <tr><td class="fw-semibold">@item.OccurredAtUtc.ToLocalTime().ToString("dd MMM yyyy · HH:mm")</td><td>@EventLabel(item.EventType) @if(item.IsAdjustment){<span class="workforce-status workforce-status--warn">Ajuste</span>}</td><td>@SourceLabel(item.Source)</td><td><strong>@item.SiteName</strong><div class="workforce-label">@LocationLabel(item)</div></td></tr>
+            }
+          </tbody></table></div>
+        }
+      </section>
+
       <section class="workforce-card workforce-span-12">
         <div class="workforce-card__header"><h2>Excepciones</h2><span class="workforce-status @(dashboard.Exceptions.Count > 0 ? "workforce-status--warn" : "")">@dashboard.Exceptions.Count pendientes</span></div>
         <div class="table-responsive"><table class="table table-hover workforce-table"><thead><tr><th>Empleado</th><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Ubicación del día</th><th>Decisión</th></tr></thead><tbody>
@@ -74,12 +118,15 @@
   private DateOnly from = DateOnly.FromDateTime(DateTime.Today.AddDays(-14));
   private DateOnly to = DateOnly.FromDateTime(DateTime.Today);
   private readonly Dictionary<long,int> overtime = [];
+  private TeamEmployeeAttendanceDto? selectedEmployee;
+  private string employeeSearch = string.Empty;
+  private string employeeStateFilter = "ALL";
   private bool busy;
   private string? message;
   private bool messageIsError;
   private string Rfc => RfcState.RequireRfc();
   protected override async Task OnInitializedAsync() => await LoadAsync();
-  private async Task LoadAsync(){busy=true;try{dashboard=await Attendance.GetTeamDashboardAsync(Rfc,from,to);prenominaApprovals=await Prenomina.GetPendingApprovalsAsync(Rfc);foreach(var d in dashboard.Days)overtime[d.Id]=d.OvertimeApprovedMinutes;}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}
+  private async Task LoadAsync(){busy=true;try{dashboard=await Attendance.GetTeamDashboardAsync(Rfc,from,to);prenominaApprovals=await Prenomina.GetPendingApprovalsAsync(Rfc);foreach(var d in dashboard.Days)overtime[d.Id]=d.OvertimeApprovedMinutes;selectedEmployee=dashboard.Employees.FirstOrDefault(x=>x.EmployeeId==selectedEmployee?.EmployeeId)??dashboard.Employees.FirstOrDefault(x=>x.IsWorking)??dashboard.Employees.FirstOrDefault();}catch(Exception ex){Show(ex.Message,true);}finally{busy=false;}}
   private async Task DecideExceptionAsync(long id,bool approve)=>await RunAsync(()=>Attendance.DecideExceptionAsync(id,Rfc,approve,approve?"Validado por supervisor":"Evidencia insuficiente"));
   private async Task ReturnExceptionAsync(long id)=>await RunAsync(()=>Attendance.ReturnExceptionAsync(id,Rfc,"Devuelta para aclaracion o correccion del empleado"));
   private async Task DecideCorrectionAsync(long id,bool approve)=>await RunAsync(()=>Attendance.DecideCorrectionAsync(id,Rfc,approve,approve?"Corrección validada":"Corrección rechazada"));
@@ -91,6 +138,17 @@
   private int OvertimeValue(AttendanceDayDto day)=>overtime.TryGetValue(day.Id,out var value)?value:day.OvertimeApprovedMinutes;
   private void SetOvertime(long id,object? value){if(int.TryParse(Convert.ToString(value),out var parsed))overtime[id]=Math.Max(0,parsed);}
   private void Show(string text,bool error){message=text;messageIsError=error;}
+  private IEnumerable<TeamEmployeeAttendanceDto> VisibleEmployees => (dashboard?.Employees ?? []).Where(item =>
+    (employeeStateFilter == "ALL" || (employeeStateFilter == "WORKING" ? item.IsWorking : !item.IsWorking))
+    && (string.IsNullOrWhiteSpace(employeeSearch) || item.EmployeeName.Contains(employeeSearch, StringComparison.OrdinalIgnoreCase)));
+  private IReadOnlyList<AttendanceEventDto> SelectedPunches => selectedEmployee is null || dashboard is null ? [] : dashboard.Punches.Where(x=>x.EmployeeId==selectedEmployee.EmployeeId).ToList();
+  private IReadOnlyList<AttendanceDayDto> SelectedDays => selectedEmployee is null || dashboard is null ? [] : dashboard.Days.Where(x=>x.EmployeeId==selectedEmployee.EmployeeId).ToList();
+  private void SelectEmployee(TeamEmployeeAttendanceDto employee) => selectedEmployee=employee;
+  private static string EventLabel(string value) => value switch { "IN" => "Entrada", "OUT" => "Salida", "BREAK_START" => "Inicio de descanso", "BREAK_END" => "Fin de descanso", _ => value };
+  private static string StateLabel(string value) => value switch { "IN" => "En turno", "OUT" => "Fuera de turno", "BREAK_START" => "En descanso", "BREAK_END" => "En turno", _ => "Sin registro" };
+  private static string SourceLabel(string value) => value switch { "LOGIN" => "Portal", "KIOSK" => "Kiosco", "ADJUSTMENT" => "Corrección aprobada", _ => string.IsNullOrWhiteSpace(value) ? "No indicado" : value };
+  private static string LocationLabel(AttendanceEventDto item) => item.LocationStatus switch { "INSIDE" => item.DistanceMeters is null ? "Dentro del perímetro" : $"Dentro del perímetro · {item.DistanceMeters:0} m", "OUTSIDE" => item.DistanceMeters is null ? "Fuera del perímetro" : $"Fuera del perímetro · {item.DistanceMeters:0} m", "UNAVAILABLE" => "Ubicación no disponible", _ => string.IsNullOrWhiteSpace(item.LocationStatus) ? "Sin evidencia de ubicación" : item.LocationStatus };
+  private static string Hours(int minutes) => $"{minutes / 60} h {minutes % 60:00} min";
 
   /// <summary>
   /// Resume la evidencia de ubicación para que el supervisor decida con datos y no

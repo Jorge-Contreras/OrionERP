@@ -550,8 +550,41 @@ public sealed class AttendanceService : WorkforceServiceBase, IAttendanceService
     if (!elevated && !actor.EmployeeId.HasValue)
       throw new UnauthorizedAccessException("El supervisor debe estar ligado a un empleado para consultar su equipo.");
     var supervisorId = elevated ? (int?)null : actor.EmployeeId;
-    var args = new { Rfc = normalizedRfc, From = fromDate, To = toDate, SupervisorId = supervisorId };
+    var today = DateOnly.FromDateTime(DateTime.Today);
+    var args = new { Rfc = normalizedRfc, From = fromDate, To = toDate, Today = today, SupervisorId = supervisorId };
     var scope = "(@SupervisorId IS NULL OR EXISTS (SELECT 1 FROM rh.SupervisorAssignment sa WHERE sa.Rfc=@Rfc AND sa.EmployeeId=employeeId AND sa.SupervisorEmployeeId=@SupervisorId AND sa.EffectiveFrom<=@To AND (sa.EffectiveTo IS NULL OR sa.EffectiveTo>=@From)))";
+    var currentScope = "(@SupervisorId IS NULL OR EXISTS (SELECT 1 FROM rh.SupervisorAssignment sa WHERE sa.Rfc=@Rfc AND sa.EmployeeId=ch.ID AND sa.SupervisorEmployeeId=@SupervisorId AND sa.EffectiveFrom<=@Today AND (sa.EffectiveTo IS NULL OR sa.EffectiveTo>=@Today)))";
+    var employees = (await connection.QueryAsync<TeamEmployeeAttendanceDto>(new CommandDefinition($"""
+      SELECT ch.ID EmployeeId,COALESCE(NULLIF(ch.NombreCorto,''),CONCAT(ch.Nombre,' ',ch.ApellidoPaterno)) EmployeeName,
+        ch.Puesto Position,ISNULL(site.[Name],'Sin asignar') SiteName,ISNULL(lastEvent.EventType,'OUT') CurrentState,
+        lastEvent.OccurredAtUtc LastPunchAtUtc,
+        CAST(CASE WHEN lastEvent.EventType IS NOT NULL AND lastEvent.EventType<>'OUT' THEN 1 ELSE 0 END AS bit) IsWorking
+      FROM dbo.Capital_Humano ch
+      OUTER APPLY (
+        SELECT TOP (1) wa.SiteId FROM rh.EmployeeWorkAssignment wa
+        WHERE wa.Rfc=ch.RFC AND wa.EmployeeId=ch.ID AND wa.EffectiveFrom<=@Today
+          AND (wa.EffectiveTo IS NULL OR wa.EffectiveTo>=@Today)
+        ORDER BY wa.EffectiveFrom DESC,wa.Id DESC
+      ) assignment
+      LEFT JOIN rh.WorkSite site ON site.Id=assignment.SiteId
+      OUTER APPLY (
+        SELECT TOP (1) e.EventType,e.OccurredAtUtc FROM rh.TimeEvent e
+        WHERE e.Rfc=ch.RFC AND e.EmployeeId=ch.ID AND e.WorkDate=@Today
+        ORDER BY e.OccurredAtUtc DESC,e.Id DESC
+      ) lastEvent
+      WHERE ch.RFC=@Rfc AND UPPER(LTRIM(RTRIM(ISNULL(ch.[Status],''))))='ACTIVO' AND {currentScope}
+      ORDER BY IsWorking DESC,EmployeeName,ch.ID;
+      """, args, cancellationToken: ct))).AsList();
+    var punches = (await connection.QueryAsync<AttendanceEventDto>(new CommandDefinition($"""
+      SELECT e.Id,e.EmployeeId,COALESCE(NULLIF(ch.NombreCorto,''),CONCAT(ch.Nombre,' ',ch.ApellidoPaterno)) EmployeeName,
+        e.EventType,e.[Source],e.OccurredAtUtc,e.WorkDate,ISNULL(site.[Name],'Sin sitio') SiteName,
+        e.LocationStatus,e.DistanceMeters,e.AccuracyMeters,e.IsAdjustment
+      FROM rh.TimeEvent e
+      INNER JOIN dbo.Capital_Humano ch ON ch.ID=e.EmployeeId AND ch.RFC=e.Rfc
+      LEFT JOIN rh.WorkSite site ON site.Id=e.SiteId
+      WHERE e.Rfc=@Rfc AND e.WorkDate BETWEEN @From AND @To AND {scope.Replace("employeeId", "e.EmployeeId")}
+      ORDER BY EmployeeName,e.OccurredAtUtc DESC,e.Id DESC;
+      """, args, cancellationToken: ct))).AsList();
     var days = (await connection.QueryAsync<AttendanceDayDto>(new CommandDefinition($"""
       SELECT d.Id,d.EmployeeId,COALESCE(NULLIF(ch.NombreCorto,''),CONCAT(ch.Nombre,' ',ch.ApellidoPaterno)) EmployeeName,
         d.WorkDate,d.ScheduledMinutes,d.WorkedMinutes,d.BreakMinutes,d.AbsenceMinutes,d.LateMinutes,d.EarlyDepartureMinutes,
@@ -593,11 +626,13 @@ public sealed class AttendanceService : WorkforceServiceBase, IAttendanceService
       """, args, cancellationToken: ct))).AsList();
     var employeesAtWork = await connection.ExecuteScalarAsync<int>(new CommandDefinition($"""
       SELECT COUNT(1) FROM
-      (SELECT e.EmployeeId FROM rh.TimeEvent e WHERE e.Rfc=@Rfc AND e.WorkDate=@To AND {scope.Replace("employeeId", "e.EmployeeId")}
-       GROUP BY e.EmployeeId HAVING (SELECT TOP (1) e2.EventType FROM rh.TimeEvent e2 WHERE e2.Rfc=@Rfc AND e2.EmployeeId=e.EmployeeId AND e2.WorkDate=@To ORDER BY e2.OccurredAtUtc DESC,e2.Id DESC)<>'OUT') q;
+      (SELECT e.EmployeeId FROM rh.TimeEvent e WHERE e.Rfc=@Rfc AND e.WorkDate=@Today AND {currentScope.Replace("ch.ID", "e.EmployeeId")}
+       GROUP BY e.EmployeeId HAVING (SELECT TOP (1) e2.EventType FROM rh.TimeEvent e2 WHERE e2.Rfc=@Rfc AND e2.EmployeeId=e.EmployeeId AND e2.WorkDate=@Today ORDER BY e2.OccurredAtUtc DESC,e2.Id DESC)<>'OUT') q;
       """, args, cancellationToken: ct));
     return new TeamAttendanceDashboardDto
     {
+      Employees = employees,
+      Punches = punches,
       Days = days,
       Exceptions = exceptions,
       Corrections = corrections,

@@ -328,6 +328,7 @@ public sealed class AttendanceEventDto
 {
   public long Id { get; set; }
   public int EmployeeId { get; set; }
+  public string EmployeeName { get; set; } = string.Empty;
   public string EventType { get; set; } = string.Empty;
   public string Source { get; set; } = string.Empty;
   public DateTime OccurredAtUtc { get; set; }
@@ -337,6 +338,21 @@ public sealed class AttendanceEventDto
   public decimal? DistanceMeters { get; set; }
   public decimal? AccuracyMeters { get; set; }
   public bool IsAdjustment { get; set; }
+}
+
+/// <summary>
+/// Estado operativo de un colaborador que el supervisor puede consultar desde
+/// su equipo. Sólo representa empleados activos dentro de su alcance vigente.
+/// </summary>
+public sealed class TeamEmployeeAttendanceDto
+{
+  public int EmployeeId { get; set; }
+  public string EmployeeName { get; set; } = string.Empty;
+  public string? Position { get; set; }
+  public string SiteName { get; set; } = "Sin asignar";
+  public string CurrentState { get; set; } = "OUT";
+  public DateTime? LastPunchAtUtc { get; set; }
+  public bool IsWorking { get; set; }
 }
 
 public sealed class AttendanceDayDto
@@ -460,6 +476,8 @@ public sealed class PrivacyNoticeSaveRequest
 
 public sealed class TeamAttendanceDashboardDto
 {
+  public IReadOnlyList<TeamEmployeeAttendanceDto> Employees { get; set; } = [];
+  public IReadOnlyList<AttendanceEventDto> Punches { get; set; } = [];
   public IReadOnlyList<AttendanceDayDto> Days { get; set; } = [];
   public IReadOnlyList<AttendanceExceptionDto> Exceptions { get; set; } = [];
   public IReadOnlyList<AttendanceCorrectionRequestDto> Corrections { get; set; } = [];

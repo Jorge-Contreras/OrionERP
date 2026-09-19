@@ -31,7 +31,8 @@ public sealed class RestaurantOnlineRefundBalanceAndTrackingTests
     var page = RepoFile.Read("src/OrionERP.Bruno.Web/Features/Ordering/BrunoOrderStatusPage.razor");
     Assert.DoesNotContain("ReadyStepComplete ? \"Te enviamos un correo\"", page, StringComparison.Ordinal);
     Assert.Contains("IsReadyEmailSent ? \"Te enviamos un correo\"", page, StringComparison.Ordinal);
-    Assert.Contains("NormalizedOrder == RestaurantOrderStatuses.Ready && IsReadyEmailInFlight", page, StringComparison.Ordinal);
+    Assert.Contains("NormalizedOrder is not (RestaurantOrderStatuses.Completed or RestaurantOrderStatuses.Cancelled)", page, StringComparison.Ordinal);
+    Assert.Contains("IsDelivery ? \"En camino\"", page, StringComparison.Ordinal);
   }
 
   [Fact]

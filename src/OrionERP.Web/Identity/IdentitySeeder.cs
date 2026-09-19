@@ -36,6 +36,7 @@ namespace OrionERP.Web.Identity
                 ,"RestauranteSupervisor"
                 ,"RestauranteCaja"
                 ,"RestauranteCocina"
+                ,"RestauranteRepartidor"
                 ,"RestaurantePantalla"
                 ,"CapitalHumanoAdmin"
                 ,"CapitalHumanoSupervisor"

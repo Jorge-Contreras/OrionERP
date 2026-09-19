@@ -467,6 +467,7 @@ builder.Services.AddAuthorization(options =>
   options.AddPolicy("RestaurantAdmin", policy => policy.RequireCompanyRoles("RestauranteAdmin", "RestauranteSupervisor").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   options.AddPolicy("RestaurantAdminOnly", policy => policy.RequireCompanyRoles("RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   options.AddPolicy("RestaurantPos", policy => policy.RequireRevocableCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
+  options.AddPolicy("RestaurantDelivery", policy => policy.RequireRevocableCompanyRoles("RestauranteRepartidor", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   options.AddPolicy("RestaurantKitchen", policy => policy.RequireCompanyRoles("RestauranteCocina", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   options.AddPolicy("RestaurantDisplay", policy => policy.RequireCompanyRoles("RestaurantePantalla", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
   options.AddPolicy("RestaurantCash", policy => policy.RequireCompanyRoles("RestauranteCaja", "RestauranteSupervisor", "RestauranteAdmin").RequireCompanyModule(PlatformModuleCodes.Restaurant));
@@ -617,6 +618,7 @@ app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<RestaurantEventsHub>("/hubs/restaurante");
 app.MapRestaurantProductImagesApi();
+app.MapRestaurantDeliveryEvidenceApi();
 app.MapWasteEvidenceApi();
 app.MapRestaurantSignageApi();
 app.MapTrainingReadiness();

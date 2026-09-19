@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace OrionERP.Web.Features.Restaurante;
 
-[Authorize(Roles = "Administrador,RestauranteAdmin,RestauranteSupervisor,RestauranteCaja,RestauranteCocina,RestaurantePantalla")]
+[Authorize(Roles = "Administrador,RestauranteAdmin,RestauranteSupervisor,RestauranteCaja,RestauranteCocina,RestauranteRepartidor,RestaurantePantalla")]
 public sealed class RestaurantEventsHub : Hub
 {
   public async Task Subscribe(string rfc, int siteId)

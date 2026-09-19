@@ -17,9 +17,9 @@
 <section class="checkout-page">
   <header class="checkout-heading">
     <a href="/menu">← Volver al menú</a>
-    <span>Pedido para recoger</span>
+    <span>@(IsDelivery ? "Entrega a domicilio" : "Pedido para recoger")</span>
     <h1>Revisa y paga</h1>
-    <p>Tu pedido se preparará lo antes posible. Te enviaremos un correo cuando esté listo; no mostramos un tiempo estimado.</p>
+    <p>@(IsDelivery ? "Prepararemos tu pedido y te avisaremos cuando vaya en camino." : "Tu pedido se preparará lo antes posible. Te enviaremos un correo cuando esté listo; no mostramos un tiempo estimado.")</p>
   </header>
 
   @if (isLoading)
@@ -51,19 +51,72 @@
   }
   else
   {
-    @if (!configuration.CanAcceptOrders)
-    {
-      <div class="checkout-alert" role="alert"><strong>No podemos recibir pedidos ahora.</strong><span>@(configuration.UnavailableReason ?? "Vuelve a intentarlo dentro del horario de pedidos.")</span></div>
-    }
-    @if (!string.IsNullOrWhiteSpace(errorMessage))
-    {
-      <div class="checkout-alert checkout-alert--error" role="alert"><strong>No pudimos continuar</strong><span>@errorMessage</span>@if (!string.IsNullOrWhiteSpace(recoveryTrackingToken)) { <a href="/pedido/@Uri.EscapeDataString(recoveryTrackingToken)">Consultar el estado del pago</a> }</div>
-    }
-
     <div class="checkout-grid">
       <div class="checkout-main">
+        <section class="checkout-panel fulfillment-panel" aria-labelledby="fulfillment-title">
+          <header><span>1</span><div><h2 id="fulfillment-title">¿Cómo quieres recibirlo?</h2><p>Elige antes de pagar; el total se vuelve a validar en el servidor.</p></div></header>
+          <div class="fulfillment-toggle" role="group" aria-label="Modalidad del pedido">
+            @if (configuration.PickupEnabled)
+            {
+              <button type="button" class="@(IsDelivery ? null : "is-active")" disabled="@paymentReady" @onclick="() => ChangeFulfillmentAsync(RestaurantOrderTypes.Pickup)">Recoger</button>
+            }
+            @if (configuration.DeliveryEnabled)
+            {
+              <button type="button" class="@(IsDelivery ? "is-active" : null)" disabled="@paymentReady" @onclick="() => ChangeFulfillmentAsync(RestaurantOrderTypes.Delivery)">Entrega a domicilio</button>
+            }
+          </div>
+
+          @if (IsDelivery)
+          {
+            <div class="delivery-editor">
+              <div id="delivery-place-autocomplete" class="delivery-autocomplete" aria-label="Buscar dirección"></div>
+              <div class="delivery-map-actions">
+                <button type="button" disabled="@paymentReady" @onclick="UseCurrentLocationAsync">⌖ Usar mi ubicación</button>
+                @if (configuration.DeliveryRadiusKm.HasValue) { <small>Radio de servicio: @configuration.DeliveryRadiusKm.Value.ToString("0.#") km</small> }
+              </div>
+              <div id="delivery-map" class="delivery-map" aria-label="Selecciona tu ubicación de entrega"></div>
+              @if (mapUnavailable)
+              {
+                <p class="delivery-map-warning" role="status">El mapa no está disponible. Puedes escribir la dirección manualmente; la marcaremos para revisión.</p>
+              }
+              @if (!string.IsNullOrWhiteSpace(suggestedNormalizedAddress))
+              {
+                <p class="delivery-address-suggestion" role="status"><strong>Dirección validada:</strong> @suggestedNormalizedAddress</p>
+              }
+
+              <div class="checkout-fields">
+                <label class="span-full"><span>Dirección completa</span><input autocomplete="street-address" maxlength="300" disabled="@paymentReady" value="@deliveryAddress" @oninput="DeliveryAddressChanged" placeholder="Calle, número, colonia, C.P. y municipio" /></label>
+                <label><span>Interior o referencia corta</span><input maxlength="150" disabled="@paymentReady" @bind="deliveryComplement" placeholder="Casa 4, portón negro…" /></label>
+                <label><span>Instrucciones para encontrar el lugar</span><textarea maxlength="500" rows="3" disabled="@paymentReady" @bind="deliveryInstructions" placeholder="Entre calles, timbre, negocio cercano…"></textarea></label>
+              </div>
+
+              <fieldset class="dropoff-options" disabled="@paymentReady">
+                <legend>¿Cómo te entregamos?</legend>
+                <label><input type="radio" name="dropoff" checked="@(dropoffPreference == RestaurantDeliveryDropoffPreferences.LeaveAtDoor)" @onchange="() => dropoffPreference = RestaurantDeliveryDropoffPreferences.LeaveAtDoor" /><span><strong>Dejar en la puerta</strong><small>El repartidor tomará una foto como comprobante.</small></span></label>
+                <label><input type="radio" name="dropoff" checked="@(dropoffPreference == RestaurantDeliveryDropoffPreferences.MeetAtDoor)" @onchange="() => dropoffPreference = RestaurantDeliveryDropoffPreferences.MeetAtDoor" /><span><strong>Encontrarme en la puerta</strong><small>Te llamaremos si hace falta.</small></span></label>
+                <label><input type="radio" name="dropoff" checked="@(dropoffPreference == RestaurantDeliveryDropoffPreferences.MeetOutside)" @onchange="() => dropoffPreference = RestaurantDeliveryDropoffPreferences.MeetOutside" /><span><strong>Encontrarme afuera</strong><small>Ideal para accesos difíciles.</small></span></label>
+              </fieldset>
+
+              @if (!deliveryLatitude.HasValue)
+              {
+                <label class="manual-address-check"><input type="checkbox" disabled="@paymentReady" @bind="manualAddressAcknowledged" /><span>Confirmo que esta dirección está dentro del radio de servicio. Entiendo que el restaurante puede llamarme para ubicarla.</span></label>
+              }
+
+              <div class="facade-photo">
+                <div><strong>Foto de la fachada <small>Opcional</small></strong><p>Ayuda al repartidor a reconocer el lugar. Se elimina después de 90 días.</p></div>
+                <div class="facade-photo__actions">
+                  <button type="button" disabled="@paymentReady" @onclick="OpenCameraAsync">Tomar foto</button>
+                  <label class="facade-file">Elegir archivo<input id="facade-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled="@paymentReady" @onchange="PreviewFacadeAsync" /></label>
+                  <button type="button" disabled="@paymentReady" @onclick="ClearFacadeAsync">Quitar</button>
+                </div>
+                <img id="facade-photo-preview" class="facade-photo__preview" alt="Vista previa de la fachada" hidden />
+              </div>
+            </div>
+          }
+        </section>
+
         <section class="checkout-panel" aria-labelledby="contact-title">
-          <header><span>1</span><div><h2 id="contact-title">Tus datos</h2><p>Usaremos este correo para confirmar el pedido y avisarte cuando esté listo.</p></div></header>
+          <header><span>2</span><div><h2 id="contact-title">Tus datos</h2><p>Usaremos este correo para confirmar el pedido y avisarte cuando cambie de estado.</p></div></header>
           @if (isMemberConnected)
           {
             <div class="member-connected"><strong>@MembershipName conectado</strong><span>Este pedido se vinculará a tu historial y podrá generar puntos. El canje de puntos sigue disponible solamente en el restaurante.</span></div>
@@ -81,12 +134,12 @@
         </section>
 
         <section class="checkout-panel" aria-labelledby="payment-title">
-          <header><span>2</span><div><h2 id="payment-title">Pago seguro</h2><p>Los datos de tu tarjeta se capturan directamente en un formulario de Clip. Este sitio nunca los recibe.</p></div></header>
+          <header><span>3</span><div><h2 id="payment-title">Pago seguro</h2><p>Los datos de tu tarjeta se capturan directamente en un formulario de Clip. Este sitio nunca los recibe.</p></div></header>
           <label class="legal-check">
             <input type="checkbox" disabled="@paymentReady" @bind="legalAccepted" />
             <span>Acepto los <a href="/terminos" target="_blank" rel="noopener">términos de pedidos</a> y confirmo que leí el <a href="/privacidad" target="_blank" rel="noopener">aviso de privacidad</a>.</span>
           </label>
-          <div class="checkout-disclaimer"><strong>Recoger en @Presentation.ShortName</strong><p>Sin entrega, horarios programados, propina ni cancelación desde el sitio. Si necesitas ayuda o un reembolso, contacta directamente al restaurante.</p></div>
+          <div class="checkout-disclaimer"><strong>@(IsDelivery ? "Entrega por personal de Bruno’s" : $"Recoger en {Presentation.ShortName}")</strong><p>@(IsDelivery ? "La dirección e instrucciones se compartirán únicamente con el personal que prepara y entrega tu pedido." : "Sin horarios programados, propina ni cancelación desde el sitio. Si necesitas ayuda o un reembolso, contacta directamente al restaurante.")</p></div>
 
           @if (!paymentReady)
           {
@@ -113,7 +166,30 @@
         <header><h2 id="summary-title">Tu pedido</h2><a href="/menu">Editar</a></header>
         @if (quote is null)
         {
-          <div class="summary-loading"><span>Confirmando precio y disponibilidad…</span></div>
+          <div class="summary-lines">
+            @foreach (var item in cart)
+            {
+              <article>
+                <div>
+                  <b>@item.Quantity.ToString("0")×</b>
+                  <span>
+                    <strong>@item.ProductName</strong>
+                    @if (item.ComboSelections.Count > 0) { <small>@string.Join(" · ", item.ComboSelections.Select(selection => $"{selection.SlotName}: {selection.OptionName}"))</small> }
+                    @if (item.ModifierNames.Count > 0) { <small>@string.Join(" · ", item.ModifierNames)</small> }
+                    @if (!string.IsNullOrWhiteSpace(item.Notes)) { <small>“@item.Notes”</small> }
+                  </span>
+                </div>
+                <strong>@item.DisplayTotal.ToString("C")</strong>
+              </article>
+            }
+          </div>
+          <p class="summary-pending" role="status">@(isQuoting ? "Confirmando precio y disponibilidad…" : IsDelivery ? "Completa tus datos y ubicación para confirmar la entrega." : "Confirmaremos el precio antes del pago.")</p>
+          <dl class="summary-totals">
+            <div><dt>Subtotal estimado</dt><dd>@EstimatedCartSubtotal.ToString("C")</dd></div>
+            @if (IsDelivery) { <div class="delivery-pending"><dt>Entrega</dt><dd>Por confirmar</dd></div> }
+            <div class="total"><dt>Total estimado</dt><dd>@EstimatedCartSubtotal.ToString("C") <small>MXN</small></dd></div>
+          </dl>
+          <p class="quote-expiry">El precio final y la entrega se validarán con la información que proporciones.</p>
         }
         else
         {
@@ -132,11 +208,59 @@
             <div><dt>Subtotal</dt><dd>@quote.Subtotal.ToString("C")</dd></div>
             @if (quote.PromotionDiscount > 0) { <div class="discount"><dt>Promociones</dt><dd>−@quote.PromotionDiscount.ToString("C")</dd></div> }
             <div><dt>IVA incluido</dt><dd>@quote.Tax.ToString("C")</dd></div>
+            @if (quote.DeliveryFee > 0) { <div><dt>Entrega</dt><dd>@quote.DeliveryFee.ToString("C")</dd></div> }
             <div class="total"><dt>Total</dt><dd>@quote.Total.ToString("C") <small>MXN</small></dd></div>
           </dl>
           <p class="quote-expiry">Cotización protegida por 10 minutos. Se validará de nuevo antes de capturar el pago.</p>
         }
       </aside>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+      <div class="checkout-feedback checkout-feedback--error">
+        <section class="checkout-feedback__dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkout-feedback-title" aria-describedby="checkout-feedback-message">
+          <span class="checkout-feedback__icon" aria-hidden="true">!</span>
+          <div>
+            <h2 id="checkout-feedback-title">No pudimos continuar</h2>
+            <p id="checkout-feedback-message">@errorMessage</p>
+          </div>
+          <div class="checkout-feedback__actions">
+            @if (!string.IsNullOrWhiteSpace(recoveryTrackingToken))
+            {
+              <a href="/pedido/@Uri.EscapeDataString(recoveryTrackingToken)">Consultar el estado del pago</a>
+            }
+            <button type="button" autofocus @onclick="DismissFeedback">Entendido</button>
+          </div>
+        </section>
+      </div>
+    }
+    else if (!configuration.CanAcceptOrders && !availabilityWarningDismissed)
+    {
+      <div class="checkout-feedback checkout-feedback--warning">
+        <section class="checkout-feedback__dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkout-feedback-title" aria-describedby="checkout-feedback-message">
+          <span class="checkout-feedback__icon" aria-hidden="true">!</span>
+          <div>
+            <h2 id="checkout-feedback-title">No podemos recibir pedidos ahora</h2>
+            <p id="checkout-feedback-message">@(configuration.UnavailableReason ?? "Vuelve a intentarlo dentro del horario de pedidos.")</p>
+          </div>
+          <div class="checkout-feedback__actions">
+            <button type="button" autofocus @onclick="DismissFeedback">Entendido</button>
+          </div>
+        </section>
+      </div>
+    }
+  }
+
+  @if (cameraOpen)
+  {
+    <div class="facade-camera" role="dialog" aria-modal="true" aria-label="Tomar foto de la fachada">
+      <div class="facade-camera__sheet">
+        <header><div><strong>Foto de la fachada</strong><small>Procura incluir la entrada y referencias visibles.</small></div><button type="button" aria-label="Cerrar cámara" @onclick="CloseCameraAsync">×</button></header>
+        <video id="facade-camera-video" playsinline muted></video>
+        @if (!string.IsNullOrWhiteSpace(cameraError)) { <p role="alert">@cameraError</p> }
+        <footer><button type="button" @onclick="CloseCameraAsync">Cancelar</button><button type="button" @onclick="SwitchCameraAsync">Cambiar cámara</button><button type="button" class="button button--accent" @onclick="CaptureCameraAsync">Usar foto</button></footer>
+      </div>
     </div>
   }
 </section>
@@ -152,14 +276,30 @@
   private bool paymentReady;
   private bool cardFormMounted;
   private bool paymentInProgress;
+  private bool availabilityWarningDismissed;
   private bool isAuthenticated;
   private bool isMemberConnected;
   private bool legalAccepted;
+  private string fulfillmentType = RestaurantOrderTypes.Pickup;
+  private string deliveryAddress = string.Empty;
+  private string deliveryComplement = string.Empty;
+  private string deliveryInstructions = string.Empty;
+  private string dropoffPreference = RestaurantDeliveryDropoffPreferences.MeetAtDoor;
+  private decimal? deliveryLatitude;
+  private decimal? deliveryLongitude;
+  private string? googlePlaceId;
+  private bool manualAddressAcknowledged;
+  private bool mapInitialized;
+  private bool mapUnavailable;
+  private bool cameraOpen;
+  private string? cameraError;
+  private DotNetObjectReference<BrunoCheckoutPage>? dotNetReference;
   private string customerName = string.Empty;
   private string customerEmail = string.Empty;
   private string customerPhone = string.Empty;
   private string promotionCode = string.Empty;
   private string? errorMessage;
+  private string? suggestedNormalizedAddress;
   private string? recoveryTrackingToken;
   private Guid clientAttemptId = Guid.NewGuid();
   private string MembershipName => Presentation.MembershipProgramName ?? "tu membresía";
@@ -168,6 +308,8 @@
   // for a price it cannot get, and from calling that refusal a price change.
   private bool MembershipRequired => configuration?.AllowGuestCheckout != true && !isMemberConnected;
   private int CartItemCount => cart.Sum(item => (int)item.Quantity);
+  private decimal EstimatedCartSubtotal => cart.Sum(item => item.DisplayTotal);
+  private bool IsDelivery => fulfillmentType == RestaurantOrderTypes.Delivery;
 
   protected override async Task OnInitializedAsync()
   {
@@ -175,6 +317,9 @@
     {
       var binding = await Website.ResolveRequiredAsync();
       configuration = await CheckoutService.GetConfigurationAsync(binding);
+      fulfillmentType = configuration.PickupEnabled
+        ? RestaurantOrderTypes.Pickup
+        : configuration.DeliveryEnabled ? RestaurantOrderTypes.Delivery : RestaurantOrderTypes.Pickup;
       var auth = await AuthenticationState.GetAuthenticationStateAsync();
       isAuthenticated = auth.User.Identity?.IsAuthenticated == true;
       if (isAuthenticated)
@@ -214,11 +359,36 @@
         }
         var stored = await Js.InvokeAsync<List<BrunoCartLine>>("brunoOrdering.loadCart", Website.Instance.PublicSiteKey);
         cart.AddRange(stored ?? []);
-        if (cart.Count > 0 && configuration?.IsEnabled == true && !MembershipRequired) await QuoteAsync();
+        if (cart.Count > 0 && configuration?.IsEnabled == true && !MembershipRequired && !IsDelivery) await QuoteAsync();
       }
       catch (Exception ex) { errorMessage = FriendlyInteropError(ex, "No pudimos recuperar tu pedido guardado."); }
       finally { isLoading = false; StateHasChanged(); }
       return;
+    }
+
+    if (IsDelivery && !mapInitialized && configuration is not null)
+    {
+      mapInitialized = true;
+      if (string.IsNullOrWhiteSpace(configuration.GoogleMapsBrowserApiKey)
+          || !configuration.DeliveryOriginLatitude.HasValue
+          || !configuration.DeliveryOriginLongitude.HasValue)
+      {
+        mapUnavailable = true;
+      }
+      else
+      {
+        dotNetReference ??= DotNetObjectReference.Create(this);
+        var ready = await Js.InvokeAsync<bool>("brunoOrdering.initializeDeliveryMap", "delivery-map", "delivery-place-autocomplete", new
+        {
+          apiKey = configuration.GoogleMapsBrowserApiKey,
+          mapId = configuration.GoogleMapsMapId,
+          latitude = configuration.DeliveryOriginLatitude,
+          longitude = configuration.DeliveryOriginLongitude,
+          radiusKm = configuration.DeliveryRadiusKm
+        }, dotNetReference);
+        mapUnavailable = !ready;
+      }
+      StateHasChanged();
     }
 
     if (paymentReady && !cardFormMounted && quote is not null && configuration is not null)
@@ -256,13 +426,22 @@
     CustomerPhone = customerPhone.Trim(),
     TermsAccepted = legalAccepted,
     TermsVersion = configuration.TermsVersion,
-    PrivacyVersion = configuration.PrivacyVersion
+    PrivacyVersion = configuration.PrivacyVersion,
+    FacadeInputId = "facade-photo-input"
   };
 
   private async Task RefreshQuoteAsync()
   {
     errorMessage = null;
     await QuoteAsync();
+  }
+
+  private void DismissFeedback()
+  {
+    if (!string.IsNullOrWhiteSpace(errorMessage))
+      errorMessage = null;
+    else
+      availabilityWarningDismissed = true;
   }
 
   private async Task QuoteAsync()
@@ -281,11 +460,15 @@
       var result = await Js.InvokeAsync<RestaurantOnlineQuoteResult>("brunoOrdering.quoteCart", new RestaurantOnlineQuoteRequest
       {
         Lines = cart.Select(item => item.ToRequest()).ToList(),
-        PromotionCode = string.IsNullOrWhiteSpace(promotionCode) ? null : promotionCode.Trim()
+        PromotionCode = string.IsNullOrWhiteSpace(promotionCode) ? null : promotionCode.Trim(),
+        Fulfillment = BuildFulfillment()
       });
       if (result?.Succeeded != true || string.IsNullOrWhiteSpace(result.QuoteToken))
         throw new InvalidOperationException(result?.Message ?? "La cotización no es válida.");
       quote = result;
+      suggestedNormalizedAddress = result.SuggestedNormalizedAddress;
+      if (IsDelivery && !string.IsNullOrWhiteSpace(suggestedNormalizedAddress))
+        deliveryAddress = suggestedNormalizedAddress;
     }
     catch (Exception ex)
     {
@@ -316,7 +499,9 @@
   private string? ValidateContact()
   {
     if (string.IsNullOrWhiteSpace(customerName) || customerName.Trim().Length > 150)
-      return "Escribe el nombre de quien recogerá el pedido.";
+      return IsDelivery
+        ? "Escribe el nombre de quien recibirá el pedido."
+        : "Escribe el nombre de quien recogerá el pedido.";
     if (string.IsNullOrWhiteSpace(customerEmail) || customerEmail.Length > 256 || !new EmailAddressAttribute().IsValid(customerEmail.Trim()))
       return "Escribe un correo electrónico válido.";
     var phoneDigits = new string(customerPhone.Where(char.IsDigit).ToArray());
@@ -324,6 +509,13 @@
       return "Escribe un teléfono válido.";
     if (!legalAccepted)
       return "Debes aceptar los términos y confirmar que leíste el aviso de privacidad.";
+    if (IsDelivery)
+    {
+      if (string.IsNullOrWhiteSpace(deliveryAddress)) return "Escribe la dirección de entrega.";
+      if (!RestaurantDeliveryDropoffPreferences.IsValid(dropoffPreference)) return "Elige cómo quieres recibir el pedido.";
+      if (!deliveryLatitude.HasValue && !manualAddressAcknowledged)
+        return "Confirma que la dirección manual está dentro del radio de servicio.";
+    }
     if (configuration?.CanAcceptOrders != true)
       return configuration?.UnavailableReason ?? "Los pedidos no están disponibles en este momento.";
     if (configuration.AllowGuestCheckout != true && !isMemberConnected)
@@ -331,6 +523,106 @@
     if (string.IsNullOrWhiteSpace(configuration.ClipApiKey))
       return "El pago en línea no está disponible en este momento.";
     return null;
+  }
+
+  private RestaurantOnlineFulfillmentRequest BuildFulfillment() => IsDelivery
+    ? new RestaurantOnlineFulfillmentRequest
+    {
+      Type = RestaurantOrderTypes.Delivery,
+      AddressLine = deliveryAddress.Trim(),
+      AddressComplement = string.IsNullOrWhiteSpace(deliveryComplement) ? null : deliveryComplement.Trim(),
+      Latitude = deliveryLatitude,
+      Longitude = deliveryLongitude,
+      GooglePlaceId = googlePlaceId,
+      AddressVerificationStatus = deliveryLatitude.HasValue
+        ? RestaurantDeliveryAddressVerificationStatuses.PinSelected
+        : RestaurantDeliveryAddressVerificationStatuses.ManualUnverified,
+      DropoffPreference = dropoffPreference,
+      Instructions = string.IsNullOrWhiteSpace(deliveryInstructions) ? null : deliveryInstructions.Trim(),
+      ManualAddressAcknowledged = !deliveryLatitude.HasValue && manualAddressAcknowledged
+    }
+    : new RestaurantOnlineFulfillmentRequest { Type = RestaurantOrderTypes.Pickup };
+
+  private async Task ChangeFulfillmentAsync(string value)
+  {
+    if (paymentReady || fulfillmentType == value) return;
+    fulfillmentType = value;
+    quote = null;
+    errorMessage = null;
+    if (IsDelivery)
+    {
+      mapInitialized = false;
+      await InvokeAsync(StateHasChanged);
+    }
+    else
+    {
+      await QuoteAsync();
+    }
+  }
+
+  private void DeliveryAddressChanged(ChangeEventArgs args)
+  {
+    deliveryAddress = args.Value?.ToString() ?? string.Empty;
+    deliveryLatitude = null;
+    deliveryLongitude = null;
+    googlePlaceId = null;
+    manualAddressAcknowledged = false;
+    suggestedNormalizedAddress = null;
+    quote = null;
+  }
+
+  [JSInvokable]
+  public Task SetDeliveryLocation(double latitude, double longitude, string address, string placeId)
+  {
+    deliveryLatitude = (decimal)latitude;
+    deliveryLongitude = (decimal)longitude;
+    googlePlaceId = string.IsNullOrWhiteSpace(placeId) ? null : placeId;
+    if (!string.IsNullOrWhiteSpace(address)) deliveryAddress = address;
+    manualAddressAcknowledged = false;
+    quote = null;
+    return InvokeAsync(StateHasChanged);
+  }
+
+  private async Task UseCurrentLocationAsync()
+  {
+    var found = await Js.InvokeAsync<bool>("brunoOrdering.useCurrentDeliveryLocation");
+    if (!found) errorMessage = "No pudimos obtener tu ubicación. Puedes mover el pin o escribir la dirección.";
+  }
+
+  private Task PreviewFacadeAsync(ChangeEventArgs _)
+    => Js.InvokeVoidAsync("brunoOrdering.previewFacadeFile", "facade-photo-input", "facade-photo-preview").AsTask();
+
+  private Task ClearFacadeAsync()
+    => Js.InvokeVoidAsync("brunoOrdering.clearFacadePhoto", "facade-photo-input", "facade-photo-preview").AsTask();
+
+  private async Task OpenCameraAsync()
+  {
+    cameraOpen = true;
+    cameraError = null;
+    await InvokeAsync(StateHasChanged);
+    await Task.Yield();
+    var started = await Js.InvokeAsync<bool>("brunoOrdering.startFacadeCamera", "facade-camera-video");
+    if (!started) cameraError = "No pudimos abrir la cámara. Usa “Elegir archivo” para tomar o subir una foto.";
+  }
+
+  private async Task CaptureCameraAsync()
+  {
+    var captured = await Js.InvokeAsync<bool>("brunoOrdering.captureFacadeCamera", "facade-camera-video", "facade-photo-preview");
+    if (!captured) { cameraError = "No pudimos capturar la foto. Inténtalo nuevamente."; return; }
+    cameraOpen = false;
+  }
+
+  private async Task SwitchCameraAsync()
+  {
+    cameraError = null;
+    var started = await Js.InvokeAsync<bool>("brunoOrdering.switchFacadeCamera", "facade-camera-video");
+    if (!started) cameraError = "No encontramos otra cámara disponible.";
+  }
+
+  private async Task CloseCameraAsync()
+  {
+    await Js.InvokeVoidAsync("brunoOrdering.stopFacadeCamera");
+    cameraOpen = false;
   }
 
   private async Task EditDetailsAsync()
@@ -417,5 +709,8 @@
   {
     try { await Js.InvokeVoidAsync("brunoOrdering.clearCardForm", "bruno-card-form"); }
     catch { }
+    try { await Js.InvokeVoidAsync("brunoOrdering.stopFacadeCamera"); }
+    catch { }
+    dotNetReference?.Dispose();
   }
 }

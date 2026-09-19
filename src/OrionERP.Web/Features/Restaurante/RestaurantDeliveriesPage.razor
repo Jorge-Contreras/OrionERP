@@ -1,0 +1,225 @@
+@page "/restaurante/entregas"
+@attribute [Authorize(Policy = "RestaurantDelivery")]
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using OrionERP.Application.Common
+@using OrionERP.Application.Features.Restaurante
+@inject IRestaurantCatalogService CatalogService
+@inject IRestaurantDeliveryService DeliveryService
+@inject ICurrentCompanyContext CompanyContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Restaurante · Repartos</PageTitle>
+
+<main class="delivery-shell">
+  <header class="delivery-hero">
+    <div><span>Operación móvil</span><h1>Repartos</h1><p>Toma una orden lista, abre la ruta y confirma la entrega.</p></div>
+    <div class="delivery-hero__actions">
+      @if (sites.Count > 1)
+      {
+        <select aria-label="Sede" @onchange="ChangeSiteAsync">
+          @foreach (var site in sites) { <option value="@site.Id" selected="@(site.Id == selectedSiteId)">@site.Name</option> }
+        </select>
+      }
+      <button type="button" @onclick="LoadQueueAsync" disabled="@busy">@(busy ? "Actualizando…" : "Actualizar")</button>
+    </div>
+  </header>
+
+  @if (!string.IsNullOrWhiteSpace(message))
+  {
+    <div class="delivery-alert @(isError ? "is-error" : null)" role="status">@message</div>
+  }
+
+  @if (active is not null)
+  {
+    <section class="delivery-section" aria-labelledby="active-delivery-title">
+      <div class="delivery-section__heading"><div><span>Tu recorrido actual</span><h2 id="active-delivery-title">En camino</h2></div><strong>1 activa</strong></div>
+      @DeliveryCard(active, true)
+    </section>
+  }
+
+  <section class="delivery-section" aria-labelledby="ready-deliveries-title">
+    <div class="delivery-section__heading"><div><span>Disponibles</span><h2 id="ready-deliveries-title">Listas para salir</h2></div><strong>@ready.Count</strong></div>
+    @if (ready.Count == 0)
+    {
+      <div class="delivery-empty"><span class="oi oi-clock" aria-hidden="true"></span><strong>No hay pedidos listos para reparto.</strong><p>Esta pantalla se actualiza automáticamente.</p></div>
+    }
+    else
+    {
+      <div class="delivery-grid">@foreach (var item in ready) { @DeliveryCard(item, false) }</div>
+    }
+  </section>
+</main>
+
+@code {
+  private const long MaxUploadBytes = 12L * 1024L * 1024L;
+  private readonly CancellationTokenSource disposeCts = new();
+  private List<RestaurantSiteDto> sites = [];
+  private List<RestaurantDeliveryQueueItemDto> queue = [];
+  private int selectedSiteId;
+  private string userName = string.Empty;
+  private bool canSupervise;
+  private bool busy;
+  private string? message;
+  private bool isError;
+  private Guid? completionOrderId;
+  private byte[]? proofBytes;
+  private string? proofName;
+  private string overrideReason = string.Empty;
+  private bool overrideMissingProof;
+  private string reassignmentUser = string.Empty;
+  private Guid? assignmentOrderId;
+  private int proofInputKey;
+
+  private string CurrentRfc => CompanyContext.RequireRfc();
+  private RestaurantDeliveryQueueItemDto? active => queue.FirstOrDefault(item =>
+    item.Status == RestaurantOrderStatuses.Dispatched
+    && (canSupervise || string.Equals(item.AssignedCourierUserName, userName, StringComparison.OrdinalIgnoreCase)));
+  private List<RestaurantDeliveryQueueItemDto> ready => queue.Where(item => item.Status == RestaurantOrderStatuses.Ready).ToList();
+
+  protected override async Task OnInitializedAsync()
+  {
+    var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    userName = auth.User.Identity?.Name ?? string.Empty;
+    canSupervise = auth.User.IsInRole("RestauranteSupervisor") || auth.User.IsInRole("RestauranteAdmin") || auth.User.IsInRole("Administrador");
+    sites = (await CatalogService.GetSitesAsync(CurrentRfc)).Where(site => site.IsEnabled).ToList();
+    selectedSiteId = sites.FirstOrDefault()?.Id ?? 0;
+    await LoadQueueAsync();
+    _ = PollAsync(disposeCts.Token);
+  }
+
+  private RenderFragment DeliveryCard(RestaurantDeliveryQueueItemDto order, bool isActive) => @<article class="delivery-card @(isActive ? "is-active" : null)" @key="order.OrderId">
+      <header><div><span>Orden</span><strong>@order.Folio.ToString("000")</strong></div><div class="delivery-card__time"><span>@(isActive ? "En camino" : "Lista hace")</span><strong>@Elapsed(order)</strong></div></header>
+      <div class="delivery-customer">
+        <div><span>Cliente</span><strong>@order.CustomerName</strong></div>
+        @if (!string.IsNullOrWhiteSpace(order.CustomerPhone)) { <a href="tel:@PhoneHref(order.CustomerPhone)"><span class="oi oi-phone" aria-hidden="true"></span> Llamar</a> }
+      </div>
+      @if (order.AddressVerificationStatus == RestaurantDeliveryAddressVerificationStatuses.ManualUnverified)
+      {
+        <div class="delivery-warning"><span class="oi oi-warning" aria-hidden="true"></span><div><strong>Dirección sin verificar</strong><p>Confírmala con el cliente antes de salir. La entrega puede continuar.</p></div></div>
+      }
+      <address><span class="oi oi-map-marker" aria-hidden="true"></span><div><strong>@order.AddressLine</strong>@if (!string.IsNullOrWhiteSpace(order.AddressComplement)) { <p>@order.AddressComplement</p> }@if (!string.IsNullOrWhiteSpace(order.AddressReferences)) { <small>@order.AddressReferences</small> }</div></address>
+      <div class="delivery-actions delivery-actions--route">
+        <a class="delivery-route" href="@DirectionsUrl(order)" target="_blank" rel="noopener"><span class="oi oi-location" aria-hidden="true"></span>Abrir ruta en Google Maps</a>
+        @if (order.AddressVerificationStatus == RestaurantDeliveryAddressVerificationStatuses.ManualUnverified)
+        { <button type="button" class="secondary" @onclick="() => ConfirmAddressAsync(order)">Ya confirmé la dirección</button> }
+      </div>
+      <dl class="delivery-details"><div><dt>Entrega</dt><dd>@DropoffLabel(order.DropoffPreference)</dd></div><div><dt>Total pagado</dt><dd>@order.Total.ToString("C")</dd></div></dl>
+      @if (order.FacadeEvidenceId.HasValue)
+      { <figure class="delivery-facade"><img src="@($"/api/restaurante/entregas/evidencia/{order.FacadeEvidenceId.Value}")" alt="Fachada indicada por el cliente" loading="lazy" /><figcaption>Fachada indicada por el cliente</figcaption></figure> }
+      <ul class="delivery-items">@foreach (var line in order.Lines) { <li><strong>@line.Quantity.ToString("0.##")×</strong><span>@line.ProductName@if (!string.IsNullOrWhiteSpace(line.Notes)) { <small>@line.Notes</small> }</span></li> }</ul>
+      @if (isActive)
+      {
+        @if (completionOrderId != order.OrderId)
+        { <button type="button" class="primary delivery-complete" @onclick="() => BeginCompletion(order)">Entrega completada</button> }
+        else
+        {
+          <section class="delivery-proof" aria-label="Comprobante de entrega">
+            <div><strong>Comprobante de entrega</strong><p>@(NeedsProof(order) ? "Toma una foto donde se vea que el pedido quedó en la puerta." : "La foto es opcional para este tipo de entrega.")</p></div>
+            <InputFile @key="proofInputKey" OnChange="SelectProofAsync" accept="image/jpeg,image/png,image/webp" capture="environment" />
+            @if (!string.IsNullOrWhiteSpace(proofName)) { <div class="delivery-proof__selected"><span class="oi oi-camera-slr" aria-hidden="true"></span><span>@proofName</span><button type="button" @onclick="ClearProof">Quitar</button></div> }
+            @if (canSupervise && NeedsProof(order) && proofBytes is null)
+            {
+              <label class="delivery-override"><input type="checkbox" @bind="overrideMissingProof" /> Autorizar sin foto</label>
+              @if (overrideMissingProof) { <label>Motivo obligatorio<textarea rows="2" maxlength="500" @bind="overrideReason"></textarea></label> }
+            }
+            <div class="delivery-actions"><button type="button" class="secondary" @onclick="CancelCompletion">Cancelar</button><button type="button" class="primary" disabled="@busy" @onclick="() => CompleteAsync(order)">Confirmar entrega</button></div>
+          </section>
+        }
+      }
+      else
+      {
+        <button type="button" class="primary delivery-take" disabled="@(busy || active is not null)" @onclick="() => ClaimAsync(order)">@(active is null ? "Salir a entregar" : "Termina tu entrega activa")</button>
+      }
+      @if (canSupervise && (isActive || !string.IsNullOrWhiteSpace(order.AssignedCourierUserName)))
+      {
+        <details class="delivery-supervisor" open="@(assignmentOrderId == order.OrderId)"><summary @onclick="() => assignmentOrderId = order.OrderId">Reasignación de supervisor</summary><label>Usuario del repartidor<input @bind="reassignmentUser" placeholder="correo o usuario" /></label><div class="delivery-actions"><button type="button" class="secondary" @onclick="() => AssignAsync(order, null)">Liberar</button><button type="button" class="secondary" @onclick="() => AssignAsync(order, reassignmentUser)">Reasignar</button></div></details>
+      }
+    </article>;
+
+  private async Task LoadQueueAsync()
+  {
+    if (selectedSiteId <= 0 || busy) return;
+    busy = true;
+    try { queue = (await DeliveryService.GetQueueAsync(CurrentRfc, selectedSiteId, userName, canSupervise, disposeCts.Token)).ToList(); }
+    catch (OperationCanceledException) when (disposeCts.IsCancellationRequested) { }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { busy = false; }
+  }
+
+  private async Task PollAsync(CancellationToken ct)
+  {
+    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(8));
+    try { while (await timer.WaitForNextTickAsync(ct)) { await InvokeAsync(LoadQueueAsync); } }
+    catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+  }
+
+  private async Task ClaimAsync(RestaurantDeliveryQueueItemDto order)
+    => await RunAsync(() => DeliveryService.ClaimAndDispatchAsync(CurrentRfc, order.OrderId, userName, disposeCts.Token));
+
+  private async Task ConfirmAddressAsync(RestaurantDeliveryQueueItemDto order)
+    => await RunAsync(() => DeliveryService.ConfirmAddressAsync(CurrentRfc, order.OrderId, userName, disposeCts.Token));
+
+  private async Task AssignAsync(RestaurantDeliveryQueueItemDto order, string? assignee)
+  {
+    if (!canSupervise) return;
+    await RunAsync(() => DeliveryService.ReleaseOrReassignAsync(new() { Rfc = CurrentRfc, OrderId = order.OrderId, CourierUserName = assignee }, userName, disposeCts.Token));
+    reassignmentUser = string.Empty;
+    assignmentOrderId = null;
+  }
+
+  private async Task CompleteAsync(RestaurantDeliveryQueueItemDto order)
+  {
+    if (NeedsProof(order) && proofBytes is null && (!canSupervise || !overrideMissingProof || string.IsNullOrWhiteSpace(overrideReason)))
+    { Show("Toma la foto de entrega o registra una excepción de supervisor con motivo.", true); return; }
+    await RunAsync(() => DeliveryService.CompleteAsync(new()
+    {
+      Rfc = CurrentRfc,
+      OrderId = order.OrderId,
+      ProofPhoto = proofBytes,
+      OverrideMissingProof = overrideMissingProof,
+      OverrideReason = overrideReason
+    }, userName, canSupervise, disposeCts.Token));
+    CancelCompletion();
+  }
+
+  private async Task SelectProofAsync(InputFileChangeEventArgs args)
+  {
+    try
+    {
+      var file = args.File;
+      await using var stream = file.OpenReadStream(MaxUploadBytes, disposeCts.Token);
+      using var memory = new MemoryStream();
+      await stream.CopyToAsync(memory, disposeCts.Token);
+      proofBytes = memory.ToArray(); proofName = file.Name; Show("Foto lista para guardar.", false);
+    }
+    catch (Exception ex) { ClearProof(); Show(ex is IOException ? "La foto supera 12 MB." : "No fue posible leer la foto.", true); }
+  }
+
+  private async Task RunAsync(Func<Task<RestaurantCommandResult>> action)
+  {
+    if (busy) return; busy = true;
+    try { var result = await action(); Show(result.Message, !result.Success); if (result.Success) await ReloadWithoutBusyGuardAsync(); }
+    catch (Exception ex) { Show(ex.Message, true); }
+    finally { busy = false; }
+  }
+
+  private async Task ReloadWithoutBusyGuardAsync()
+    => queue = (await DeliveryService.GetQueueAsync(CurrentRfc, selectedSiteId, userName, canSupervise, disposeCts.Token)).ToList();
+
+  private async Task ChangeSiteAsync(ChangeEventArgs args)
+  { if (int.TryParse(args.Value?.ToString(), out var id)) { selectedSiteId = id; queue = []; await LoadQueueAsync(); } }
+
+  private void BeginCompletion(RestaurantDeliveryQueueItemDto order) { completionOrderId = order.OrderId; ClearProof(); overrideMissingProof = false; overrideReason = string.Empty; }
+  private void CancelCompletion() { completionOrderId = null; ClearProof(); overrideMissingProof = false; overrideReason = string.Empty; }
+  private void ClearProof() { proofBytes = null; proofName = null; proofInputKey++; }
+  private void Show(string text, bool error) { message = text; isError = error; }
+  private static bool NeedsProof(RestaurantDeliveryQueueItemDto order) => order.DropoffPreference == RestaurantDeliveryDropoffPreferences.LeaveAtDoor;
+  private static string DropoffLabel(string value) => value switch { RestaurantDeliveryDropoffPreferences.LeaveAtDoor => "Dejar en la puerta", RestaurantDeliveryDropoffPreferences.MeetOutside => "Encontrarme afuera", _ => "Encontrarme en la puerta" };
+  private static string PhoneHref(string value) => new(value.Where(ch => char.IsDigit(ch) || ch == '+').ToArray());
+  private static string Elapsed(RestaurantDeliveryQueueItemDto order) { var from = order.AssignedAt ?? order.ReadyAt ?? order.CreatedAt; var elapsed = DateTime.UtcNow - DateTime.SpecifyKind(from, DateTimeKind.Utc); return elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours} h {elapsed.Minutes} min" : $"{Math.Max(0, elapsed.Minutes)} min"; }
+  private static string DirectionsUrl(RestaurantDeliveryQueueItemDto order) { var destination = order.Latitude.HasValue && order.Longitude.HasValue ? $"{order.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{order.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}" : order.AddressLine; return $"https://www.google.com/maps/dir/?api=1&destination={Uri.EscapeDataString(destination)}"; }
+
+  public ValueTask DisposeAsync() { disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+}

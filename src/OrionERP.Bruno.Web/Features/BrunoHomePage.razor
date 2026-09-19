@@ -35,7 +35,7 @@ else
       <div class="hero__actions">
         @if (ordering?.CanAcceptOrders == true)
         {
-          <a class="button button--accent" href="/ordenar">Ordenar para recoger</a>
+          <a class="button button--accent" href="/ordenar">@OrderingAction</a>
         }
         @if (membershipEnabled)
         {
@@ -111,8 +111,8 @@ else
   <section class="order-preview">
     @if (ordering?.IsEnabled == true)
     {
-      <div><span>Pedidos en línea</span><h2>Pide y recoge aquí</h2><p>Arma tu pedido, paga con tarjeta de forma segura y espera nuestro correo para venir a recogerlo.</p><a class="button button--accent" href="/ordenar">Empezar pedido</a></div>
-      <div class="order-preview__steps"><span><b>1</b> Elige y personaliza</span><span><b>2</b> Paga con tarjeta</span><span><b>3</b> Espera el correo de listo</span></div>
+      <div><span>Pedidos en línea</span><h2>@OrderingHeadline</h2><p>@OrderingSummary</p><a class="button button--accent" href="/ordenar">Empezar pedido</a></div>
+      <div class="order-preview__steps"><span><b>1</b> Elige y personaliza</span><span><b>2</b> Elige cómo recibir</span><span><b>3</b> Paga con tarjeta</span></div>
     }
     else
     {
@@ -129,6 +129,11 @@ else
   private bool membershipEnabled;
   private string timeZoneId = "UTC";
   private string MembershipName => Presentation.MembershipProgramName ?? "Membresía";
+  private string OrderingAction => ordering?.DeliveryEnabled == true ? "Ordenar ahora" : "Ordenar para recoger";
+  private string OrderingHeadline => ordering?.DeliveryEnabled == true ? "Pide para recoger o a domicilio" : "Pide y recoge aquí";
+  private string OrderingSummary => ordering?.DeliveryEnabled == true
+    ? "Arma tu pedido, paga de forma segura y elige recogerlo o recibirlo dentro de nuestra zona de entrega."
+    : "Arma tu pedido, paga con tarjeta de forma segura y espera nuestro correo para venir a recogerlo.";
   private string TodayHours => RestaurantOpeningHours.Today(settings?.OpeningHoursJson, timeZoneId, DateTimeOffset.UtcNow);
   private bool? IsOpenNow => RestaurantOpeningHours.IsOpen(
     settings?.OpeningHoursJson,

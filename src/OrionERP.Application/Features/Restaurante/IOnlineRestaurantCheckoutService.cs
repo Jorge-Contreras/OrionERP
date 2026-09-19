@@ -38,6 +38,11 @@ public interface IOnlineRestaurantCheckoutService : IOnlineRestaurantQuoteServic
     Guid? memberId,
     CancellationToken ct = default);
 
+  Task<RestaurantOnlineFacadeUploadResult> UploadFacadeAsync(
+    PublicSiteBinding binding,
+    RestaurantOnlineFacadeUploadRequest request,
+    CancellationToken ct = default);
+
   /// <summary>Cierra el cargo consultando el pago después de la autenticación 3DS.</summary>
   Task<RestaurantOnlineChargeResult> ConfirmChargeAsync(
     PublicSiteBinding binding,

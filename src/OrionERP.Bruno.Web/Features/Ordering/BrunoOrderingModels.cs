@@ -64,6 +64,7 @@ public sealed class BrunoClipCardOptions
   public bool TermsAccepted { get; set; }
   public string TermsVersion { get; set; } = string.Empty;
   public string PrivacyVersion { get; set; } = string.Empty;
+  public string FacadeInputId { get; set; } = "facade-photo-input";
 }
 
 public sealed class BrunoPendingCheckout

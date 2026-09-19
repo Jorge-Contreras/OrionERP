@@ -815,9 +815,11 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
           """
           INSERT INTO restaurante.Delivery
             (Rfc, OrderId, ExternalProviderId, ExternalReference, AddressLine, AddressReferences,
+             AddressComplement,Latitude,Longitude,GooglePlaceId,AddressVerificationStatus,DropoffPreference,
              DeliveryCost, CommissionAmount, [Status])
           VALUES
             (@Rfc, @OrderId, @ExternalProviderId, @ExternalReference, @AddressLine, @AddressReferences,
+             @AddressComplement,@Latitude,@Longitude,@GooglePlaceId,@AddressVerificationStatus,@DropoffPreference,
              @DeliveryCost, @CommissionAmount, 'PendingDispatch');
           """, new
           {
@@ -827,16 +829,21 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
             ExternalReference = NullIfWhiteSpace(request.ExternalReference),
             AddressLine = request.DeliveryAddress!.Trim(),
             AddressReferences = NullIfWhiteSpace(request.DeliveryReferences),
+            AddressComplement = NullIfWhiteSpace(request.DeliveryAddressComplement),
+            Latitude = request.DeliveryLatitude,
+            Longitude = request.DeliveryLongitude,
+            GooglePlaceId = NullIfWhiteSpace(request.DeliveryGooglePlaceId),
+            AddressVerificationStatus = NullIfWhiteSpace(request.DeliveryAddressVerificationStatus)
+              ?? RestaurantDeliveryAddressVerificationStatuses.ManualUnverified,
+            DropoffPreference = NullIfWhiteSpace(request.DeliveryDropoffPreference)
+              ?? RestaurantDeliveryDropoffPreferences.MeetAtDoor,
             request.DeliveryCost,
             request.CommissionAmount
           }, tx, cancellationToken: ct));
         await RestaurantOrderEventWriter.AddAsync(
           conn, tx, rfc, request.SiteId, orderId,
           "DeliveryRequested", "Delivery", "Entrega a domicilio registrada",
-          $"{request.DeliveryAddress!.Trim()}" +
-          (!string.IsNullOrWhiteSpace(request.ExternalReference)
-            ? $" · Referencia {request.ExternalReference.Trim()}"
-            : string.Empty),
+          "Los datos de destino quedaron disponibles para el personal autorizado.",
           userName, ct, $"delivery:{orderId}:DeliveryRequested");
       }
 
@@ -2277,10 +2284,14 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
       {
         throw new InvalidOperationException("La orden web requiere el sitio público y el intento de pago verificado.");
       }
-      if (!string.Equals(orderType, "Pickup", StringComparison.Ordinal))
+      if (orderType is not (RestaurantOrderTypes.Pickup or RestaurantOrderTypes.Delivery))
       {
-        throw new InvalidOperationException("Las órdenes web sólo están habilitadas para recoger en restaurante.");
+        throw new InvalidOperationException("La modalidad de la orden web no es válida.");
       }
+      if (orderType == RestaurantOrderTypes.Delivery
+          && (string.IsNullOrWhiteSpace(request.DeliveryAddress)
+              || !RestaurantDeliveryDropoffPreferences.IsValid(request.DeliveryDropoffPreference)))
+        throw new InvalidOperationException("La orden web de entrega requiere dirección y modalidad de recepción.");
       if (request.CashRegisterId.HasValue || request.CashShiftId.HasValue)
       {
         throw new InvalidOperationException("Una orden web no debe asociarse a una caja o turno de efectivo.");
@@ -2770,7 +2781,9 @@ public sealed class RestaurantOrderService : IRestaurantOrderService
     var current = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
       "SELECT [Status] FROM restaurante.[Order] WITH (UPDLOCK,HOLDLOCK) WHERE Rfc=@Rfc AND Id=@OrderId;",
       new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct));
-    if (current is null || current is "Cancelled" or "Completed") return null;
+    // A late KDS refresh may still arrive after the courier has left. Kitchen
+    // line state must never move an order backwards from the delivery workflow.
+    if (current is null or "Cancelled" or "Dispatched" or "Delivered" or "Completed") return null;
     var statuses = (await conn.QueryAsync<string>(new CommandDefinition(
       "SELECT [Status] FROM restaurante.OrderLine WHERE Rfc=@Rfc AND OrderId=@OrderId AND LineKind<>'Combo';",
       new { Rfc = rfc, OrderId = orderId }, tx, cancellationToken: ct))).AsList();

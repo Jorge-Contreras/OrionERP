@@ -267,6 +267,12 @@ public sealed class DatabaseMigrationManifestTests
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260917_restaurant_clip_legacy_attempt_scope.sql"));
     actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery_runtime_fix.sql"));
+    actual.Add(NormalizePath(
+      "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery_scope_fix.sql"));
+    actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_expand.sql"));
     actual.Add(NormalizePath(
       "src/OrionERP.Infrastructure/Features/Platform/Sql/20260912_rfc_tenant_isolation_company_controls.sql"));
@@ -804,6 +810,35 @@ public sealed class DatabaseMigrationManifestTests
           // Comparar lo visible contra el conteo fisico es lo que impide repetir
           // una escritura a ciegas sobre una tabla que RLS muestra vacia.
           Assert.Contains("sys.dm_db_partition_stats", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260918_restaurant_online_delivery":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("sp_set_session_context", sql, StringComparison.Ordinal);
+          Assert.Contains("DeliveryEvidence", sql, StringComparison.Ordinal);
+          Assert.Contains("RESTAURANT_PUBLIC", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260918_restaurant_online_delivery_runtime_fix":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("ProfileVersion=13", sql, StringComparison.Ordinal);
+          Assert.Contains("OnlineDeliveryEvidencePurge", sql, StringComparison.Ordinal);
+          Assert.Contains("solo admite el worker interno", sql, StringComparison.Ordinal);
+          Assert.Equal(
+            ["Orion_Sandbox", "grupocarpio"],
+            migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());
+          break;
+        case "20260918_restaurant_online_delivery_scope_fix":
+          Assert.DoesNotContain("OHM191112Q26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.DoesNotContain("BRUNOS260707L26", sql, StringComparison.OrdinalIgnoreCase);
+          Assert.Contains("CompanyId=@CompanyId AND SiteId=@PlatformSiteId", sql, StringComparison.Ordinal);
+          Assert.Contains("PublicExecuteRemoved", sql, StringComparison.Ordinal);
           Assert.Equal(
             ["Orion_Sandbox", "grupocarpio"],
             migration.AllowedDatabases.Order(StringComparer.Ordinal).ToArray());

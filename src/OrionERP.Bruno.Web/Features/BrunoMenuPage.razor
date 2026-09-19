@@ -7,7 +7,7 @@
 @inject IJSRuntime Js
 
 <PageTitle>Menú y pedidos · @Presentation.PublicName</PageTitle>
-<HeadContent><meta name="description" content="Consulta el menú y, cuando el servicio esté disponible, pide en línea para recoger en @Presentation.PublicName." /></HeadContent>
+<HeadContent><meta name="description" content="Consulta el menú y, cuando el servicio esté disponible, pide en línea para recoger o recibir a domicilio en @Presentation.PublicName." /></HeadContent>
 
 <section class="page-hero page-hero--menu">
   <span>Hecho para el antojo</span>
@@ -122,7 +122,7 @@ else
 {
   <button class="drawer-backdrop" type="button" aria-label="Cerrar mi pedido" @onclick="CloseCart"></button>
   <aside class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title">
-    <header><div><span>Para recoger</span><h2 id="cart-title">Mi pedido</h2></div><button type="button" aria-label="Cerrar mi pedido" @onclick="CloseCart">×</button></header>
+    <header><div><span>Pedido en línea</span><h2 id="cart-title">Mi pedido</h2></div><button type="button" aria-label="Cerrar mi pedido" @onclick="CloseCart">×</button></header>
     <div class="cart-drawer__content">
       @if (cart.Count == 0)
       {

@@ -21,6 +21,7 @@ public sealed class OnlineRestaurantOrderEmail
   public int OrderFolio { get; init; }
   public decimal Total { get; init; }
   public string CurrencyCode { get; init; } = "MXN";
+  public string FulfillmentType { get; init; } = RestaurantOrderTypes.Pickup;
 }
 
 public interface IOnlineRestaurantOrderEmailSender
@@ -71,17 +72,27 @@ public sealed class OnlineRestaurantOrderEmailSender : IOnlineRestaurantOrderEma
     var trackingUrl = new Uri(
       _website.Instance.CanonicalBaseUri,
       $"pedido/{Uri.EscapeDataString(trackingToken)}").ToString();
-    var isReady = string.Equals(message.NotificationType, "Ready", StringComparison.OrdinalIgnoreCase);
-    if (!isReady && !string.Equals(message.NotificationType, "Confirmation", StringComparison.OrdinalIgnoreCase))
+    var isDelivery = string.Equals(message.FulfillmentType, RestaurantOrderTypes.Delivery, StringComparison.Ordinal);
+    var notificationType = message.NotificationType.Trim();
+    if (notificationType is not ("Confirmation" or "Ready" or "OutForDelivery" or "Delivered"))
       throw new InvalidOperationException("The notification type is not public-safe.");
+    if (!isDelivery && notificationType is ("OutForDelivery" or "Delivered"))
+      throw new InvalidOperationException("A pickup order cannot emit a delivery notification.");
 
-    var subject = isReady
-      ? $"Tu pedido #{message.OrderFolio} está listo para recoger"
-      : $"Confirmamos tu pedido #{message.OrderFolio}";
-    var headline = isReady ? "Tu pedido está listo" : "Pedido confirmado";
-    var body = isReady
-      ? $"Ya puedes recoger tu pedido en {WebUtility.HtmlEncode(_presentation.ShortName)}. Presenta el folio #{message.OrderFolio}."
-      : "Recibimos tu pago y enviamos el pedido a cocina. Te mandaremos otro correo cuando esté listo para recoger; espera ese aviso antes de acudir.";
+    var (subject, headline, body) = (notificationType, isDelivery) switch
+    {
+      ("Ready", false) => ($"Tu pedido #{message.OrderFolio} está listo para recoger", "Tu pedido está listo",
+        $"Ya puedes recoger tu pedido en {WebUtility.HtmlEncode(_presentation.ShortName)}. Presenta el folio #{message.OrderFolio}."),
+      ("OutForDelivery", true) => ($"Tu pedido #{message.OrderFolio} va en camino", "Tu pedido va en camino",
+        "El repartidor ya salió con tu pedido. Mantén tu teléfono disponible por si necesita confirmar cómo llegar."),
+      ("Delivered", true) => ($"Entregamos tu pedido #{message.OrderFolio}", "Entrega completada",
+        "Registramos la entrega de tu pedido. Gracias por elegirnos."),
+      ("Confirmation", true) => ($"Confirmamos tu pedido #{message.OrderFolio}", "Pedido confirmado",
+        "Recibimos tu pago y enviamos el pedido a cocina. Te avisaremos cuando el repartidor salga con tu pedido."),
+      ("Confirmation", false) => ($"Confirmamos tu pedido #{message.OrderFolio}", "Pedido confirmado",
+        "Recibimos tu pago y enviamos el pedido a cocina. Te mandaremos otro correo cuando esté listo para recoger; espera ese aviso antes de acudir."),
+      _ => throw new InvalidOperationException("The notification does not apply to this fulfillment type.")
+    };
     var greeting = string.IsNullOrWhiteSpace(message.CustomerName)
       ? string.Empty
       : $"<p>Hola, {WebUtility.HtmlEncode(message.CustomerName.Trim())}.</p>";
@@ -103,7 +114,7 @@ public sealed class OnlineRestaurantOrderEmailSender : IOnlineRestaurantOrderEma
           <span>Total: {{total}}</span>
         </div>
         <p><a href="{{WebUtility.HtmlEncode(trackingUrl)}}" style="display:inline-block;background:{{_presentation.PrimaryColor}};color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none">Ver estado del pedido</a></p>
-        <p style="font-size:12px;color:#6d6862">Este pedido es para recoger. No respondas con datos de pago. Si necesitas ayuda o solicitar un reembolso, contacta directamente al restaurante.</p>
+        <p style="font-size:12px;color:#6d6862">Este pedido es para {{(isDelivery ? "entrega a domicilio" : "recoger")}}. No respondas con datos de pago. Si necesitas ayuda o solicitar un reembolso, contacta directamente al restaurante.</p>
         <p style="font-size:12px;color:#6d6862">{{WebUtility.HtmlEncode(_presentation.LegalName)}}</p>
       </div>
       """;
@@ -176,7 +187,8 @@ internal sealed class OnlineRestaurantOrderNotificationQueue : IOnlineRestaurant
           CustomerName = item.CustomerName,
           OrderFolio = item.OrderFolio,
           Total = item.Total,
-          CurrencyCode = item.CurrencyCode
+          CurrencyCode = item.CurrencyCode,
+          FulfillmentType = item.FulfillmentType
         };
         var providerMessageId = item.ProviderMessageId;
         if (string.IsNullOrWhiteSpace(providerMessageId))
@@ -253,6 +265,7 @@ internal sealed class OnlineRestaurantOrderNotificationQueue : IOnlineRestaurant
     public int OrderFolio { get; init; }
     public decimal Total { get; init; }
     public string CurrencyCode { get; init; } = "MXN";
+    public string FulfillmentType { get; init; } = RestaurantOrderTypes.Pickup;
   }
 }
 

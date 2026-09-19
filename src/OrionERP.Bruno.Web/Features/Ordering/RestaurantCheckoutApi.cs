@@ -15,6 +15,7 @@ namespace OrionERP.Bruno.Web.Features.Ordering;
 public static class RestaurantCheckoutApi
 {
   private const int MaximumBrowserRequestBodyBytes = 262_144;
+  private const int MaximumFacadeRequestBodyBytes = 13 * 1024 * 1024;
   /// <summary>
   /// El aviso de Clip es un objeto de tres campos cortos. Cualquier cosa mayor
   /// no es un aviso legítimo.
@@ -37,6 +38,9 @@ public static class RestaurantCheckoutApi
       .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
     group.MapPost("/intents", BeginCheckoutAsync)
       .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
+    group.MapPost("/facade", UploadFacadeAsync)
+      .WithMetadata(new RequestSizeLimitAttribute(MaximumFacadeRequestBodyBytes))
+      .RequireRateLimiting("checkout-photo");
     group.MapPost("/charge", ChargeAsync)
       .WithMetadata(new RequestSizeLimitAttribute(MaximumBrowserRequestBodyBytes));
     group.MapPost("/charge/confirm", ConfirmChargeAsync)
@@ -98,6 +102,40 @@ public static class RestaurantCheckoutApi
     var binding = await website.ResolveRequiredAsync(ct);
     var memberId = await ResolveMemberIdAsync(context.User, binding, membership, ct);
     var result = await checkout.ChargeAsync(binding, request, memberId, ct);
+    return MapResult(result.Succeeded, result.Code, result.Message, result);
+  }
+
+  private static async Task<IResult> UploadFacadeAsync(
+    HttpRequest request,
+    HttpContext context,
+    IAntiforgery antiforgery,
+    IPublicWebsiteInstanceContext website,
+    IOnlineRestaurantCheckoutService checkout,
+    CancellationToken ct)
+  {
+    if (!await HasValidAntiforgeryAsync(antiforgery, context))
+      return InvalidAntiforgery();
+    if (!request.HasFormContentType || request.ContentLength is > MaximumFacadeRequestBodyBytes)
+      return Problem("invalid_image", "Selecciona una foto válida de hasta 12 MB.", StatusCodes.Status400BadRequest);
+
+    var form = await request.ReadFormAsync(ct);
+    var photo = form.Files.GetFile("photo");
+    var trackingToken = form["trackingToken"].ToString();
+    var uploadToken = form["uploadToken"].ToString();
+    if (photo is null || photo.Length is <= 0 or > 12 * 1024 * 1024)
+      return Problem("invalid_image", "Selecciona una foto válida de hasta 12 MB.", StatusCodes.Status400BadRequest);
+
+    await using var input = photo.OpenReadStream();
+    using var content = new MemoryStream((int)photo.Length);
+    await input.CopyToAsync(content, ct);
+    var binding = await website.ResolveRequiredAsync(ct);
+    var result = await checkout.UploadFacadeAsync(binding, new RestaurantOnlineFacadeUploadRequest
+    {
+      TrackingToken = trackingToken,
+      UploadToken = uploadToken,
+      FileName = photo.FileName,
+      Content = content.ToArray()
+    }, ct);
     return MapResult(result.Succeeded, result.Code, result.Message, result);
   }
 

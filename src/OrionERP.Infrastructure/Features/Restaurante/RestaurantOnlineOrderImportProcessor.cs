@@ -104,6 +104,10 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
       "restaurante.OnlineOrderingProcessorHeartbeatSet",
       commandType: CommandType.StoredProcedure,
       cancellationToken: ct));
+    await connection.ExecuteAsync(new CommandDefinition(
+      "restaurante.OnlineDeliveryEvidencePurge",
+      commandType: CommandType.StoredProcedure,
+      cancellationToken: ct));
     return true;
   }
 
@@ -118,6 +122,8 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
       var snapshot = JsonSerializer.Deserialize<RestaurantOnlineQuoteSnapshot>(row.CartSnapshotJson, JsonOptions)
         ?? throw new InvalidOperationException("La cotización persistida no se pudo leer.");
       ValidateSnapshot(scope, row, snapshot);
+      var fulfillment = snapshot.Request.Fulfillment ?? new RestaurantOnlineFulfillmentRequest();
+      var isDelivery = string.Equals(fulfillment.Type, RestaurantOrderTypes.Delivery, StringComparison.Ordinal);
 
       var service = new RestaurantOrderService(new ScopeConnectionFactory(_sessions, scope));
       var order = await service.CreateOrderAsync(new RestaurantOrderCreateRequest
@@ -127,10 +133,19 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
         PublicSiteId = row.PublicSiteId,
         OnlineCheckoutAttemptId = row.Id,
         IdempotencyKey = PosIdempotencyKey(row),
-        OrderType = "Pickup",
+        OrderType = isDelivery ? RestaurantOrderTypes.Delivery : RestaurantOrderTypes.Pickup,
         CustomerName = row.CustomerName,
         CustomerEmail = row.CustomerEmail,
         CustomerPhone = row.CustomerPhone,
+        DeliveryAddress = isDelivery ? fulfillment.AddressLine : null,
+        DeliveryAddressComplement = isDelivery ? fulfillment.AddressComplement : null,
+        DeliveryReferences = isDelivery ? fulfillment.Instructions : null,
+        DeliveryLatitude = isDelivery ? fulfillment.Latitude : null,
+        DeliveryLongitude = isDelivery ? fulfillment.Longitude : null,
+        DeliveryGooglePlaceId = isDelivery ? fulfillment.GooglePlaceId : null,
+        DeliveryAddressVerificationStatus = isDelivery ? fulfillment.AddressVerificationStatus : null,
+        DeliveryDropoffPreference = isDelivery ? fulfillment.DropoffPreference : null,
+        DeliveryCost = isDelivery ? snapshot.DeliveryFee : 0,
         ExternalReference = row.ProviderCaptureId,
         MemberId = row.MemberId,
         PointsToRedeem = 0,
@@ -163,7 +178,7 @@ public sealed class RestaurantOnlineOrderImportProcessor : IOnlineOrderImportPro
         new { row.Rfc, OrderId = order.OrderId, CaptureId = row.ProviderCaptureId },
         cancellationToken: ct));
       await connection.ExecuteAsync(new CommandDefinition(
-        "restaurante.OnlineOrderImportComplete",
+        "restaurante.OnlineOrderImportCompleteV2",
         new
         {
           Id = row.Id,

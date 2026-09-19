@@ -14,7 +14,7 @@
     <div>
       <span>Canal Web · Clip</span>
       <h2 id="online-admin-title">Pedidos en línea</h2>
-      <p>Controla la venta para recoger sin alterar los horarios ni la operación del punto de venta.</p>
+      <p>Controla pedidos para recoger y entregas propias sin alterar la operación del punto de venta.</p>
     </div>
     <div class="online-admin__site">
       <label for="online-site">Sede</label>
@@ -89,8 +89,28 @@
               <InputNumber @bind-Value="editor.MaximumOrderAmount" min="0.01" max="999999999" step="0.01" />
               <small>Sin mínimo. El valor inicial es $2,500.</small>
             </label>
-            <div class="online-admin__fixed-rule"><span>Modalidad</span><strong>Recoger · lo antes posible</strong><small>Sin entrega, horarios programados ni promesa de tiempo.</small></div>
+            <div class="online-admin__fixed-rule"><span>Modalidad</span><strong>Recoger y/o entregar</strong><small>Ambas usan el mismo horario y mínimo vigentes.</small></div>
           </div>
+          <div class="online-admin__form-row">
+            <label class="online-admin__switch">
+              <InputCheckbox @bind-Value="editor.PickupEnabled" />
+              <span><strong>Permitir recoger</strong><small>Conserva el flujo actual del mostrador.</small></span>
+            </label>
+            <label class="online-admin__switch">
+              <InputCheckbox @bind-Value="editor.DeliveryEnabled" />
+              <span><strong>Permitir entrega</strong><small>Activa el selector de domicilio en el sitio público.</small></span>
+            </label>
+          </div>
+          @if (editor.DeliveryEnabled)
+          {
+            <div class="online-admin__form-row">
+              <label>Latitud de origen<InputNumber @bind-Value="editor.DeliveryOriginLatitude" step="0.000001" min="-90" max="90" /></label>
+              <label>Longitud de origen<InputNumber @bind-Value="editor.DeliveryOriginLongitude" step="0.000001" min="-180" max="180" /></label>
+              <label>Radio de entrega (km)<InputNumber @bind-Value="editor.DeliveryRadiusKm" step="0.1" min="0.1" max="100" /></label>
+              <label>Tarifa fija (MXN)<InputNumber @bind-Value="editor.DeliveryFlatFee" step="0.01" min="0" max="10000" /></label>
+            </div>
+            <p class="online-admin__hint">El sitio valida el pin contra este origen. Si Google Maps falla, acepta la dirección manual y la marca para revisión.</p>
+          }
           <label class="online-admin__switch">
             <InputCheckbox @bind-Value="editor.AllowGuestCheckout" />
             <span><strong>Permitir compra como invitado</strong><small>Los socios continúan acumulando puntos; el canje permanece en restaurante.</small></span>
@@ -347,7 +367,12 @@
         IsPaused = configuration.IsPaused,
         PauseMessage = configuration.PauseMessage,
         AllowGuestCheckout = configuration.AllowGuestCheckout,
-        PickupEnabled = true,
+        PickupEnabled = configuration.PickupEnabled,
+        DeliveryEnabled = configuration.DeliveryEnabled,
+        DeliveryOriginLatitude = configuration.DeliveryOriginLatitude,
+        DeliveryOriginLongitude = configuration.DeliveryOriginLongitude,
+        DeliveryRadiusKm = configuration.DeliveryRadiusKm,
+        DeliveryFlatFee = configuration.DeliveryFlatFee,
         MaximumOrderAmount = configuration.MaximumOrderAmount,
         OnlineHoursJson = configuration.OnlineHoursJson,
         TermsVersion = configuration.TermsVersion,
@@ -394,7 +419,6 @@
       editor.Rfc = CurrentRfc;
       editor.PublicSiteId = configuration.PublicSiteId;
       editor.SiteId = configuration.SiteId;
-      editor.PickupEnabled = true;
       editor.OnlineHoursJson = scheduleJson!;
       editor.EnabledProductIds = editor.EnabledProductIds.Distinct().Order().ToList();
       var result = await OnlineOrderingService.SaveAsync(

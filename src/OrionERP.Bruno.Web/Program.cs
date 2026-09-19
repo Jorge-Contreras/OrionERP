@@ -231,8 +231,10 @@ builder.Services.AddHttpClient<IClipPaymentsClient, ClipPaymentsClient<Restauran
 builder.Services.AddScoped<IPaymentRecoveryProcessor, RestaurantPaymentRecoveryProcessor>();
 builder.Services.AddScoped<IOnlineRestaurantOrderEmailSender, OnlineRestaurantOrderEmailSender>();
 builder.Services.AddScoped<IOnlineRestaurantOrderNotificationQueue, OnlineRestaurantOrderNotificationQueue>();
-builder.Services.AddHostedService<OnlineRestaurantOrderNotificationWorker>();
-builder.Services.AddHostedService<OnlineRestaurantPaymentRecoveryWorker>();
+if (builder.Configuration.GetValue("OnlineOrderingWorkers:NotificationsEnabled", true))
+  builder.Services.AddHostedService<OnlineRestaurantOrderNotificationWorker>();
+if (builder.Configuration.GetValue("OnlineOrderingWorkers:PaymentRecoveryEnabled", true))
+  builder.Services.AddHostedService<OnlineRestaurantPaymentRecoveryWorker>();
 
 builder.Services
   .AddOptions<RestaurantMailOptions>()
@@ -284,6 +286,15 @@ builder.Services.AddRateLimiter(options =>
         Window = TimeSpan.FromMinutes(1),
         QueueLimit = 0
       }));
+  options.AddPolicy("checkout-photo", context =>
+    RateLimitPartition.GetFixedWindowLimiter(
+      context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+      _ => new FixedWindowRateLimiterOptions
+      {
+        PermitLimit = 6,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0
+      }));
   options.AddPolicy("webhook", context =>
     RateLimitPartition.GetFixedWindowLimiter(
       context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -332,16 +343,23 @@ app.Use(async (context, next) =>
   context.Response.Headers["X-Content-Type-Options"] = "nosniff";
   context.Response.Headers["Referrer-Policy"] = isPrivateCheckoutPath ? "no-referrer" : "strict-origin-when-cross-origin";
   if (isPrivateCheckoutPath) context.Response.Headers.CacheControl = "no-store, private";
-  context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)";
+  context.Response.Headers["Permissions-Policy"] = isPrivateCheckoutPath
+    ? "camera=(self), microphone=(), geolocation=(self)"
+    : "camera=(), microphone=(), geolocation=()";
+  var googleScriptSources = isPrivateCheckoutPath ? " https://maps.googleapis.com https://maps.gstatic.com" : string.Empty;
+  var googleConnectSources = isPrivateCheckoutPath ? " https://maps.googleapis.com https://maps.gstatic.com https://places.googleapis.com" : string.Empty;
   context.Response.Headers["Content-Security-Policy"] =
-    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
+    "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; " +
     // h.online-metrix.net es la huella de dispositivo de ThreatMetrix que carga
     // el script de prevención de fraudes de Clip. Sin ella el emisor evalúa el
     // cargo a ciegas y sube la tasa de rechazo. La telemetría propia de Clip
     // (Datadog RUM) se deja fuera a propósito: no participa en el cobro.
-    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://sdk.clip.mx https://tools.clip.mx https://h.online-metrix.net; " +
-    "frame-src https://challenges.cloudflare.com https://sdk.clip.mx https://elements.clip.mx https://3ds.payclip.com; " +
-    "connect-src 'self' https://cloudflareinsights.com https://sdk.clip.mx https://elements.clip.mx https://tools.clip.mx https://h.online-metrix.net https://api.payclip.com; " +
+    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://sdk.clip.mx https://tools.clip.mx https://h.online-metrix.net" + googleScriptSources + "; " +
+    // Clip currently returns its live 3DS challenge from payclip.io. Keep the
+    // documented/legacy payclip.com origin too so an origin rollout by Clip
+    // cannot strand a payment after the card has already been tokenized.
+    "frame-src https://challenges.cloudflare.com https://sdk.clip.mx https://elements.clip.mx https://3ds.payclip.com https://3ds.payclip.io; " +
+    "connect-src 'self' https://cloudflareinsights.com https://sdk.clip.mx https://elements.clip.mx https://tools.clip.mx https://h.online-metrix.net https://api.payclip.com" + googleConnectSources + "; " +
     "base-uri 'self'; frame-ancestors 'none'; form-action 'self';";
   await next();
 });

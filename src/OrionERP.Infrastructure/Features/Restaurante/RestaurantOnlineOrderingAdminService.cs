@@ -95,6 +95,11 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
       PauseMessage = row.PauseMessage,
       AllowGuestCheckout = row.GuestCheckoutEnabled,
       PickupEnabled = row.PickupEnabled,
+      DeliveryEnabled = row.DeliveryEnabled,
+      DeliveryOriginLatitude = row.DeliveryOriginLatitude,
+      DeliveryOriginLongitude = row.DeliveryOriginLongitude,
+      DeliveryRadiusKm = row.DeliveryRadiusKm,
+      DeliveryFlatFee = row.DeliveryFlatFee,
       MaximumOrderAmount = row.MaximumOrderTotal,
       OnlineHoursJson = row.WeeklyScheduleJson,
       TermsVersion = row.TermsVersion,
@@ -119,6 +124,12 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
     try
     {
       ValidateSchedule(request.OnlineHoursJson);
+      if (!request.PickupEnabled && !request.DeliveryEnabled)
+        return RestaurantCommandResult.Fail("Activa al menos una modalidad: recoger o entrega.");
+      if (request.DeliveryEnabled
+          && (!request.DeliveryOriginLatitude.HasValue || !request.DeliveryOriginLongitude.HasValue
+              || !request.DeliveryRadiusKm.HasValue || request.DeliveryRadiusKm <= 0 || request.DeliveryFlatFee < 0))
+        return RestaurantCommandResult.Fail("Configura origen, radio y costo antes de habilitar entrega.");
       var scope = await ResolveScopeAsync(request.Rfc, request.SiteId, ct);
       await using var connection = await _sessions.OpenAsync(scope, ct);
       var current = await connection.QuerySingleAsync<AdminIdentityRow>(new CommandDefinition(
@@ -135,7 +146,7 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
         return RestaurantCommandResult.Fail("El sitio público no coincide con la sede seleccionada.");
 
       var saved = await connection.QuerySingleAsync<AdminSaveRow>(new CommandDefinition(
-        "restaurante.OnlineOrderingAdminSaveV2",
+        "restaurante.OnlineOrderingAdminSaveV3",
         new
         {
           request.IsEnabled,
@@ -143,6 +154,11 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
           PauseMessage = NullIfWhiteSpace(request.PauseMessage),
           GuestCheckoutEnabled = request.AllowGuestCheckout,
           request.PickupEnabled,
+          request.DeliveryEnabled,
+          request.DeliveryOriginLatitude,
+          request.DeliveryOriginLongitude,
+          request.DeliveryRadiusKm,
+          request.DeliveryFlatFee,
           MaximumOrderTotal = request.MaximumOrderAmount,
           WeeklyScheduleJson = request.OnlineHoursJson,
           request.TermsVersion,
@@ -278,7 +294,11 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
     DateTimeOffset now)
   {
     var blockers = new List<string>();
-    if (!row.PickupEnabled) blockers.Add("Activa pedidos para recoger.");
+    if (!row.PickupEnabled && !row.DeliveryEnabled) blockers.Add("Activa al menos una modalidad de pedido.");
+    if (row.DeliveryEnabled
+        && (!row.DeliveryOriginLatitude.HasValue || !row.DeliveryOriginLongitude.HasValue
+            || !row.DeliveryRadiusKm.HasValue || row.DeliveryRadiusKm <= 0 || row.DeliveryFlatFee < 0))
+      blockers.Add("Configura origen, radio y costo de entrega.");
     if (row.MaximumOrderTotal <= 0) blockers.Add("Configura un máximo de pedido válido.");
     try { ValidateSchedule(row.WeeklyScheduleJson); }
     catch { blockers.Add("Configura al menos un intervalo válido en el horario en línea."); }
@@ -374,6 +394,11 @@ public sealed class RestaurantOnlineOrderingAdminService : IOnlineRestaurantOrde
     public string? PauseMessage { get; set; }
     public bool GuestCheckoutEnabled { get; set; }
     public bool PickupEnabled { get; set; }
+    public bool DeliveryEnabled { get; set; }
+    public decimal? DeliveryOriginLatitude { get; set; }
+    public decimal? DeliveryOriginLongitude { get; set; }
+    public decimal? DeliveryRadiusKm { get; set; }
+    public decimal DeliveryFlatFee { get; set; }
     public decimal MaximumOrderTotal { get; set; }
     public string WeeklyScheduleJson { get; set; } = "{}";
     public string TermsVersion { get; set; } = string.Empty;

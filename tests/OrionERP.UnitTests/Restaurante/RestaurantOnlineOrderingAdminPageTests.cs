@@ -16,7 +16,10 @@ public sealed class RestaurantOnlineOrderingAdminPageTests
     Assert.Contains("configuration.IsReady", panel, StringComparison.Ordinal);
     Assert.Contains("configuration.ReadinessBlockers", panel, StringComparison.Ordinal);
     Assert.Contains("disabled=\"@(!CanChangeEnabled)\"", panel, StringComparison.Ordinal);
-    Assert.Contains("editor.PickupEnabled = true", panel, StringComparison.Ordinal);
+    Assert.Contains("@bind-Value=\"editor.PickupEnabled\"", panel, StringComparison.Ordinal);
+    Assert.Contains("@bind-Value=\"editor.DeliveryEnabled\"", panel, StringComparison.Ordinal);
+    Assert.Contains("DeliveryRadiusKm", panel, StringComparison.Ordinal);
+    Assert.Contains("DeliveryFlatFee", panel, StringComparison.Ordinal);
     Assert.Contains("OnlineOrderingService.SaveAsync", panel, StringComparison.Ordinal);
   }
 

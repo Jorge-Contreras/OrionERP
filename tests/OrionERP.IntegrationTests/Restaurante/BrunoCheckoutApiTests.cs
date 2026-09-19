@@ -537,6 +537,17 @@ public sealed class BrunoCheckoutApiTests
       return Task.FromResult(ChargeResult);
     }
 
+    public Task<RestaurantOnlineFacadeUploadResult> UploadFacadeAsync(
+      PublicSiteBinding binding,
+      RestaurantOnlineFacadeUploadRequest request,
+      CancellationToken ct = default)
+      => Task.FromResult(new RestaurantOnlineFacadeUploadResult
+      {
+        Succeeded = true,
+        Code = "facade_saved",
+        Message = "saved"
+      });
+
     public Task<RestaurantOnlineChargeResult> ConfirmChargeAsync(
       PublicSiteBinding binding,
       RestaurantOnlineChargeConfirmRequest request,

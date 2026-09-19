@@ -78,10 +78,28 @@ public sealed class RestaurantOnlineOrderingUxTests
 
     // A guest on a members-only site must be sent to registration, not told a price moved.
     Assert.Contains("configuration?.AllowGuestCheckout != true && !isMemberConnected", page, StringComparison.Ordinal);
-    Assert.Contains("&& !MembershipRequired) await QuoteAsync();", page, StringComparison.Ordinal);
+    Assert.Contains("&& !MembershipRequired && !IsDelivery) await QuoteAsync();", page, StringComparison.Ordinal);
     Assert.Contains("else if (MembershipRequired)", page, StringComparison.Ordinal);
     Assert.Contains("/cuenta/registro?returnUrl=%2Fcheckout", page, StringComparison.Ordinal);
     Assert.Contains("Confirma el correo que te enviamos para activarla.", page, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Checkout_keeps_feedback_in_view_and_the_cart_visible_before_delivery_is_quoted()
+  {
+    var page = Read("src/OrionERP.Bruno.Web/Features/Ordering/BrunoCheckoutPage.razor");
+    var styles = Read("src/OrionERP.Bruno.Web/Features/Ordering/BrunoCheckoutPage.razor.css");
+
+    Assert.Contains("role=\"alertdialog\"", page, StringComparison.Ordinal);
+    Assert.Contains("checkout-feedback__dialog", page, StringComparison.Ordinal);
+    Assert.Contains("availabilityWarningDismissed", page, StringComparison.Ordinal);
+    Assert.DoesNotContain("class=\"checkout-alert", page, StringComparison.Ordinal);
+    Assert.Contains("@foreach (var item in cart)", page, StringComparison.Ordinal);
+    Assert.Contains("Subtotal estimado", page, StringComparison.Ordinal);
+    Assert.Contains("<dt>Entrega</dt><dd>Por confirmar</dd>", page, StringComparison.Ordinal);
+    Assert.Contains("EstimatedCartSubtotal", page, StringComparison.Ordinal);
+    Assert.Contains(".checkout-feedback { position:fixed", styles, StringComparison.Ordinal);
+    Assert.Contains(".summary-pending", styles, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -165,11 +183,13 @@ public sealed class RestaurantOnlineOrderingUxTests
     Assert.Contains("ClipPaymentsClient<RestaurantCheckoutOptions>", program, StringComparison.Ordinal);
     Assert.Contains("https://sdk.clip.mx", program, StringComparison.Ordinal);
     Assert.Contains("https://3ds.payclip.com", program, StringComparison.Ordinal);
+    Assert.Contains("https://3ds.payclip.io", program, StringComparison.Ordinal);
     // Descubierto probando en sandbox: el SDK sirve el formulario desde
     // elements.clip.mx y carga su script de prevención de fraudes desde
     // tools.clip.mx. Sin estos dos orígenes el formulario no dibuja nada.
     Assert.Contains("https://elements.clip.mx", program, StringComparison.Ordinal);
     Assert.Contains("https://tools.clip.mx", program, StringComparison.Ordinal);
+    Assert.Contains("https://places.googleapis.com", program, StringComparison.Ordinal);
     Assert.DoesNotContain("paypal.com", program, StringComparison.OrdinalIgnoreCase);
   }
 

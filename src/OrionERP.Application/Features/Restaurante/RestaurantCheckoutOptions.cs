@@ -20,6 +20,9 @@ public sealed class RestaurantCheckoutOptions : ClipClientOptions
   public string? PublicBaseUrl { get; set; }
   public string TermsVersion { get; set; } = "online-orders-v1";
   public string PrivacyVersion { get; set; } = "online-orders-v1";
+  public string GoogleMapsBrowserApiKey { get; set; } = string.Empty;
+  public string GoogleMapsServerApiKey { get; set; } = string.Empty;
+  public string GoogleMapsMapId { get; set; } = string.Empty;
 
   /// <summary>
   /// Minutos que un cargo puede quedarse sin resolver antes de que la

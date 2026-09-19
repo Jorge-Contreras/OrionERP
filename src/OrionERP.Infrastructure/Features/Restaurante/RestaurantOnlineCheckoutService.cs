@@ -1,6 +1,7 @@
 using System.Data;
 using System.Globalization;
 using System.Net.Mail;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -27,6 +28,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
   private readonly IRestaurantPromotionService _promotions;
   private readonly IOnlineRestaurantQuoteTokenService _quoteTokens;
   private readonly IClipPaymentsClient _clip;
+  private readonly IHttpClientFactory _httpClientFactory;
   private readonly RestaurantCheckoutOptions _options;
   private readonly ILogger<RestaurantOnlineCheckoutService> _logger;
   private readonly TimeProvider _clock;
@@ -37,6 +39,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
     IRestaurantPromotionService promotions,
     IOnlineRestaurantQuoteTokenService quoteTokens,
     IClipPaymentsClient clip,
+    IHttpClientFactory httpClientFactory,
     IOptions<RestaurantCheckoutOptions> options,
     ILogger<RestaurantOnlineCheckoutService> logger,
     TimeProvider? clock = null)
@@ -46,6 +49,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
     _promotions = promotions;
     _quoteTokens = quoteTokens;
     _clip = clip;
+    _httpClientFactory = httpClientFactory;
     _options = options.Value;
     _logger = logger;
     _clock = clock ?? TimeProvider.System;
@@ -85,6 +89,13 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
       UnavailableReason = availability.Message,
       AllowGuestCheckout = bootstrap.GuestCheckoutEnabled,
       PickupEnabled = bootstrap.PickupEnabled,
+      DeliveryEnabled = bootstrap.DeliveryEnabled,
+      DeliveryOriginLatitude = bootstrap.DeliveryOriginLatitude,
+      DeliveryOriginLongitude = bootstrap.DeliveryOriginLongitude,
+      DeliveryRadiusKm = bootstrap.DeliveryRadiusKm,
+      DeliveryFlatFee = bootstrap.DeliveryFlatFee,
+      GoogleMapsBrowserApiKey = _options.GoogleMapsBrowserApiKey.Trim(),
+      GoogleMapsMapId = _options.GoogleMapsMapId.Trim(),
       MaximumOrderAmount = bootstrap.MaximumOrderTotal,
       OnlineHoursJson = bootstrap.WeeklyScheduleJson,
       Currency = NormalizeCurrency(_options.Currency),
@@ -124,6 +135,15 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
 
     try
     {
+      var fulfillmentResult = await NormalizeFulfillmentAsync(request.Fulfillment, bootstrap, ct);
+      if (fulfillmentResult.Failure is not null)
+        return RestaurantOnlineQuoteResult.Fail(fulfillmentResult.Failure.Value.Code, fulfillmentResult.Failure.Value.Message);
+      var fulfillment = fulfillmentResult.Fulfillment!;
+      var fulfillmentType = fulfillment.Type;
+      var deliveryFee = string.Equals(fulfillmentType, RestaurantOrderTypes.Delivery, StringComparison.Ordinal)
+        ? bootstrap.DeliveryFlatFee
+        : 0m;
+
       var priced = RestaurantOnlineCartCalculator.Calculate(catalog.Menu, request);
       var promotion = await _promotions.QuoteAsync(new RestaurantPromotionQuoteRequest
       {
@@ -131,7 +151,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
         SiteId = bootstrap.SiteId,
         At = now,
         Channel = RestaurantSalesChannels.Web,
-        OrderType = "Pickup",
+        OrderType = fulfillmentType,
         MemberId = memberId,
         Code = request.PromotionCode,
         Lines = priced.Lines.Select(line => new RestaurantPromotionQuoteLineRequest
@@ -160,7 +180,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
       var totals = RestaurantPosTotalsCalculator.Calculate(
         priced.MerchandiseTotal,
         promotionDiscount,
-        delivery: 0,
+        delivery: deliveryFee,
         catalog.Menu.Site.TaxRate,
         catalog.Menu.Site.PricesIncludeTax);
       if (totals.Total <= 0)
@@ -172,7 +192,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
           $"El máximo por pedido en línea es {bootstrap.MaximumOrderTotal.ToString("C", CultureInfo.GetCultureInfo("es-MX"))} MXN.");
       }
 
-      var normalizedRequest = NormalizeRequest(request, promotion.NormalizedCode, priced);
+      var normalizedRequest = NormalizeRequest(request, promotion.NormalizedCode, priced, fulfillment);
       var quoteLines = ApplyPromotionAndTax(
         priced,
         promotion,
@@ -195,6 +215,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
         Subtotal = priced.MerchandiseTotal,
         PromotionDiscount = promotionDiscount,
         Tax = totals.Tax,
+        DeliveryFee = deliveryFee,
         Total = totals.Total,
         Currency = NormalizeCurrency(_options.Currency),
         IssuedAtUtc = now.UtcDateTime,
@@ -214,7 +235,12 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
         Subtotal = snapshot.Subtotal,
         PromotionDiscount = snapshot.PromotionDiscount,
         Tax = snapshot.Tax,
+        DeliveryFee = snapshot.DeliveryFee,
         Total = snapshot.Total,
+        FulfillmentType = fulfillmentType,
+        AddressVerificationStatus = fulfillment.AddressVerificationStatus ?? string.Empty,
+        SuggestedNormalizedAddress = fulfillmentResult.SuggestedNormalizedAddress,
+        DeliveryDistanceKm = fulfillmentResult.DistanceKm,
         Lines = snapshot.Lines,
         Promotions = snapshot.Promotions
       };
@@ -254,13 +280,14 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
 
     var trackingToken = RestaurantOnlineTrackingTokenPolicy.Create(binding.PublicSiteId, request.ClientAttemptId);
     var trackingHash = RestaurantOnlineTrackingTokenPolicy.Hash(trackingToken);
+    var facadeUploadToken = CreateFacadeUploadToken(binding, request.ClientAttemptId);
     var attemptId = Guid.NewGuid();
     CheckoutAttemptRow attempt;
     try
     {
       await using var connection = await OpenAsync(binding, ct);
       attempt = await connection.QuerySingleAsync<CheckoutAttemptRow>(new CommandDefinition(
-          "restaurante.OnlineCheckoutAttemptCreate",
+          "restaurante.OnlineCheckoutAttemptCreateV2",
           new
           {
             Id = attemptId,
@@ -321,7 +348,8 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
       Message = "Captura los datos de tu tarjeta para pagar.",
       TrackingToken = trackingToken,
       CheckoutStatus = attempt.State,
-      WasExisting = !attempt.WasCreated
+      WasExisting = !attempt.WasCreated,
+      FacadeUploadToken = facadeUploadToken
     };
   }
 
@@ -435,7 +463,12 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
       {
         Amount = currentQuote.Total,
         Currency = currentQuote.Currency,
-        Description = "Pedido para recoger",
+        Description = string.Equals(
+          currentQuote.Request.Fulfillment.Type,
+          RestaurantOrderTypes.Delivery,
+          StringComparison.Ordinal)
+          ? "Pedido a domicilio"
+          : "Pedido para recoger",
         CardTokenId = request.CardTokenId.Trim(),
         ExternalReference = ClipExternalReference.From(attempt.Id),
         WebhookUrl = _options.WebhookUrl ?? string.Empty,
@@ -485,6 +518,65 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
       currentQuote.Total,
       currentQuote.Currency,
       ct);
+  }
+
+  public async Task<RestaurantOnlineFacadeUploadResult> UploadFacadeAsync(
+    PublicSiteBinding binding,
+    RestaurantOnlineFacadeUploadRequest request,
+    CancellationToken ct = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+    EnsureRestaurantBinding(binding);
+    if (string.IsNullOrWhiteSpace(request.TrackingToken) || request.TrackingToken.Length > 100
+        || string.IsNullOrWhiteSpace(request.UploadToken) || request.UploadToken.Length > 100)
+      return RestaurantOnlineFacadeUploadResult.Fail("invalid_upload_token", "La autorización de la foto venció.");
+    if (request.Content is not { Length: > 0 } || request.Content.Length > RestaurantDeliveryImageNormalizer.MaximumSourceBytes)
+      return RestaurantOnlineFacadeUploadResult.Fail("invalid_image", "La foto debe pesar como máximo 12 MB.");
+
+    await using var connection = await OpenAsync(binding, ct);
+    var attempt = await GetAttemptAsync(
+      connection,
+      trackingTokenHash: RestaurantOnlineTrackingTokenPolicy.Hash(request.TrackingToken),
+      ct: ct);
+    if (attempt is null)
+      return RestaurantOnlineFacadeUploadResult.Fail("not_found", "No encontramos el intento de pago.");
+    var expectedUploadToken = CreateFacadeUploadToken(binding, attempt.ClientAttemptId);
+    if (!FixedTimeEquals(expectedUploadToken, request.UploadToken))
+      return RestaurantOnlineFacadeUploadResult.Fail("invalid_upload_token", "La autorización de la foto venció.");
+    if (attempt.State is not (RestaurantOnlineCheckoutStatuses.Quoted or RestaurantOnlineCheckoutStatuses.PaymentDenied))
+      return RestaurantOnlineFacadeUploadResult.Fail("upload_closed", "El pedido ya no admite cambios en la foto.");
+    RestaurantOnlineQuoteSnapshot? snapshot;
+    try { snapshot = JsonSerializer.Deserialize<RestaurantOnlineQuoteSnapshot>(attempt.CartSnapshotJson, JsonOptions); }
+    catch (JsonException) { snapshot = null; }
+    if (!string.Equals(snapshot?.Request.Fulfillment.Type, RestaurantOrderTypes.Delivery, StringComparison.Ordinal))
+      return RestaurantOnlineFacadeUploadResult.Fail("pickup_has_no_facade", "La foto de fachada sólo aplica a entregas.");
+
+    var normalized = RestaurantDeliveryImageNormalizer.TryNormalize(request.Content);
+    if (normalized is null)
+      return RestaurantOnlineFacadeUploadResult.Fail("invalid_image", "Usa una foto JPEG, PNG o WebP válida y de hasta 12 MB.");
+
+    await connection.ExecuteAsync(new CommandDefinition(
+      "restaurante.OnlineCheckoutFacadeUpsert",
+      new
+      {
+        CheckoutAttemptId = attempt.Id,
+        FileName = NullIfWhiteSpace(request.FileName),
+        ContentType = "image/jpeg",
+        normalized.Content,
+        normalized.Thumbnail,
+        ByteLength = normalized.Content.Length,
+        normalized.Width,
+        normalized.Height,
+        ContentHash = normalized.Hash
+      },
+      commandType: CommandType.StoredProcedure,
+      cancellationToken: ct));
+    return new RestaurantOnlineFacadeUploadResult
+    {
+      Succeeded = true,
+      Code = "facade_saved",
+      Message = "Guardamos la foto de la fachada."
+    };
   }
 
   public async Task<RestaurantOnlineChargeResult> ConfirmChargeAsync(
@@ -736,7 +828,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
     {
       await using var connection = await OpenAsync(binding, ct);
       var row = await connection.QuerySingleAsync<ChargeBeginRow>(new CommandDefinition(
-        "restaurante.OnlineCheckoutChargeBegin",
+        "restaurante.OnlineCheckoutChargeBeginV2",
         new
         {
           Id = attemptId,
@@ -892,8 +984,8 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
       return ("ordering_disabled", "Los pedidos en línea no están habilitados en este momento.");
     if (row.IsPaused)
       return ("ordering_paused", NullIfWhiteSpace(row.PauseMessage) ?? "Los pedidos están pausados temporalmente.");
-    if (!row.PickupEnabled)
-      return ("ordering_disabled", "Los pedidos para recoger no están habilitados.");
+    if (!row.PickupEnabled && !row.DeliveryEnabled)
+      return ("ordering_disabled", "No hay una modalidad de entrega habilitada.");
     if (row.MaximumOrderTotal <= 0)
       return ("ordering_disabled", "El límite de pedidos no está configurado.");
     if (row.EnabledProductIds.Count == 0)
@@ -968,10 +1060,12 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
   private static RestaurantOnlineQuoteRequest NormalizeRequest(
     RestaurantOnlineQuoteRequest source,
     string? normalizedPromotionCode,
-    RestaurantOnlineCartPricingResult priced)
+    RestaurantOnlineCartPricingResult priced,
+    RestaurantOnlineFulfillmentRequest fulfillment)
     => new()
     {
       PromotionCode = NullIfWhiteSpace(normalizedPromotionCode),
+      Fulfillment = fulfillment,
       Lines = priced.Lines.Select(line => new RestaurantOnlineCartLineRequest
       {
         ProductId = line.OrderLine.ProductId!.Value,
@@ -991,6 +1085,149 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
           }).ToList()
       }).ToList()
     };
+
+  private async Task<FulfillmentNormalizationResult> NormalizeFulfillmentAsync(
+    RestaurantOnlineFulfillmentRequest? source,
+    BootstrapRow settings,
+    CancellationToken ct)
+  {
+    source ??= new RestaurantOnlineFulfillmentRequest();
+    var type = string.Equals(source.Type, RestaurantOrderTypes.Delivery, StringComparison.OrdinalIgnoreCase)
+      ? RestaurantOrderTypes.Delivery
+      : RestaurantOrderTypes.Pickup;
+    if (type == RestaurantOrderTypes.Pickup)
+    {
+      if (!settings.PickupEnabled)
+        return FulfillmentNormalizationResult.Fail("pickup_disabled", "Los pedidos para recoger no están habilitados.");
+      return FulfillmentNormalizationResult.Ok(new RestaurantOnlineFulfillmentRequest { Type = RestaurantOrderTypes.Pickup });
+    }
+
+    if (!settings.DeliveryEnabled)
+      return FulfillmentNormalizationResult.Fail("delivery_disabled", "La entrega a domicilio no está habilitada.");
+    if (!settings.DeliveryOriginLatitude.HasValue || !settings.DeliveryOriginLongitude.HasValue
+        || !settings.DeliveryRadiusKm.HasValue || settings.DeliveryRadiusKm <= 0 || settings.DeliveryFlatFee < 0)
+      return FulfillmentNormalizationResult.Fail("delivery_not_configured", "La zona de entrega todavía no está configurada.");
+
+    var address = NullIfWhiteSpace(source.AddressLine);
+    if (address is null || address.Length > 300)
+      return FulfillmentNormalizationResult.Fail("delivery_address_required", "Escribe la dirección de entrega.");
+    if (!RestaurantDeliveryDropoffPreferences.IsValid(source.DropoffPreference))
+      return FulfillmentNormalizationResult.Fail("dropoff_required", "Elige cómo quieres recibir el pedido.");
+    if (source.Latitude.HasValue != source.Longitude.HasValue)
+      return FulfillmentNormalizationResult.Fail("invalid_location", "Selecciona nuevamente la ubicación de entrega.");
+
+    var enteredAddress = address;
+    string? suggestedNormalizedAddress = null;
+    var latitude = source.Latitude;
+    var longitude = source.Longitude;
+    var status = latitude.HasValue
+      ? RestaurantDeliveryAddressVerificationStatuses.PinSelected
+      : RestaurantDeliveryAddressVerificationStatuses.ManualUnverified;
+    var validated = await TryValidateAddressAsync(address, ct);
+    if (validated is not null)
+    {
+      address = validated.FormattedAddress;
+      if (!string.Equals(enteredAddress, address, StringComparison.OrdinalIgnoreCase))
+        suggestedNormalizedAddress = address;
+      latitude ??= validated.Latitude;
+      longitude ??= validated.Longitude;
+      if (validated.IsComplete)
+        status = RestaurantDeliveryAddressVerificationStatuses.Validated;
+    }
+
+    if (!latitude.HasValue && !source.ManualAddressAcknowledged)
+      return FulfillmentNormalizationResult.Fail(
+        "manual_address_acknowledgement_required",
+        "Confirma que la dirección manual está dentro de nuestra zona de entrega.");
+
+    decimal? distanceKm = null;
+    if (latitude.HasValue && longitude.HasValue)
+    {
+      if (latitude is < -90 or > 90 || longitude is < -180 or > 180)
+        return FulfillmentNormalizationResult.Fail("invalid_location", "La ubicación seleccionada no es válida.");
+      distanceKm = CalculateDistanceKm(
+        settings.DeliveryOriginLatitude.Value,
+        settings.DeliveryOriginLongitude.Value,
+        latitude.Value,
+        longitude.Value);
+      if (distanceKm > settings.DeliveryRadiusKm.Value)
+        return FulfillmentNormalizationResult.Fail(
+          "outside_delivery_area",
+          $"La ubicación está fuera del radio de entrega de {settings.DeliveryRadiusKm.Value:0.#} km.");
+    }
+
+    return FulfillmentNormalizationResult.Ok(new RestaurantOnlineFulfillmentRequest
+    {
+      Type = RestaurantOrderTypes.Delivery,
+      AddressLine = address,
+      AddressComplement = NullIfWhiteSpace(source.AddressComplement),
+      Latitude = latitude,
+      Longitude = longitude,
+      GooglePlaceId = NullIfWhiteSpace(source.GooglePlaceId),
+      AddressVerificationStatus = status,
+      DropoffPreference = source.DropoffPreference,
+      Instructions = NullIfWhiteSpace(source.Instructions),
+      ManualAddressAcknowledged = !latitude.HasValue && source.ManualAddressAcknowledged
+    }, distanceKm, suggestedNormalizedAddress);
+  }
+
+  private async Task<ValidatedAddress?> TryValidateAddressAsync(string address, CancellationToken ct)
+  {
+    if (string.IsNullOrWhiteSpace(_options.GoogleMapsServerApiKey)) return null;
+    try
+    {
+      var client = _httpClientFactory.CreateClient();
+      using var response = await client.PostAsJsonAsync(
+        $"https://addressvalidation.googleapis.com/v1:validateAddress?key={Uri.EscapeDataString(_options.GoogleMapsServerApiKey.Trim())}",
+        new { address = new { regionCode = "MX", addressLines = new[] { address } }, enableUspsCass = false },
+        ct);
+      if (!response.IsSuccessStatusCode) return null;
+      using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+      var root = document.RootElement;
+      if (!root.TryGetProperty("result", out var result)) return null;
+      var formatted = result.TryGetProperty("address", out var addressNode)
+        && addressNode.TryGetProperty("formattedAddress", out var formattedNode)
+        ? formattedNode.GetString()
+        : null;
+      decimal? latitude = null;
+      decimal? longitude = null;
+      if (result.TryGetProperty("geocode", out var geocode)
+          && geocode.TryGetProperty("location", out var location))
+      {
+        if (location.TryGetProperty("latitude", out var latNode) && latNode.TryGetDecimal(out var lat)) latitude = lat;
+        if (location.TryGetProperty("longitude", out var lngNode) && lngNode.TryGetDecimal(out var lng)) longitude = lng;
+      }
+      var complete = result.TryGetProperty("verdict", out var verdict)
+        && verdict.TryGetProperty("addressComplete", out var completeNode)
+        && completeNode.ValueKind == JsonValueKind.True;
+      return string.IsNullOrWhiteSpace(formatted)
+        ? null
+        : new ValidatedAddress(formatted.Trim(), latitude, longitude, complete);
+    }
+    catch (HttpRequestException) { return null; }
+    catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return null; }
+    catch (JsonException) { return null; }
+  }
+
+  private static decimal CalculateDistanceKm(decimal originLatitude, decimal originLongitude, decimal latitude, decimal longitude)
+  {
+    static double ToRadians(decimal degrees) => (double)degrees * Math.PI / 180d;
+    var lat1 = ToRadians(originLatitude);
+    var lat2 = ToRadians(latitude);
+    var deltaLat = lat2 - lat1;
+    var deltaLongitude = ToRadians(longitude - originLongitude);
+    var a = Math.Pow(Math.Sin(deltaLat / 2d), 2d)
+      + Math.Cos(lat1) * Math.Cos(lat2) * Math.Pow(Math.Sin(deltaLongitude / 2d), 2d);
+    return decimal.Round((decimal)(6371.0088d * 2d * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1d - a))), 3);
+  }
+
+  private string CreateFacadeUploadToken(PublicSiteBinding binding, Guid clientAttemptId)
+  {
+    var key = Encoding.UTF8.GetBytes(_options.ClipApiSecret);
+    var material = Encoding.UTF8.GetBytes($"restaurant-facade-v1|{binding.PublicSiteId}|{clientAttemptId:N}");
+    return Convert.ToBase64String(HMACSHA256.HashData(key, material))
+      .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+  }
 
   private static IReadOnlyList<RestaurantOnlineQuoteLineDto> ApplyPromotionAndTax(
     RestaurantOnlineCartPricingResult priced,
@@ -1240,6 +1477,11 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
     public decimal MaximumOrderTotal { get; set; }
     public bool GuestCheckoutEnabled { get; set; }
     public bool PickupEnabled { get; set; }
+    public bool DeliveryEnabled { get; set; }
+    public decimal? DeliveryOriginLatitude { get; set; }
+    public decimal? DeliveryOriginLongitude { get; set; }
+    public decimal? DeliveryRadiusKm { get; set; }
+    public decimal DeliveryFlatFee { get; set; }
     public DateTime? ProcessorHeartbeatAtUtc { get; set; }
     public string TermsVersion { get; set; } = string.Empty;
     public string PrivacyVersion { get; set; } = string.Empty;
@@ -1265,6 +1507,7 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
     public string CustomerEmail { get; set; } = string.Empty;
     public string CustomerPhone { get; set; } = string.Empty;
     public string QuoteFingerprint { get; set; } = string.Empty;
+    public string CartSnapshotJson { get; set; } = string.Empty;
     public byte[] TrackingTokenHash { get; set; } = [];
     public string MerchantProfileKey { get; set; } = string.Empty;
     public decimal Total { get; set; }
@@ -1300,5 +1543,22 @@ public sealed class RestaurantOnlineCheckoutService : IOnlineRestaurantCheckoutS
     public bool WasMatched { get; set; }
     public bool WasInserted { get; set; }
     public long? EventId { get; set; }
+  }
+
+  private sealed record ValidatedAddress(string FormattedAddress, decimal? Latitude, decimal? Longitude, bool IsComplete);
+
+  private sealed record FulfillmentNormalizationResult(
+    RestaurantOnlineFulfillmentRequest? Fulfillment,
+    decimal? DistanceKm,
+    string? SuggestedNormalizedAddress,
+    (string Code, string Message)? Failure)
+  {
+    public static FulfillmentNormalizationResult Ok(
+      RestaurantOnlineFulfillmentRequest fulfillment,
+      decimal? distanceKm = null,
+      string? suggestedNormalizedAddress = null)
+      => new(fulfillment, distanceKm, suggestedNormalizedAddress, null);
+    public static FulfillmentNormalizationResult Fail(string code, string message)
+      => new(null, null, null, (code, message));
   }
 }

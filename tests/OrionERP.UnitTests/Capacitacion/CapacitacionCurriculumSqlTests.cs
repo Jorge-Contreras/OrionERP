@@ -12,6 +12,8 @@ public sealed class CapacitacionCurriculumSqlTests
 
   private static readonly string PilotSql = ReadRepoFile(PilotSeedPath);
   private static readonly string CurriculumSql = ReadRepoFile(CurriculumPath);
+  private static readonly string DeliveryReleaseSql = ReadRepoFile(
+    "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery.sql");
 
   private static readonly string[] PilotCourses =
   [
@@ -69,7 +71,7 @@ public sealed class CapacitacionCurriculumSqlTests
   [Fact]
   public void Curriculum_CoversEveryNavigationDestinationOfOrionErp()
   {
-    var seeds = PilotSql + CurriculumSql;
+    var seeds = PilotSql + CurriculumSql + DeliveryReleaseSql;
     var destinations = NavigationCatalog.Sections
       .SelectMany(section => section.Items)
       .Concat(NavigationCatalog.AdminSection.Items)

@@ -16,6 +16,36 @@ public static class RestaurantOrderStatuses
   public const string Cancelled = "Cancelled";
 }
 
+public static class RestaurantOrderTypes
+{
+  public const string Pickup = "Pickup";
+  public const string Delivery = "Delivery";
+}
+
+public static class RestaurantDeliveryDropoffPreferences
+{
+  public const string LeaveAtDoor = "LeaveAtDoor";
+  public const string MeetAtDoor = "MeetAtDoor";
+  public const string MeetOutside = "MeetOutside";
+
+  public static bool IsValid(string? value)
+    => value is LeaveAtDoor or MeetAtDoor or MeetOutside;
+}
+
+public static class RestaurantDeliveryAddressVerificationStatuses
+{
+  public const string Validated = "Validated";
+  public const string PinSelected = "PinSelected";
+  public const string ManualUnverified = "ManualUnverified";
+  public const string StaffConfirmed = "StaffConfirmed";
+}
+
+public static class RestaurantDeliveryEvidenceTypes
+{
+  public const string Facade = "Facade";
+  public const string DropoffProof = "DropoffProof";
+}
+
 public static class RestaurantPaymentStatuses
 {
   public const string Pending = "Pending";
@@ -335,6 +365,12 @@ public sealed class RestaurantOrderCreateRequest
   public string? Notes { get; set; }
   public string? DeliveryAddress { get; set; }
   public string? DeliveryReferences { get; set; }
+  public string? DeliveryAddressComplement { get; set; }
+  public decimal? DeliveryLatitude { get; set; }
+  public decimal? DeliveryLongitude { get; set; }
+  public string? DeliveryGooglePlaceId { get; set; }
+  public string? DeliveryAddressVerificationStatus { get; set; }
+  public string? DeliveryDropoffPreference { get; set; }
   public int? ExternalProviderId { get; set; }
   public string? ExternalReference { get; set; }
   public decimal DeliveryCost { get; set; }
@@ -476,6 +512,7 @@ public sealed class RestaurantOrderDto
   public string Status { get; set; } = string.Empty;
   public string PaymentStatus { get; set; } = string.Empty;
   public string? CustomerName { get; set; }
+  public string? CustomerPhone { get; set; }
   public string? CustomerEmail { get; set; }
   public long? PublicSiteId { get; set; }
   public Guid? OnlineCheckoutAttemptId { get; set; }

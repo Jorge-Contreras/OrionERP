@@ -44,6 +44,13 @@ public sealed class RestaurantOnlineOrderingConfigurationDto
   public string? UnavailableReason { get; set; }
   public bool AllowGuestCheckout { get; set; } = true;
   public bool PickupEnabled { get; set; } = true;
+  public bool DeliveryEnabled { get; set; }
+  public decimal? DeliveryOriginLatitude { get; set; }
+  public decimal? DeliveryOriginLongitude { get; set; }
+  public decimal? DeliveryRadiusKm { get; set; }
+  public decimal DeliveryFlatFee { get; set; }
+  public string GoogleMapsBrowserApiKey { get; set; } = string.Empty;
+  public string GoogleMapsMapId { get; set; } = string.Empty;
   public decimal MaximumOrderAmount { get; set; } = 2500m;
   public string OnlineHoursJson { get; set; } = "{}";
   public string Currency { get; set; } = "MXN";
@@ -60,6 +67,21 @@ public sealed class RestaurantOnlineQuoteRequest
 {
   [MinLength(1)] public List<RestaurantOnlineCartLineRequest> Lines { get; set; } = [];
   [StringLength(32)] public string? PromotionCode { get; set; }
+  public RestaurantOnlineFulfillmentRequest Fulfillment { get; set; } = new();
+}
+
+public sealed class RestaurantOnlineFulfillmentRequest
+{
+  [Required, StringLength(20)] public string Type { get; set; } = RestaurantOrderTypes.Pickup;
+  [StringLength(300)] public string? AddressLine { get; set; }
+  [StringLength(150)] public string? AddressComplement { get; set; }
+  [Range(typeof(decimal), "-90", "90")] public decimal? Latitude { get; set; }
+  [Range(typeof(decimal), "-180", "180")] public decimal? Longitude { get; set; }
+  [StringLength(200)] public string? GooglePlaceId { get; set; }
+  [StringLength(30)] public string? AddressVerificationStatus { get; set; }
+  [StringLength(30)] public string? DropoffPreference { get; set; }
+  [StringLength(500)] public string? Instructions { get; set; }
+  public bool ManualAddressAcknowledged { get; set; }
 }
 
 public sealed class RestaurantOnlineCartLineRequest
@@ -92,7 +114,12 @@ public sealed class RestaurantOnlineQuoteResult
   public decimal Subtotal { get; set; }
   public decimal PromotionDiscount { get; set; }
   public decimal Tax { get; set; }
+  public decimal DeliveryFee { get; set; }
   public decimal Total { get; set; }
+  public string FulfillmentType { get; set; } = RestaurantOrderTypes.Pickup;
+  public string AddressVerificationStatus { get; set; } = string.Empty;
+  public string? SuggestedNormalizedAddress { get; set; }
+  public decimal? DeliveryDistanceKm { get; set; }
   public IReadOnlyList<RestaurantOnlineQuoteLineDto> Lines { get; set; } = Array.Empty<RestaurantOnlineQuoteLineDto>();
   public IReadOnlyList<RestaurantPromotionAdjustmentDto> Promotions { get; set; } = Array.Empty<RestaurantPromotionAdjustmentDto>();
 
@@ -141,8 +168,26 @@ public sealed class RestaurantOnlineCheckoutBeginResult
   public string? TrackingToken { get; set; }
   public string CheckoutStatus { get; set; } = RestaurantOnlineCheckoutStatuses.Quoted;
   public bool WasExisting { get; set; }
+  public string? FacadeUploadToken { get; set; }
 
   public static RestaurantOnlineCheckoutBeginResult Fail(string code, string message)
+    => new() { Code = code, Message = message };
+}
+
+public sealed class RestaurantOnlineFacadeUploadRequest
+{
+  [Required, StringLength(100)] public string TrackingToken { get; set; } = string.Empty;
+  [Required, StringLength(100)] public string UploadToken { get; set; } = string.Empty;
+  [Required] public byte[] Content { get; set; } = [];
+  [StringLength(260)] public string? FileName { get; set; }
+}
+
+public sealed class RestaurantOnlineFacadeUploadResult
+{
+  public bool Succeeded { get; set; }
+  public string Code { get; set; } = string.Empty;
+  public string Message { get; set; } = string.Empty;
+  public static RestaurantOnlineFacadeUploadResult Fail(string code, string message)
     => new() { Code = code, Message = message };
 }
 
@@ -185,6 +230,7 @@ public sealed class RestaurantOnlineCheckoutStatusDto
   public string CheckoutStatus { get; set; } = string.Empty;
   public string PaymentStatus { get; set; } = string.Empty;
   public string? OrderStatus { get; set; }
+  public string FulfillmentType { get; set; } = RestaurantOrderTypes.Pickup;
   public int? OrderFolio { get; set; }
   public decimal Total { get; set; }
   public string Currency { get; set; } = "MXN";
@@ -217,6 +263,11 @@ public sealed class RestaurantOnlineOrderingAdminDto
   public string? PauseMessage { get; set; }
   public bool AllowGuestCheckout { get; set; } = true;
   public bool PickupEnabled { get; set; } = true;
+  public bool DeliveryEnabled { get; set; }
+  public decimal? DeliveryOriginLatitude { get; set; }
+  public decimal? DeliveryOriginLongitude { get; set; }
+  public decimal? DeliveryRadiusKm { get; set; }
+  public decimal DeliveryFlatFee { get; set; }
   public decimal MaximumOrderAmount { get; set; } = 2500m;
   public string OnlineHoursJson { get; set; } = "{}";
   public string TermsVersion { get; set; } = string.Empty;
@@ -241,6 +292,11 @@ public sealed class RestaurantOnlineOrderingAdminSaveRequest
   [StringLength(300)] public string? PauseMessage { get; set; }
   public bool AllowGuestCheckout { get; set; } = true;
   public bool PickupEnabled { get; set; } = true;
+  public bool DeliveryEnabled { get; set; }
+  [Range(typeof(decimal), "-90", "90")] public decimal? DeliveryOriginLatitude { get; set; }
+  [Range(typeof(decimal), "-180", "180")] public decimal? DeliveryOriginLongitude { get; set; }
+  [Range(typeof(decimal), "0.1", "100")] public decimal? DeliveryRadiusKm { get; set; }
+  [Range(typeof(decimal), "0", "10000")] public decimal DeliveryFlatFee { get; set; }
   /// <summary>El tope de Clip por transacción en línea es $10,000 MXN.</summary>
   [Range(typeof(decimal), "0.01", "10000")] public decimal MaximumOrderAmount { get; set; } = 2500m;
   [Required] public string OnlineHoursJson { get; set; } = "{}";

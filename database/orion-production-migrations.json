@@ -421,6 +421,33 @@
         "Orion_Sandbox",
         "grupocarpio"
       ]
+    },
+    {
+      "id": "20260918_restaurant_online_delivery",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery.sql",
+      "description": "Agrega entrega a domicilio al checkout de Bruno, tarifa y radio administrables, evidencia privada con retencion, seguimiento y flujo atomico de repartidores.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260918_restaurant_online_delivery_runtime_fix",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery_runtime_fix.sql",
+      "description": "Alinea la purga de evidencias con el contexto del worker interno y la retira del perfil SQL publico de Restaurante.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
+    },
+    {
+      "id": "20260918_restaurant_online_delivery_scope_fix",
+      "path": "src/OrionERP.Infrastructure/Features/Restaurante/Sql/20260918_restaurant_online_delivery_scope_fix.sql",
+      "description": "Resuelve la retencion de evidencias con los identificadores globales de empresa y sitio que entrega el worker interno.",
+      "allowedDatabases": [
+        "Orion_Sandbox",
+        "grupocarpio"
+      ]
     }
   ]
 }

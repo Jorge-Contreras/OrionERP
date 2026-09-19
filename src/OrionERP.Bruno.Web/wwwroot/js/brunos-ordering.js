@@ -3,6 +3,12 @@
 
   const cartVersion = 1;
   const sdkPromises = new Map();
+  const googlePromises = new Map();
+  let facadeBlob = null;
+  let facadePreviewUrl = null;
+  let facadeStream = null;
+  let facadeCameraIds = [];
+  let facadeCameraIndex = -1;
 
   const storageKey = (publicSiteKey) => `orion.restaurant.cart.v${cartVersion}.${publicSiteKey || 'site'}`;
   const checkoutKey = (attemptId) => `orion.restaurant.checkout.v1.${attemptId || 'current'}`;
@@ -113,6 +119,67 @@
       throw error;
     }
     return responseBody;
+  };
+
+  const uploadFacade = async (intent, inputId) => {
+    const inputFile = document.getElementById(inputId)?.files?.[0] || null;
+    const photo = facadeBlob || inputFile;
+    if (!photo) return null;
+    const form = new FormData();
+    form.append('trackingToken', intent.trackingToken);
+    form.append('uploadToken', intent.facadeUploadToken || '');
+    form.append('photo', photo, photo.name || 'fachada.jpg');
+    const response = await fetch('/api/restaurant/checkout/facade', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+      body: form
+    });
+    const body = await readBody(response);
+    if (!response.ok) {
+      const error = new Error(problemMessage(body, 'No pudimos guardar la foto de la fachada.'));
+      error.code = body?.errorCode || body?.extensions?.errorCode || 'facade_upload_failed';
+      throw error;
+    }
+    return body;
+  };
+
+  const loadGoogleMaps = (apiKey) => {
+    if (!apiKey) return Promise.reject(new Error('Google Maps no está configurado.'));
+    if (window.google?.maps?.importLibrary) return Promise.resolve(window.google.maps);
+    if (googlePromises.has(apiKey)) return googlePromises.get(apiKey);
+    const promise = new Promise((resolve, reject) => {
+      const callback = `__brunoGoogleMapsReady${Date.now()}`;
+      window[callback] = () => {
+        delete window[callback];
+        resolve(window.google.maps);
+      };
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&loading=async&libraries=places,marker&callback=${callback}`;
+      script.async = true;
+      script.onerror = () => {
+        delete window[callback];
+        reject(new Error('No pudimos cargar el mapa. Puedes escribir la dirección manualmente.'));
+      };
+      document.head.appendChild(script);
+    });
+    googlePromises.set(apiKey, promise);
+    return promise;
+  };
+
+  const stopFacadeCamera = () => {
+    if (facadeStream) facadeStream.getTracks().forEach(track => track.stop());
+    facadeStream = null;
+  };
+
+  const setFacadePreview = (previewId, blob) => {
+    if (facadePreviewUrl) URL.revokeObjectURL(facadePreviewUrl);
+    facadePreviewUrl = blob ? URL.createObjectURL(blob) : null;
+    const preview = document.getElementById(previewId);
+    if (preview) {
+      preview.src = facadePreviewUrl || '';
+      preview.hidden = !facadePreviewUrl;
+    }
   };
 
   // Clip pide cargar el SDK siempre desde su dominio, sin empaquetarlo ni
@@ -287,6 +354,132 @@
       sessionStorage.removeItem(currentCheckoutKey);
     },
 
+    async initializeDeliveryMap(containerId, autocompleteId, options, dotNetRef) {
+      const container = document.getElementById(containerId);
+      const autocompleteHost = document.getElementById(autocompleteId);
+      if (!container || !autocompleteHost || !options?.apiKey) return false;
+      try {
+        const maps = await loadGoogleMaps(options.apiKey);
+        const center = { lat: Number(options.latitude), lng: Number(options.longitude) };
+        const map = new maps.Map(container, {
+          center,
+          zoom: 14,
+          mapId: options.mapId || undefined,
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false
+        });
+        let marker;
+        const notify = async (position, address = '', placeId = '') => {
+          await dotNetRef.invokeMethodAsync('SetDeliveryLocation', position.lat, position.lng, address || '', placeId || '');
+        };
+        const reverseGeocode = async (position) => {
+          try {
+            const geocoder = new maps.Geocoder();
+            const response = await geocoder.geocode({ location: position });
+            const best = response.results?.[0];
+            await notify(position, best?.formatted_address || '', best?.place_id || '');
+          } catch { await notify(position); }
+        };
+        const placeMarker = async (position, reverse = true) => {
+          if (marker?.setMap) marker.setMap(null);
+          marker = new maps.Marker({ position, map, draggable: true, title: 'Ubicación de entrega' });
+          marker.addListener('dragend', () => {
+            const point = marker.getPosition();
+            reverseGeocode({ lat: point.lat(), lng: point.lng() });
+          });
+          map.panTo(position);
+          if (reverse) await reverseGeocode(position);
+        };
+        map.addListener('click', event => placeMarker({ lat: event.latLng.lat(), lng: event.latLng.lng() }));
+
+        const { PlaceAutocompleteElement } = await maps.importLibrary('places');
+        const autocomplete = new PlaceAutocompleteElement({ includedRegionCodes: ['mx'] });
+        autocomplete.placeholder = 'Busca calle, colonia o lugar';
+        autocomplete.locationBias = { center, radius: Math.max(1000, Number(options.radiusKm || 5) * 1000) };
+        autocompleteHost.replaceChildren(autocomplete);
+        autocomplete.addEventListener('gmp-select', async event => {
+          const place = event.placePrediction.toPlace();
+          await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'id'] });
+          if (!place.location) return;
+          const position = { lat: place.location.lat(), lng: place.location.lng() };
+          await placeMarker(position, false);
+          await notify(position, place.formattedAddress || place.displayName || '', place.id || '');
+        });
+        window.__brunoDeliveryMap = { map, placeMarker };
+        return true;
+      } catch {
+        container.dataset.failed = 'true';
+        return false;
+      }
+    },
+
+    async useCurrentDeliveryLocation() {
+      if (!navigator.geolocation || !window.__brunoDeliveryMap) return false;
+      return await new Promise(resolve => navigator.geolocation.getCurrentPosition(
+        async position => {
+          await window.__brunoDeliveryMap.placeMarker({ lat: position.coords.latitude, lng: position.coords.longitude });
+          resolve(true);
+        },
+        () => resolve(false),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }));
+    },
+
+    previewFacadeFile(inputId, previewId) {
+      facadeBlob = null;
+      const file = document.getElementById(inputId)?.files?.[0] || null;
+      setFacadePreview(previewId, file);
+      return !!file;
+    },
+
+    clearFacadePhoto(inputId, previewId) {
+      facadeBlob = null;
+      const input = document.getElementById(inputId);
+      if (input) input.value = '';
+      setFacadePreview(previewId, null);
+    },
+
+    async startFacadeCamera(videoId, switchCamera = false) {
+      stopFacadeCamera();
+      if (!navigator.mediaDevices?.getUserMedia) return false;
+      try {
+        if (switchCamera && facadeCameraIds.length > 1) facadeCameraIndex = (facadeCameraIndex + 1) % facadeCameraIds.length;
+        const videoConstraints = facadeCameraIndex >= 0 && facadeCameraIds[facadeCameraIndex]
+          ? { deviceId: { exact: facadeCameraIds[facadeCameraIndex] } }
+          : { facingMode: { ideal: 'environment' } };
+        facadeStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        facadeCameraIds = devices.filter(device => device.kind === 'videoinput').map(device => device.deviceId).filter(Boolean);
+        const activeId = facadeStream.getVideoTracks()[0]?.getSettings()?.deviceId;
+        if (activeId) facadeCameraIndex = Math.max(0, facadeCameraIds.indexOf(activeId));
+        const video = document.getElementById(videoId);
+        if (!video) return false;
+        video.srcObject = facadeStream;
+        await video.play();
+        return true;
+      } catch { stopFacadeCamera(); return false; }
+    },
+
+    async captureFacadeCamera(videoId, previewId) {
+      const video = document.getElementById(videoId);
+      if (!video?.videoWidth || !video.videoHeight) return false;
+      const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      facadeBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.84));
+      stopFacadeCamera();
+      setFacadePreview(previewId, facadeBlob);
+      return !!facadeBlob;
+    },
+
+    stopFacadeCamera,
+
+    async switchFacadeCamera(videoId) {
+      return await window.brunoOrdering.startFacadeCamera(videoId, true);
+    },
+
     async quoteCart(request) {
       try {
         return await postJson('/api/restaurant/checkout/quote', request);
@@ -381,6 +574,15 @@
       }
       rememberPendingCheckout(options.clientAttemptId, intent.trackingToken);
 
+      try {
+        await uploadFacade(intent, options.facadeInputId || 'facade-photo-input');
+      } catch (error) {
+        return failure(
+          error.code || 'facade_upload_failed',
+          `${error.message || 'No pudimos guardar la foto.'} Reintenta o elimina la foto para continuar sin ella.`,
+          intent.trackingToken);
+      }
+
       let cardTokenId;
       try {
         const cardToken = await cardElement.cardToken();
@@ -438,4 +640,10 @@
       }
     }
   };
+
+  window.addEventListener('pagehide', () => {
+    stopFacadeCamera();
+    if (facadePreviewUrl) URL.revokeObjectURL(facadePreviewUrl);
+    facadePreviewUrl = null;
+  });
 })();

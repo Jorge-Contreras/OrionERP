@@ -31,7 +31,12 @@
           <li class="@(PaymentStepComplete ? "is-complete" : "is-current")"><i aria-hidden="true">@(PaymentStepComplete ? "✓" : "1")</i><div><strong>Pago</strong><span>@PaymentStepText</span></div></li>
           <li class="@(OrderStepComplete ? "is-complete" : PaymentStepComplete ? "is-current" : null)"><i aria-hidden="true">@(OrderStepComplete ? "✓" : "2")</i><div><strong>Confirmación</strong><span>@OrderStepText</span></div></li>
           <li class="@(PreparationStepComplete ? "is-complete" : OrderStepComplete ? "is-current" : null)"><i aria-hidden="true">@(PreparationStepComplete ? "✓" : "3")</i><div><strong>Preparación</strong><span>@PreparationStepText</span></div></li>
-          <li class="@(ReadyStepComplete ? "is-complete is-current" : null)"><i aria-hidden="true">@(ReadyStepComplete ? "✓" : "4")</i><div><strong>Listo para recoger</strong><span>@ReadyStepText</span></div></li>
+          <li class="@(ReadyStepComplete ? "is-complete" : PreparationStepComplete ? "is-current" : null)"><i aria-hidden="true">@(ReadyStepComplete ? "✓" : "4")</i><div><strong>@(IsDelivery ? "Listo para reparto" : "Listo para recoger")</strong><span>@ReadyStepText</span></div></li>
+          @if (IsDelivery)
+          {
+            <li class="@(DispatchedStepComplete ? "is-complete" : ReadyStepComplete ? "is-current" : null)"><i aria-hidden="true">@(DispatchedStepComplete ? "✓" : "5")</i><div><strong>En camino</strong><span>@DispatchedStepText</span></div></li>
+            <li class="@(DeliveredStepComplete ? "is-complete is-current" : DispatchedStepComplete ? "is-current" : null)"><i aria-hidden="true">@(DeliveredStepComplete ? "✓" : "6")</i><div><strong>Entregado</strong><span>@DeliveredStepText</span></div></li>
+          }
         </ol>
 
         <dl class="tracking-summary">
@@ -74,23 +79,27 @@
   private bool IsRefundState => NormalizedCheckout is RestaurantOnlineCheckoutStatuses.RefundRequested or RestaurantOnlineCheckoutStatuses.RefundPending or RestaurantOnlineCheckoutStatuses.Refunded;
   private bool IsFailureState => NormalizedCheckout is RestaurantOnlineCheckoutStatuses.PaymentDenied or RestaurantOnlineCheckoutStatuses.Failed or RestaurantOnlineCheckoutStatuses.Expired;
   private bool NeedsRequote => NormalizedCheckout == RestaurantOnlineCheckoutStatuses.RequoteRequired;
+  private bool IsDelivery => string.Equals(status?.FulfillmentType, RestaurantOrderTypes.Delivery, StringComparison.Ordinal);
   private bool PaymentStepComplete => status is not null && (status.PaymentStatus.Equals(RestaurantPaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase) || NormalizedCheckout is RestaurantOnlineCheckoutStatuses.Captured or RestaurantOnlineCheckoutStatuses.CapturedNeedsOrder or RestaurantOnlineCheckoutStatuses.PosCreated || IsRefundState);
   private bool OrderStepComplete => !string.IsNullOrWhiteSpace(status?.OrderStatus) || NormalizedCheckout == RestaurantOnlineCheckoutStatuses.PosCreated;
   private bool PreparationStepComplete => NormalizedOrder is RestaurantOrderStatuses.Preparing or RestaurantOrderStatuses.Ready or RestaurantOrderStatuses.Dispatched or RestaurantOrderStatuses.Delivered or RestaurantOrderStatuses.Completed;
   private bool ReadyStepComplete => NormalizedOrder is RestaurantOrderStatuses.Ready or RestaurantOrderStatuses.Dispatched or RestaurantOrderStatuses.Delivered or RestaurantOrderStatuses.Completed;
+  private bool DispatchedStepComplete => NormalizedOrder is RestaurantOrderStatuses.Dispatched or RestaurantOrderStatuses.Delivered or RestaurantOrderStatuses.Completed;
+  private bool DeliveredStepComplete => NormalizedOrder is RestaurantOrderStatuses.Delivered or RestaurantOrderStatuses.Completed;
   private bool ShouldKeepPolling => status is not null && !IsFailureState && !NeedsRequote && NormalizedCheckout != RestaurantOnlineCheckoutStatuses.Refunded
-    && (NormalizedOrder is not (RestaurantOrderStatuses.Ready or RestaurantOrderStatuses.Dispatched or RestaurantOrderStatuses.Delivered or RestaurantOrderStatuses.Completed or RestaurantOrderStatuses.Cancelled)
-      || (NormalizedOrder == RestaurantOrderStatuses.Ready && IsReadyEmailInFlight));
+    && NormalizedOrder is not (RestaurantOrderStatuses.Completed or RestaurantOrderStatuses.Cancelled);
   // The ready email leaves through a durable queue after the kitchen marks the order, and it can
   // fail and retry. Only say it was sent once the queue confirms it; refresh while it is in flight.
   private bool IsReadyEmailSent => string.Equals(status?.ReadyNotificationStatus, "Sent", StringComparison.OrdinalIgnoreCase);
   private bool IsReadyEmailInFlight => status?.ReadyNotificationStatus is { } readyEmail
     && (readyEmail.Equals("Pending", StringComparison.OrdinalIgnoreCase) || readyEmail.Equals("Processing", StringComparison.OrdinalIgnoreCase));
 
-  private string Eyebrow => IsRefundState ? "Reembolso" : NeedsRequote ? "El menú cambió" : ReadyStepComplete ? "Ya puedes venir" : IsFailureState ? "Necesitamos tu atención" : PaymentStepComplete ? "Pedido recibido" : "Confirmando pago";
+  private string Eyebrow => IsRefundState ? "Reembolso" : NeedsRequote ? "El menú cambió" : DeliveredStepComplete ? "Entregado" : IsDelivery && DispatchedStepComplete ? "En camino" : ReadyStepComplete ? (IsDelivery ? "Listo para salir" : "Ya puedes venir") : IsFailureState ? "Necesitamos tu atención" : PaymentStepComplete ? "Pedido recibido" : "Confirmando pago";
   private string Headline => IsRefundState
     ? NormalizedCheckout == RestaurantOnlineCheckoutStatuses.Refunded ? "Reembolso enviado" : "Reembolso en proceso"
     : NeedsRequote ? "Revisa de nuevo tu pedido"
+    : DeliveredStepComplete ? "Tu pedido fue entregado"
+    : IsDelivery && DispatchedStepComplete ? "Tu pedido va en camino"
     : ReadyStepComplete ? "Tu pedido está listo"
     : IsFailureState ? "No se confirmó el pedido"
     : OrderStepComplete ? "Estamos preparando tu pedido"
@@ -99,7 +108,9 @@
   private string StatusMessage => !string.IsNullOrWhiteSpace(status?.Message) ? status.Message
     : IsRefundState ? "El importe se enviará al medio de pago original. El tiempo de acreditación depende de Clip y tu institución financiera."
     : NeedsRequote ? "No hicimos el cobro. Algún precio, promoción o disponibilidad cambió; revisa la nueva cotización para continuar."
-    : ReadyStepComplete ? (IsReadyEmailSent ? "Te enviamos un correo. Presenta tu número de pedido al recogerlo en el restaurante." : "Presenta tu número de pedido al recogerlo en el restaurante.")
+    : DeliveredStepComplete ? "Gracias por elegirnos. La entrega quedó completada."
+    : IsDelivery && DispatchedStepComplete ? "El repartidor salió con tu pedido. Mantén tu teléfono disponible."
+    : ReadyStepComplete ? (IsDelivery ? "Tu pedido espera asignación de repartidor." : IsReadyEmailSent ? "Te enviamos un correo. Presenta tu número de pedido al recogerlo en el restaurante." : "Presenta tu número de pedido al recogerlo en el restaurante.")
     : OrderStepComplete ? "Te enviaremos un correo cuando esté listo. No necesitas mantener esta página abierta."
     : PaymentStepComplete ? "Recibimos tu pago y estamos terminando de confirmar el pedido. No vuelvas a pagar."
     : "Todavía estamos confirmando la operación con el banco.";
@@ -107,10 +118,13 @@
   private string PaymentStepText => PaymentStepComplete ? "Recibido" : IsFailureState ? "No confirmado" : "Confirmando el cobro";
   private string OrderStepText => OrderStepComplete ? "Pedido creado" : PaymentStepComplete ? "En proceso, no vuelvas a pagar" : "Pendiente";
   private string PreparationStepText => PreparationStepComplete ? "En cocina" : OrderStepComplete ? "Se enviará a cocina" : "Pendiente";
-  private string ReadyStepText => !ReadyStepComplete ? "Te avisaremos por correo"
+  private string ReadyStepText => !ReadyStepComplete ? (IsDelivery ? "Esperando a cocina" : "Te avisaremos por correo")
+    : IsDelivery ? "Esperando repartidor"
     : IsReadyEmailSent ? "Te enviamos un correo"
     : IsReadyEmailInFlight ? "Enviando el aviso por correo"
     : "Presenta tu número de pedido";
+  private string DispatchedStepText => DispatchedStepComplete ? "El repartidor salió" : "Pendiente de asignación";
+  private string DeliveredStepText => DeliveredStepComplete ? "Entrega confirmada" : "Pendiente";
   private string FriendlyPaymentStatus => status?.PaymentStatus?.Trim().ToLowerInvariant() switch
   {
     "paid" => "Pagado",
@@ -123,8 +137,8 @@
   {
     RestaurantOrderStatuses.Sent => "Enviado a cocina",
     RestaurantOrderStatuses.Preparing => "En preparación",
-    RestaurantOrderStatuses.Ready => "Listo para recoger",
-    RestaurantOrderStatuses.Dispatched => "Entregado",
+    RestaurantOrderStatuses.Ready => IsDelivery ? "Listo para reparto" : "Listo para recoger",
+    RestaurantOrderStatuses.Dispatched => IsDelivery ? "En camino" : "Despachado",
     RestaurantOrderStatuses.Delivered => "Entregado",
     RestaurantOrderStatuses.Completed => "Completado",
     RestaurantOrderStatuses.Cancelled => "Cancelado",

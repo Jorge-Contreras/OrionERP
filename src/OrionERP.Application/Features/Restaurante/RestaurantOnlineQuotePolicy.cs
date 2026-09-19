@@ -22,6 +22,7 @@ public sealed class RestaurantOnlineQuoteSnapshot
   public decimal Subtotal { get; set; }
   public decimal PromotionDiscount { get; set; }
   public decimal Tax { get; set; }
+  public decimal DeliveryFee { get; set; }
   public decimal Total { get; set; }
   public string Currency { get; set; } = "MXN";
   public DateTime IssuedAtUtc { get; set; }
@@ -53,8 +54,10 @@ public static class RestaurantOnlineQuotePolicy
       .Append(quote.Subtotal.ToString("0.00", CultureInfo.InvariantCulture)).Append('|')
       .Append(quote.PromotionDiscount.ToString("0.00", CultureInfo.InvariantCulture)).Append('|')
       .Append(quote.Tax.ToString("0.00", CultureInfo.InvariantCulture)).Append('|')
+      .Append(quote.DeliveryFee.ToString("0.00", CultureInfo.InvariantCulture)).Append('|')
       .Append(quote.Total.ToString("0.00", CultureInfo.InvariantCulture)).Append('|')
-      .Append(quote.Request.PromotionCode?.Trim().ToUpperInvariant() ?? string.Empty);
+      .Append(quote.Request.PromotionCode?.Trim().ToUpperInvariant() ?? string.Empty).Append('|')
+      .Append(NormalizeFulfillment(quote.Request.Fulfillment));
 
     foreach (var line in quote.Request.Lines)
     {
@@ -167,6 +170,22 @@ public static class RestaurantOnlineQuotePolicy
 
   private static string NormalizeNote(string? value)
     => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
+
+  private static string NormalizeFulfillment(RestaurantOnlineFulfillmentRequest? fulfillment)
+  {
+    fulfillment ??= new RestaurantOnlineFulfillmentRequest();
+    return string.Join(':',
+      NormalizeNote(fulfillment.Type),
+      NormalizeNote(fulfillment.AddressLine),
+      NormalizeNote(fulfillment.AddressComplement),
+      fulfillment.Latitude?.ToString("0.000000", CultureInfo.InvariantCulture) ?? string.Empty,
+      fulfillment.Longitude?.ToString("0.000000", CultureInfo.InvariantCulture) ?? string.Empty,
+      NormalizeNote(fulfillment.GooglePlaceId),
+      NormalizeNote(fulfillment.AddressVerificationStatus),
+      NormalizeNote(fulfillment.DropoffPreference),
+      NormalizeNote(fulfillment.Instructions),
+      fulfillment.ManualAddressAcknowledged ? "1" : "0");
+  }
 }
 
 /// <summary>

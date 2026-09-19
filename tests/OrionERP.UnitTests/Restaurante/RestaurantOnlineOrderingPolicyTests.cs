@@ -101,6 +101,37 @@ public sealed class RestaurantOnlineOrderingPolicyTests
   }
 
   [Fact]
+  public void DeliveryFingerprint_CoversServerFeeDestinationVerificationAndHandoff()
+  {
+    var original = Quote();
+    original.DeliveryFee = 45m;
+    original.Total += original.DeliveryFee;
+    original.Request.Fulfillment = new RestaurantOnlineFulfillmentRequest
+    {
+      Type = RestaurantOrderTypes.Delivery,
+      AddressLine = "Calle Principal 5, Calpulalpan, Tlaxcala",
+      AddressComplement = "Interior 2",
+      Latitude = 19.586123m,
+      Longitude = -98.569321m,
+      GooglePlaceId = "place-17",
+      AddressVerificationStatus = RestaurantDeliveryAddressVerificationStatuses.Validated,
+      DropoffPreference = RestaurantDeliveryDropoffPreferences.LeaveAtDoor,
+      Instructions = "Portón verde"
+    };
+    var fingerprint = RestaurantOnlineQuotePolicy.CreateFingerprint(original);
+
+    var feeChanged = Clone(original); feeChanged.DeliveryFee++;
+    var pinChanged = Clone(original); pinChanged.Request.Fulfillment.Latitude += 0.000001m;
+    var handoffChanged = Clone(original); handoffChanged.Request.Fulfillment.DropoffPreference = RestaurantDeliveryDropoffPreferences.MeetOutside;
+    var verificationChanged = Clone(original); verificationChanged.Request.Fulfillment.AddressVerificationStatus = RestaurantDeliveryAddressVerificationStatuses.ManualUnverified;
+
+    Assert.NotEqual(fingerprint, RestaurantOnlineQuotePolicy.CreateFingerprint(feeChanged));
+    Assert.NotEqual(fingerprint, RestaurantOnlineQuotePolicy.CreateFingerprint(pinChanged));
+    Assert.NotEqual(fingerprint, RestaurantOnlineQuotePolicy.CreateFingerprint(handoffChanged));
+    Assert.NotEqual(fingerprint, RestaurantOnlineQuotePolicy.CreateFingerprint(verificationChanged));
+  }
+
+  [Fact]
   public void OnlineSchedule_HandlesPreviousDaysOvernightInterval()
   {
     const string schedule = """
@@ -529,6 +560,10 @@ public sealed class RestaurantOnlineOrderingPolicyTests
         ]
       }
     };
+
+  private static RestaurantOnlineQuoteSnapshot Clone(RestaurantOnlineQuoteSnapshot source)
+    => JsonSerializer.Deserialize<RestaurantOnlineQuoteSnapshot>(JsonSerializer.Serialize(source))
+      ?? throw new InvalidOperationException("Could not clone quote.");
 
   private static RestaurantPosCatalogDto Catalog(bool online)
     => new()

@@ -3,12 +3,14 @@
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @using OrionERP.Application.Common
 @using OrionERP.Application.Features.Restaurante
 @inject IRestaurantCatalogService CatalogService
 @inject IRestaurantDeliveryService DeliveryService
 @inject ICurrentCompanyContext CompanyContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime Js
 
 <PageTitle>Restaurante · Repartos</PageTitle>
 
@@ -52,6 +54,18 @@
   </section>
 </main>
 
+@if (cameraOpen)
+{
+  <div class="delivery-camera-overlay" role="dialog" aria-modal="true" aria-labelledby="delivery-camera-title">
+    <div class="delivery-camera-dialog">
+      <header><div><span>Comprobante de entrega</span><h2 id="delivery-camera-title">Toma una foto del pedido entregado</h2></div><button type="button" @onclick="CloseCameraAsync" disabled="@cameraCapturing" aria-label="Cerrar cámara"><span class="oi oi-x"></span></button></header>
+      <div class="delivery-camera-stage">@if (cameraPreviewUrl is not null) { <img src="@cameraPreviewUrl" alt="Vista previa de la foto de entrega" /> } else { <video class="delivery-camera-preview" @ref="cameraVideoElement" autoplay muted playsinline></video> }@if (cameraStarting) { <div class="delivery-camera-status"><span class="spinner-border"></span><strong>Abriendo cámara…</strong></div> }@if (!string.IsNullOrWhiteSpace(cameraError)) { <div class="delivery-camera-error" role="alert">@cameraError</div> }</div>
+      @if (cameraDevices.Count > 1 && cameraPreviewUrl is null) { <select class="form-select" value="@selectedCameraDeviceId" @onchange="ChangeCameraAsync" disabled="@(cameraStarting || cameraCapturing)">@foreach (var camera in cameraDevices) { <option value="@camera.DeviceId">@camera.Label</option> }</select> }
+      <footer>@if (cameraPreviewUrl is null) { <button class="btn btn-light" type="button" @onclick="CloseCameraAsync" disabled="@cameraCapturing">Cancelar</button><button class="delivery-camera-capture" type="button" @onclick="CaptureCameraAsync" disabled="@(cameraStarting || cameraCapturing || !cameraSupported)" aria-label="Capturar foto"><span></span></button><span></span> } else { <button class="btn btn-outline-light" type="button" @onclick="RetakeCameraAsync" disabled="@cameraCapturing">Repetir</button><button class="btn btn-success" type="button" @onclick="UseCameraPhotoAsync" disabled="@cameraCapturing">@(cameraCapturing ? "Preparando…" : "Usar esta foto")</button> }</footer>
+    </div>
+  </div>
+}
+
 @code {
   private const long MaxUploadBytes = 12L * 1024L * 1024L;
   private readonly CancellationTokenSource disposeCts = new();
@@ -71,6 +85,11 @@
   private string reassignmentUser = string.Empty;
   private Guid? assignmentOrderId;
   private int proofInputKey;
+  private IJSObjectReference? cameraModule;
+  private bool cameraOpen, pendingCameraStart, cameraStarting, cameraCapturing, cameraSupported = true;
+  private string? cameraError, cameraPreviewUrl, selectedCameraDeviceId;
+  private ElementReference cameraVideoElement;
+  private List<CameraDeviceOption> cameraDevices = [];
 
   private string CurrentRfc => CompanyContext.RequireRfc();
   private RestaurantDeliveryQueueItemDto? active => queue.FirstOrDefault(item =>
@@ -99,7 +118,11 @@
       {
         <div class="delivery-warning"><span class="oi oi-warning" aria-hidden="true"></span><div><strong>Dirección sin verificar</strong><p>Confírmala con el cliente antes de salir. La entrega puede continuar.</p></div></div>
       }
-      <address><span class="oi oi-map-marker" aria-hidden="true"></span><div><strong>@order.AddressLine</strong>@if (!string.IsNullOrWhiteSpace(order.AddressComplement)) { <p>@order.AddressComplement</p> }@if (!string.IsNullOrWhiteSpace(order.AddressReferences)) { <small>@order.AddressReferences</small> }</div></address>
+      <address><span class="oi oi-map-marker" aria-hidden="true"></span><div><strong>@order.AddressLine</strong>@if (!string.IsNullOrWhiteSpace(order.AddressComplement)) { <p>@order.AddressComplement</p> }</div></address>
+      @if (!string.IsNullOrWhiteSpace(order.AddressReferences))
+      {
+        <aside class="delivery-instructions" aria-label="Instrucciones para encontrar la ubicación"><span class="oi oi-compass" aria-hidden="true"></span><div><strong>Instrucciones para encontrar la ubicación</strong><p>@order.AddressReferences</p></div></aside>
+      }
       <div class="delivery-actions delivery-actions--route">
         <a class="delivery-route" href="@DirectionsUrl(order)" target="_blank" rel="noopener"><span class="oi oi-location" aria-hidden="true"></span>Abrir ruta en Google Maps</a>
         @if (order.AddressVerificationStatus == RestaurantDeliveryAddressVerificationStatuses.ManualUnverified)
@@ -117,7 +140,7 @@
         {
           <section class="delivery-proof" aria-label="Comprobante de entrega">
             <div><strong>Comprobante de entrega</strong><p>@(NeedsProof(order) ? "Toma una foto donde se vea que el pedido quedó en la puerta." : "La foto es opcional para este tipo de entrega.")</p></div>
-            <InputFile @key="proofInputKey" OnChange="SelectProofAsync" accept="image/jpeg,image/png,image/webp" capture="environment" />
+            <div class="delivery-proof__capture-actions"><button type="button" class="primary" disabled="@busy" @onclick="OpenCameraAsync"><span class="oi oi-camera-slr" aria-hidden="true"></span> Tomar foto</button><label class="delivery-proof__upload"><span class="oi oi-cloud-upload" aria-hidden="true"></span> Subir archivo<InputFile @key="proofInputKey" OnChange="SelectProofAsync" accept="image/jpeg,image/png,image/webp" capture="environment" /></label></div>
             @if (!string.IsNullOrWhiteSpace(proofName)) { <div class="delivery-proof__selected"><span class="oi oi-camera-slr" aria-hidden="true"></span><span>@proofName</span><button type="button" @onclick="ClearProof">Quitar</button></div> }
             @if (canSupervise && NeedsProof(order) && proofBytes is null)
             {
@@ -197,6 +220,82 @@
     catch (Exception ex) { ClearProof(); Show(ex is IOException ? "La foto supera 12 MB." : "No fue posible leer la foto.", true); }
   }
 
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!pendingCameraStart) return;
+    pendingCameraStart = false;
+    await StartCameraStreamAsync();
+  }
+
+  private async Task OpenCameraAsync()
+  {
+    cameraOpen = true; cameraError = null; cameraPreviewUrl = null; cameraStarting = true; cameraSupported = true;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      cameraSupported = await module.InvokeAsync<bool>("isSupported");
+      if (!cameraSupported) { cameraError = "Este teléfono no permite abrir la cámara aquí. Usa “Subir archivo”."; cameraStarting = false; return; }
+      pendingCameraStart = true;
+    }
+    catch { cameraError = "No pudimos preparar la cámara. Revisa el permiso del navegador o usa “Subir archivo”."; cameraStarting = false; }
+  }
+
+  private async Task ChangeCameraAsync(ChangeEventArgs args) { selectedCameraDeviceId = args.Value?.ToString(); await StartCameraStreamAsync(); }
+
+  private async Task StartCameraStreamAsync()
+  {
+    cameraStarting = true; cameraError = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      var streamInfo = await module.InvokeAsync<CameraStreamInfo>("start", cameraVideoElement, selectedCameraDeviceId);
+      cameraDevices = (await module.InvokeAsync<CameraDeviceOption[]>("listCameras")).ToList();
+      selectedCameraDeviceId = !string.IsNullOrWhiteSpace(streamInfo.DeviceId) ? streamInfo.DeviceId : selectedCameraDeviceId ?? cameraDevices.FirstOrDefault()?.DeviceId;
+    }
+    catch { cameraError = "No pudimos abrir la cámara. Permite su uso en el navegador o usa “Subir archivo”."; }
+    finally { cameraStarting = false; await InvokeAsync(StateHasChanged); }
+  }
+
+  private async Task CaptureCameraAsync()
+  {
+    cameraCapturing = true; cameraError = null;
+    try { var module = await EnsureCameraModuleAsync(); await module.InvokeAsync<CameraCaptureResult>("capture", cameraVideoElement, 2048, 640); cameraPreviewUrl = await module.InvokeAsync<string>("getPreviewUrl"); }
+    catch { cameraError = "No se pudo capturar la foto. Mantén la cámara abierta y vuelve a intentarlo."; }
+    finally { cameraCapturing = false; }
+  }
+
+  private async Task RetakeCameraAsync()
+  {
+    cameraPreviewUrl = null;
+    try { var module = await EnsureCameraModuleAsync(); await module.InvokeVoidAsync("clearLastCapture"); }
+    catch { cameraError = "No se pudo preparar otra foto."; }
+  }
+
+  private async Task UseCameraPhotoAsync()
+  {
+    cameraCapturing = true; cameraError = null;
+    try
+    {
+      var module = await EnsureCameraModuleAsync();
+      await using var streamReference = await module.InvokeAsync<IJSStreamReference>("getLastImage");
+      await using var stream = await streamReference.OpenReadStreamAsync(MaxUploadBytes);
+      using var memory = new MemoryStream(); await stream.CopyToAsync(memory);
+      proofBytes = memory.ToArray(); proofName = $"entrega-{DateTime.Now:yyyyMMddHHmmss}.jpg";
+      await CloseCameraAsync(); Show("Foto lista para guardar.", false);
+    }
+    catch { cameraError = "No se pudo preparar la foto. Conservamos la vista previa para que vuelvas a intentarlo."; }
+    finally { cameraCapturing = false; }
+  }
+
+  private async Task CloseCameraAsync()
+  {
+    pendingCameraStart = false; cameraOpen = false; cameraStarting = false; cameraPreviewUrl = null; cameraError = null; cameraDevices = [];
+    if (cameraModule is not null) { try { await cameraModule.InvokeVoidAsync("stop"); await cameraModule.InvokeVoidAsync("clearLastCapture"); } catch (JSDisconnectedException) { } catch (InvalidOperationException) { } }
+  }
+
+  private async Task<IJSObjectReference> EnsureCameraModuleAsync()
+    => cameraModule ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/orden-trabajo-camera.js");
+
   private async Task RunAsync(Func<Task<RestaurantCommandResult>> action)
   {
     if (busy) return; busy = true;
@@ -221,5 +320,9 @@
   private static string Elapsed(RestaurantDeliveryQueueItemDto order) { var from = order.AssignedAt ?? order.ReadyAt ?? order.CreatedAt; var elapsed = DateTime.UtcNow - DateTime.SpecifyKind(from, DateTimeKind.Utc); return elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours} h {elapsed.Minutes} min" : $"{Math.Max(0, elapsed.Minutes)} min"; }
   private static string DirectionsUrl(RestaurantDeliveryQueueItemDto order) { var destination = order.Latitude.HasValue && order.Longitude.HasValue ? $"{order.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{order.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}" : order.AddressLine; return $"https://www.google.com/maps/dir/?api=1&destination={Uri.EscapeDataString(destination)}"; }
 
-  public ValueTask DisposeAsync() { disposeCts.Cancel(); disposeCts.Dispose(); return ValueTask.CompletedTask; }
+  public async ValueTask DisposeAsync() { disposeCts.Cancel(); await CloseCameraAsync(); if (cameraModule is not null) await cameraModule.DisposeAsync(); disposeCts.Dispose(); }
+
+  private sealed class CameraDeviceOption { public string DeviceId { get; set; } = string.Empty; public string Label { get; set; } = string.Empty; }
+  private sealed class CameraCaptureResult { }
+  private sealed class CameraStreamInfo { public string DeviceId { get; set; } = string.Empty; }
 }
